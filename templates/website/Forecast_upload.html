@@ -1,0 +1,95 @@
+{% extends 'website/base.html' %}
+
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Upload Forecast</title>
+    <style>
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        th,
+        td {
+            border: 1px solid #ddd;
+            padding: 8px;
+        }
+
+        th {
+            background-color: #f2f2f2;
+        }
+    </style>
+</head>
+{% block content %}
+
+<body>
+
+    <h1>Upload Forecast</h1>
+
+    <form method="post" enctype="multipart/form-data">
+        {% csrf_token %}
+        {{ form.as_p }}
+        <button type="submit">Upload</button>
+    </form>
+
+    <h2>Sample Template</h2>
+    <table>
+        <thead>
+            <tr>
+                <th>version</th>
+                <th>Forecast_Region</th>
+                <th>Product_Group</th>
+                <th>Product</th>
+                <th>ProductFamilyDescription</th>
+                <th>Customer_code</th>
+                <th>Location</th>
+                <th>Forecasted_Weight_Curr</th>
+                <th>PriceAUD</th>
+                <th>DP_Cycle</th>
+                <th>Period_AU</th>
+                <th>Qty</th>
+                <th>image</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td>1</td>
+                <td>Region1</td>
+                <td>Group1</td>
+                <td>Product1</td>
+                <td>Family1</td>
+                <td>C001</td>
+                <td>Location1</td>
+                <td>1000</td>
+                <td>50</td>
+                <td>Cycle1</td>
+                <td>2025-04</td>
+                <td>10</td>
+                <td>image1.jpg</td>
+            </tr>
+            <tr>
+                <td>2</td>
+                <td>Region2</td>
+                <td>Group2</td>
+                <td>Product2</td>
+                <td>Family2</td>
+                <td>C002</td>
+                <td>Location2</td>
+                <td>2000</td>
+                <td>60</td>
+                <td>Cycle2</td>
+                <td>2025-05</td>
+                <td>20</td>
+                <td>image2.jpg</td>
+            </tr>
+            <!-- Add more rows as needed -->
+        </tbody>
+    </table>
+</body>
+{% endblock %}
+
+</html>

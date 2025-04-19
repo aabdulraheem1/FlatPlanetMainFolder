@@ -1,0 +1,273 @@
+from django.db import models
+
+# Create your models here.
+
+
+class test(models.Model):
+    test = models.CharField(max_length=100)
+
+    def __str__(self):
+        return self.test
+    
+
+
+
+
+
+
+class scenarios(models.Model):
+    version = models.CharField(max_length=100, primary_key=True, null=False)
+    scenario_description = models.TextField(default="type your description of this version here", null=False)
+    created_by = models.CharField(max_length=100, null=False)
+    creation_date = models.DateField(auto_now_add=True)
+    open_to_update = models.BooleanField(default=False)
+    visible_to_users = models.BooleanField(default=False)
+    approval1 = models.BooleanField(default=False)
+    approval2 = models.BooleanField(default=False)
+    approval3 = models.BooleanField(default=False)
+
+
+
+   
+
+class SMART_Forecast_Model(models.Model):
+    version = models.ForeignKey(scenarios, to_field='version', on_delete=models.CASCADE)
+    Forecast_Region = models.CharField(max_length=100,blank=True, null=True)
+    Product_Group = models.CharField(max_length=100,blank=True, null=True)
+    Product = models.CharField(max_length=100,blank=True, null=True)
+    ProductFamilyDescription = models.CharField(max_length=100,blank=True, null=True)
+    Customer_code = models.CharField(max_length=100,blank=True, null=True)
+    Location = models.CharField(max_length=100,blank=True, null=True)
+    Forecasted_Weight_Curr = models.FloatField(default=0, null=True)
+    PriceAUD = models.FloatField(default=0, null=True)
+    DP_Cycle = models.DateField( null=True)
+    Period_AU = models.DateField( null=True)
+    Qty = models.FloatField(default=0, null=True)
+   
+
+    def __str__(self):
+        return self.Product
+
+
+class Product_Model(models.Model):
+    Product = models.CharField(max_length=100)
+    Product_Group = models.CharField(max_length=100, null=True)
+    image = models.ImageField(null=True, blank=True, upload_to="images/")
+
+    def __str__(self):
+        return self.Product
+        
+
+class MasterDataOrderBook(models.Model):
+    version = models.CharField(max_length=100)
+    site = models.CharField(max_length=100)
+    productkey = models.CharField(max_length=100)
+
+    def __str__(self):
+        return self.version + self.productkey
+
+class MasterDataCapacityModel(models.Model):
+    version = models.CharField(max_length=250, null=True, blank=True)
+    subversion = models.CharField(max_length=250, null=True, blank=True)
+    Foundry = models.CharField(max_length=250, null=True, blank=True)
+    PouringDaysPerWeek = models.IntegerField(null=True, blank=True)
+    ShiftsPerDay = models.IntegerField(null=True, blank=True)
+    HoursPershift = models.IntegerField(null=True, blank=True)
+    Maxnumberofheatsperday = models.IntegerField(null=True, blank=True)
+    Minnumberofheatsperday = models.IntegerField(null=True, blank=True)
+    Averagenumberofheatsperday = models.IntegerField(null=True, blank=True)
+    Month = models.DateField(null=True, blank=True)
+    Yiled = models.FloatField(null=True, blank=True)
+    Waster = models.FloatField(null=True, blank=True)
+    Dresspouringcapacity = models.FloatField(null=True, blank=True)
+    Calendardays = models.IntegerField(null=True, blank=True)
+    Plannedmaintenancedays = models.IntegerField(null=True, blank=True)
+    Publicholidays = models.IntegerField(null=True, blank=True)
+    Weekends = models.IntegerField(null=True, blank=True)
+    Othernonpouringdays = models.IntegerField(null=True, blank=True)
+    Unavailabiledays = models.IntegerField(null=True, blank=True)
+    Availabledays = models.IntegerField(null=True, blank=True)
+    Heatsperday = models.IntegerField(null=True, blank=True)
+    CastMasstonsperheat = models.FloatField(null=True, blank=True)
+    Casttonnesperday = models.FloatField(null=True, blank=True)
+    Workcentre = models.CharField(max_length=250, default="Pouring")
+
+    def __str__(self):
+        return self.Workcentre
+    
+class MasterDataCommentModel(models.Model):
+    version = models.CharField(max_length=250)
+    subversion = models.CharField(max_length=250)
+    PriorAssumptionsDecisions = models.TextField(max_length=1000)
+    NewAssumptions = models.TextField(max_length=1000)
+    Opportunities = models.TextField(max_length=1000)
+    Risk = models.TextField(max_length=1000)
+    DecisionsActionsRequired = models.TextField(max_length=1000)
+    SummaryKPI = models.TextField(max_length=1000)
+    SummaryCapacity = models.TextField(max_length=1000)
+    
+    def __str__(self):
+        return self.version
+    
+class MasterDataHistoryOfProductionModel(models.Model):
+    version = models.CharField(max_length=250)
+    Product = models.CharField(max_length=250)
+    Foundry = models.CharField(max_length=250)
+    ProductionMonth = models.DateField()
+    ProductionQty = models.IntegerField()
+
+    def __str__(self):
+        return self.version + self.Product
+    
+class MasterDataIncotTermTypesModel(models.Model):
+    version = models.CharField(max_length=250)
+    IncoTerm = models.CharField(max_length=250)
+    IncoTermCaregory = models.CharField(max_length=250)
+
+    def __str__(self):
+        return self.version
+    
+class MasterdataIncoTermsModel(models.Model):
+    version = models.CharField(max_length=250)
+    CustomerCode = models.CharField(max_length=250)
+    Incoterm = models.CharField(max_length=250)
+
+    def __str__(self):
+        return self.version
+    
+class MasterDataLeadTimesModel(models.Model):
+    version = models.CharField(max_length=250)
+    Foundry = models.CharField(max_length=250)
+    SalesClass = models.CharField(max_length=250)
+    InventoryClass = models.CharField(max_length=250)
+    LeatTimeDays = models.IntegerField()
+
+    def __str__(self):
+        return self.version
+    
+class MasterDataFreightModel(models.Model):
+    version = models.CharField(max_length=250)
+    ForecastRegion = models.CharField(max_length=250)
+    ManufacturingSite = models.CharField(max_length=250)
+    PlantToDomesticPortDays = models.IntegerField()
+    OceanFreightDays = models.IntegerField()
+    PortToCustomerDays = models.IntegerField()
+
+    def __str__(self):
+        return self.version
+
+
+class MasterDataPlan(models.Model):
+    Version	= models.CharField(max_length=250)
+    SubVersion = models.CharField(max_length=250)
+    Foundry = models.CharField(max_length=250)
+    FB = models.CharField(max_length=250)
+    PouringDaysperweek = models.IntegerField()
+    CalendarDays = models.IntegerField()
+    Month = models.DateField()
+    Yield = models.FloatField()
+    WasterPercentage = models.FloatField()
+    PlanDressMass = models.FloatField()
+    UnavailableDays = models.IntegerField()
+    AvailableDays = models.IntegerField()
+    PlannedMaintenanceDays = models.IntegerField()
+    PublicHolidays = models.IntegerField()
+    Weekends = models.IntegerField()
+    OtherNonPouringDays = models.IntegerField()
+    HeatsPerweek = models.FloatField()
+    heatsperdays = models.FloatField()
+    CastMass = models.FloatField()
+    TonsPerHeat = models.FloatField()
+    CastTonsPerDay = models.FloatField()
+
+    def __str__(self):
+        self.Version + self.Foundry
+
+class MasterDataPlantModel(models.Model):
+    version = models.ForeignKey(scenarios, on_delete=models.CASCADE, null=True)
+    plant = models.CharField(max_length=250,null=True)
+    Country = models.CharField(max_length=250,null=True)
+    City = models.CharField(max_length=250,null=True)
+    PlantCode = models.CharField(max_length=250,null=True)
+    CastToDespatchDays = models.IntegerField(null=True)
+
+    def __str__(self):
+        self.version.scenario_name + self.PlantCode
+
+class MasterDataProductModel(models.Model):
+    SPRversion = models.ForeignKey(scenarios, to_field='version', on_delete=models.CASCADE, null=True)
+    Product = models.CharField(max_length=250, null=True)
+    Weight = models.FloatField(null=True)
+    Grade = models.CharField(max_length=250,null=True)
+    ExistsInEpicor = models.BooleanField(null=True)
+    ProductGroup = models.CharField(max_length=250,null=True)
+    Image = models.ImageField(blank=True, upload_to='images',null=True)
+
+    def __str__(self):
+        self.Version.scenario_name + self.Product
+
+class MasterDataProductAttributesModel(models.Model):
+    version = models.CharField(max_length=250)
+    Product = models.CharField(max_length=250)
+    Region = models.CharField(max_length=250)
+    DynamicSafetyStock = models.FloatField()
+    StaticSafetyStock = models.FloatField()
+    OrderMultipleQty = models.FloatField()
+    MinOrderQty = models.FloatField()
+
+    def __str__(self):
+        self.version + self.Product
+
+class MasterDataSalesAllocationToPlantModel(models.Model):
+    # this class is used to store the data related to revenue based demand where data is not in SKU level
+    # fixed plant data is not stored in this class
+    Version = models.CharField(max_length=250)
+    Plant = models.CharField(max_length=250)
+    SalesClass = models.CharField(max_length=250)
+    Allocation = models.FloatField()
+    
+    def __str__(self):
+        self.Version + self.Plant + self.SalesClass
+
+class MasterDataSalesModel(models.Model):
+    # this class is used to store the data related to revenue based demand where data is not in SKU level
+    # fixed plant data is not stored in this class
+    Version = models.CharField(max_length=250)
+    SalesClass = models.CharField(max_length=250)
+    GrossMargin = models.FloatField()
+    InHouseProduction = models.FloatField()
+    CostAUDPerKg = models.FloatField()
+    
+    def __str__(self):
+        self.Version  + self.SalesClass
+
+
+
+class MasterDataSKUTransferModel(models.Model):
+    version = models.CharField(max_length=250)
+    Product = models.CharField(max_length=250)
+    Date = models.DateField()
+    Supplier = models.CharField(max_length=250)
+
+    def __str__(self):
+        self.version + self.Product + self.Date
+
+
+
+class MasterDataScheduleModel(models.Model):
+    Scenario_Foreign_Key = models.ForeignKey(scenarios, to_field='version', on_delete=models.CASCADE, default=None)
+    Version_id = models.CharField(max_length=250, blank=True, null=True)
+    Plant = models.CharField(max_length=250,blank=True,null=True )
+    SalesClass = models.CharField(max_length=250, blank=True,null=True)
+    ProductGroup = models.CharField(max_length=250, blank=True,null=True)
+    Date = models.DateField(blank=True,null=True)
+    ScheduleQty = models.FloatField(blank=True,null=True)
+    UnitOfMeasure = models.CharField(max_length=250, blank=True,null=True)
+
+    def __str__(self):
+        self.Version  + self.Plant
+    
+
+
+    
+
