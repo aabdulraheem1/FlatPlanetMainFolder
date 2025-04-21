@@ -195,16 +195,35 @@ class MasterDataPlantModel(models.Model):
         self.version.scenario_name + self.PlantCode
 
 class MasterDataProductModel(models.Model):
-    SPRversion = models.ForeignKey(scenarios, to_field='version', on_delete=models.CASCADE, null=True)
-    Product = models.CharField(max_length=250, null=True)
-    Weight = models.FloatField(null=True)
-    Grade = models.CharField(max_length=250,null=True)
-    ExistsInEpicor = models.BooleanField(null=True)
-    ProductGroup = models.CharField(max_length=250,null=True)
-    Image = models.ImageField(blank=True, upload_to='images',null=True)
+    Product = models.CharField(max_length=250, primary_key=True)
+    ProductDescription = models.TextField(null=True,blank=True)
+    SalesClass = models.CharField(max_length=250, null=True,blank=True)
+    SalesClassDescription = models.TextField(null=True,blank=True)
+    ProductGroup = models.CharField(max_length=250, null=True,blank=True)
+    ProductGroupDescription = models.TextField(null=True)
+    InventoryClass = models.CharField(max_length=250, null=True,blank=True)
+    InventoryClassDescription = models.TextField(null=True,blank=True)
+    ParentProductGroup = models.CharField(max_length=250, null=True,blank=True)
+    ParentProductGroupDescription = models.TextField(null=True,blank=True)
+    ProductFamily = models.CharField(max_length=250, null=True,blank=True)
+    ProductFamilyDescription = models.TextField(null=True,blank=True)
+    DressMass = models.FloatField(null=True,blank=True)
+    CastMass = models.FloatField(null=True,blank=True)
+    Grade = models.CharField(max_length=250, null=True,blank=True)
+    PartClassID = models.CharField(max_length=250, null=True,blank=True)
+    PartClassDescription = models.TextField(null=True,blank=True)
+    ExistsInEpicor = models.BooleanField(null=True,blank=True)
 
     def __str__(self):
-        self.Version.scenario_name + self.Product
+        return self.Product
+    
+
+class MasterDataProductPictures(models.Model):
+    product = models.ForeignKey(MasterDataProductModel, to_field='Product', on_delete=models.CASCADE)
+    Image = models.ImageField(null=True)
+
+
+
 
 class MasterDataProductAttributesModel(models.Model):
     version = models.CharField(max_length=250)

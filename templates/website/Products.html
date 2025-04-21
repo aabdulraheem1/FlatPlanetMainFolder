@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>Master Data Product</title>
+    <style>
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        th,
+        td {
+            border: 1px solid black;
+            padding: 8px;
+            text-align: left;
+        }
+
+        th {
+            background-color: #f2f2f2;
+        }
+    </style>
+</head>
+
+<body>
+    <h1>Master Data Product</h1>
+    <table>
+        <thead>
+            <tr>
+                <th>Product</th>
+                <th>Product Description</th>
+                <th>Sales Class</th>
+                <th>Sales Class Description</th>
+                <th>Product Group</th>
+                <th>Product Group Description</th>
+                <th>Inventory Class</th>
+                <th>Inventory Class Description</th>
+                <th>Parent Product Group</th>
+                <th>Parent Product Group Description</th>
+                <th>Product Family</th>
+                <th>Product Family Description</th>
+                <th>Dress Mass</th>
+                <th>Cast Mass</th>
+                <th>Grade</th>
+                <th>Part Class ID</th>
+                <th>Part Class Description</th>
+                <th>Exists In Epicor</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for product in products %}
+            <tr>
+                <td>{{ product.Product }}</td>
+                <td>{{ product.ProductDescription }}</td>
+                <td>{{ product.SalesClass }}</td>
+                <td>{{ product.SalesClassDescription }}</td>
+                <td>{{ product.ProductGroup }}</td>
+                <td>{{ product.ProductGroupDescription }}</td>
+                <td>{{ product.InventoryClass }}</td>
+                <td>{{ product.InventoryClassDescription }}</td>
+                <td>{{ product.ParentProductGroup }}</td>
+                <td>{{ product.ParentProductGroupDescription }}</td>
+                <td>{{ product.ProductFamily }}</td>
+                <td>{{ product.ProductFamilyDescription }}</td>
+                <td>{{ product.DressMass }}</td>
+                <td>{{ product.CastMass }}</td>
+                <td>{{ product.Grade }}</td>
+                <td>{{ product.PartClassID }}</td>
+                <td>{{ product.PartClassDescription }}</td>
+                <td>{{ product.ExistsInEpicor }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</body>
+
+</html>

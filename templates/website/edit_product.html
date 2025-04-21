@@ -1,0 +1,164 @@
+{% extends 'website/base.html' %}
+{% load widget_tweaks %}
+
+{% block content %}
+<div class="container mt-5">
+    <div class="card shadow-lg">
+        <div class="card-header bg-primary text-white">
+            <h2 class="text-center">Edit Product</h2>
+        </div>
+        <div class="card-body">
+            <form method="post" enctype="multipart/form-data">
+                {% csrf_token %}
+                <div class="row">
+                    <div class="col-md-6">
+                        <div class="form-group">
+                            <label for="Product">Product</label>
+                            {{ product_form.Product|add_class:"form-control" }}
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="form-group">
+                            <label for="ProductDescription">Product Description</label>
+                            {{ product_form.ProductDescription|add_class:"form-control" }}
+                        </div>
+                    </div>
+                </div>
+                <div class="row">
+                    <div class="col-md-6">
+                        <div class="form-group">
+                            <label for="SalesClass">Sales Class</label>
+                            {{ product_form.SalesClass|add_class:"form-control" }}
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="form-group">
+                            <label for="SalesClassDescription">Sales Class Description</label>
+                            {{ product_form.SalesClassDescription|add_class:"form-control" }}
+                        </div>
+                    </div>
+                </div>
+                <div class="row">
+                    <div class="col-md-6">
+                        <div class="form-group">
+                            <label for="ProductGroup">Product Group</label>
+                            {{ product_form.ProductGroup|add_class:"form-control" }}
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="form-group">
+                            <label for="ProductGroupDescription">Product Group Description</label>
+                            {{ product_form.ProductGroupDescription|add_class:"form-control" }}
+                        </div>
+                    </div>
+                </div>
+                <div class="row">
+                    <div class="col-md-6">
+                        <div class="form-group">
+                            <label for="InventoryClass">Inventory Class</label>
+                            {{ product_form.InventoryClass|add_class:"form-control" }}
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="form-group">
+                            <label for="InventoryClassDescription">Inventory Class Description</label>
+                            {{ product_form.InventoryClassDescription|add_class:"form-control" }}
+                        </div>
+                    </div>
+                </div>
+                <div class="row">
+                    <div class="col-md-6">
+                        <div class="form-group">
+                            <label for="ParentProductGroup">Parent Product Group</label>
+                            {{ product_form.ParentProductGroup|add_class:"form-control" }}
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="form-group">
+                            <label for="ParentProductGroupDescription">Parent Product Group Description</label>
+                            {{ product_form.ParentProductGroupDescription|add_class:"form-control" }}
+                        </div>
+                    </div>
+                </div>
+                <div class="row">
+                    <div class="col-md-6">
+                        <div class="form-group">
+                            <label for="ProductFamily">Product Family</label>
+                            {{ product_form.ProductFamily|add_class:"form-control" }}
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="form-group">
+                            <label for="ProductFamilyDescription">Product Family Description</label>
+                            {{ product_form.ProductFamilyDescription|add_class:"form-control" }}
+                        </div>
+                    </div>
+                </div>
+                <div class="row">
+                    <div class="col-md-6">
+                        <div class="form-group">
+                            <label for="DressMass">Dress Mass</label>
+                            {{ product_form.DressMass|add_class:"form-control" }}
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="form-group">
+                            <label for="CastMass">Cast Mass</label>
+                            {{ product_form.CastMass|add_class:"form-control" }}
+                        </div>
+                    </div>
+                </div>
+                <div class="row">
+                    <div class="col-md-6">
+                        <div class="form-group">
+                            <label for="Grade">Grade</label>
+                            {{ product_form.Grade|add_class:"form-control" }}
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="form-group">
+                            <label for="PartClassID">Part Class ID</label>
+                            {{ product_form.PartClassID|add_class:"form-control" }}
+                        </div>
+                    </div>
+                </div>
+                <div class="row">
+                    <div class="col-md-6">
+                        <div class="form-group">
+                            <label for="PartClassDescription">Part Class Description</label>
+                            {{ product_form.PartClassDescription|add_class:"form-control" }}
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="form-group">
+                            <label for="ExistsInEpicor">Exists In Epicor</label>
+                            {{ product_form.ExistsInEpicor|add_class:"form-control" }}
+                        </div>
+                    </div>
+                </div>
+                <div class="row">
+                    <div class="col-md-6">
+                        <div class="form-group">
+                            <label for="Image">Upload Image</label>
+                            {{ picture_form.Image|add_class:"form-control-file" }}
+                        </div>
+                    </div>
+                </div>
+                <button type="submit" class="btn btn-success btn-block">Save</button>
+            </form>
+            <div class="mt-4">
+                <h3>Current Image:</h3>
+                {% if product_picture and product_picture.Image %}
+                <img src="{{ product_picture.Image.url }}" class="img-fluid rounded mx-auto d-block"
+                    alt="Product Image">
+                {% else %}
+                <div class="border border-secondary d-flex align-items-center justify-content-center"
+                    style="width: 200px; height: 200px;">
+                    <span>No Image Available</span>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
