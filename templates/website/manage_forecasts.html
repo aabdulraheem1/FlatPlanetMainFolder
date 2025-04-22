@@ -1,0 +1,52 @@
+<!-- manage_forecasts.html -->
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>Manage Forecasts</title>
+    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/css/bootstrap.min.css">
+</head>
+
+<body>
+    <h2>Manage Forecasts for Scenario: {{ scenario.version }}</h2>
+    <form method="post" enctype="multipart/form-data">
+        {% csrf_token %}
+        <h3>Upload Excel File</h3>
+        {{ upload_form.as_p }}
+        <button type="submit" name="upload_file" class="btn btn-success">Upload</button>
+    </form>
+    <hr>
+    <h3>Edit Single Entry</h3>
+    <form method="post">
+        {% csrf_token %}
+        {{ edit_form.as_p }}
+        <button type="submit" name="edit_entry" class="btn btn-primary">Save</button>
+    </form>
+    <hr>
+    <h3>Existing Forecasts</h3>
+    <table class="table">
+        <thead>
+            <tr>
+                <th>Product</th>
+                <th>Forecast Region</th>
+                <th>Product Group</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for forecast in forecasts %}
+            <tr>
+                <td>{{ forecast.Product }}</td>
+                <td>{{ forecast.Forecast_Region }}</td>
+                <td>{{ forecast.Product_Group }}</td>
+                <td>
+                    <a href="{% url 'edit_forecast' forecast.id %}" class="btn btn-warning btn-sm">Edit</a>
+                    <a href="{% url 'delete_forecast' forecast.id %}" class="btn btn-danger btn-sm">Delete</a>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</body>
+
+</html>

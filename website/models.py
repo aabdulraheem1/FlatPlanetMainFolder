@@ -184,15 +184,16 @@ class MasterDataPlan(models.Model):
         self.Version + self.Foundry
 
 class MasterDataPlantModel(models.Model):
-    version = models.ForeignKey(scenarios, on_delete=models.CASCADE, null=True)
-    plant = models.CharField(max_length=250,null=True)
-    Country = models.CharField(max_length=250,null=True)
-    City = models.CharField(max_length=250,null=True)
-    PlantCode = models.CharField(max_length=250,null=True)
-    CastToDespatchDays = models.IntegerField(null=True)
+    SiteName = models.CharField(primary_key=True, max_length=250)
+    Company = models.CharField(max_length=250,null=True, blank=True)
+    Country = models.CharField(max_length=250,null=True, blank=True)
+    Location = models.CharField(max_length=250,null=True, blank=True)
+    PlantRegion = models.CharField(max_length=250,null=True, blank=True)
+    SiteType = models.CharField(max_length=250,null=True, blank=True)
+    About = models.TextField(null=True,max_length=3000, blank=True)
 
     def __str__(self):
-        self.version.scenario_name + self.PlantCode
+        self.Site
 
 class MasterDataProductModel(models.Model):
     Product = models.CharField(max_length=250, primary_key=True)

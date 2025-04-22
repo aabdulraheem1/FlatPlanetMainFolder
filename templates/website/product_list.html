@@ -11,27 +11,22 @@
             <table class="table table-bordered">
                 <thead class="thead-light">
                     <tr>
-                        <th>
-                            Product
+                        <th>Product
                             <input type="text" class="form-control" name="product" value="{{ product_filter }}">
                         </th>
-                        <th>
-                            Product Description
+                        <th>Product Description
                             <input type="text" class="form-control" name="product_description"
                                 value="{{ product_description_filter }}">
                         </th>
-                        <th>
-                            Sales Class Description
+                        <th>Sales Class Description
                             <input type="text" class="form-control" name="sales_class_description"
                                 value="{{ sales_class_filter }}">
                         </th>
-                        <th>
-                            Product Group Description
+                        <th>Product Group Description
                             <input type="text" class="form-control" name="product_group_description"
                                 value="{{ product_group_filter }}">
                         </th>
-                        <th>
-                            Exists In Epicor
+                        <th>Exists In Epicor
                             <input type="text" class="form-control" name="exists_in_epicor"
                                 value="{{ exists_in_epicor_filter }}">
                         </th>
@@ -52,7 +47,8 @@
         </div>
         <div class="d-flex justify-content-between">
             <button type="submit" class="btn btn-primary">Filter</button>
-            <a href="{% url 'fetch_data_from_mssql' %}" class="btn btn-danger">Refresh</a>
+            <button type="button" class="btn btn-danger" data-bs-toggle="modal"
+                data-bs-target="#refreshModal">Refresh</button>
         </div>
     </form>
 
@@ -86,6 +82,29 @@
         </ul>
     </nav>
 </div>
+
+<!-- Refresh Confirmation Modal -->
+<div class="modal fade" id="refreshModal" tabindex="-1" aria-labelledby="refreshModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="refreshModalLabel">Refresh List from Epicor</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                Refreshing the list from Epicor may take a few minutes. Are you sure you want to proceed?
+            </div>
+            <div class="modal-footer">
+                <form method="post" action="{% url 'fetch_data_from_mssql' %}">
+                    {% csrf_token %}
+                    <button type="submit" class="btn btn-warning">Refresh</button>
+                </form>
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+            </div>
+        </div>
+    </div>
+</div>
+
 {% endblock %}
 
 </html>

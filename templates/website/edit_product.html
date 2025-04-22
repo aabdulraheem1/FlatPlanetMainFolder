@@ -14,13 +14,13 @@
                     <div class="col-md-6">
                         <div class="form-group">
                             <label for="Product">Product</label>
-                            {{ product_form.Product|add_class:"form-control" }}
+                            {{ product_form.Product|add_class:"form-control fixed-width"|attr:"readonly" }}
                         </div>
                     </div>
                     <div class="col-md-6">
                         <div class="form-group">
                             <label for="ProductDescription">Product Description</label>
-                            {{ product_form.ProductDescription|add_class:"form-control" }}
+                            {{ product_form.ProductDescription|add_class:"form-control fixed-width" }}
                         </div>
                     </div>
                 </div>
@@ -28,13 +28,13 @@
                     <div class="col-md-6">
                         <div class="form-group">
                             <label for="SalesClass">Sales Class</label>
-                            {{ product_form.SalesClass|add_class:"form-control" }}
+                            {{ product_form.SalesClass|add_class:"form-control fixed-width" }}
                         </div>
                     </div>
                     <div class="col-md-6">
                         <div class="form-group">
                             <label for="SalesClassDescription">Sales Class Description</label>
-                            {{ product_form.SalesClassDescription|add_class:"form-control" }}
+                            {{ product_form.SalesClassDescription|add_class:"form-control fixed-width" }}
                         </div>
                     </div>
                 </div>
@@ -42,13 +42,13 @@
                     <div class="col-md-6">
                         <div class="form-group">
                             <label for="ProductGroup">Product Group</label>
-                            {{ product_form.ProductGroup|add_class:"form-control" }}
+                            {{ product_form.ProductGroup|add_class:"form-control fixed-width" }}
                         </div>
                     </div>
                     <div class="col-md-6">
                         <div class="form-group">
                             <label for="ProductGroupDescription">Product Group Description</label>
-                            {{ product_form.ProductGroupDescription|add_class:"form-control" }}
+                            {{ product_form.ProductGroupDescription|add_class:"form-control fixed-width" }}
                         </div>
                     </div>
                 </div>
@@ -56,13 +56,13 @@
                     <div class="col-md-6">
                         <div class="form-group">
                             <label for="InventoryClass">Inventory Class</label>
-                            {{ product_form.InventoryClass|add_class:"form-control" }}
+                            {{ product_form.InventoryClass|add_class:"form-control fixed-width" }}
                         </div>
                     </div>
                     <div class="col-md-6">
                         <div class="form-group">
                             <label for="InventoryClassDescription">Inventory Class Description</label>
-                            {{ product_form.InventoryClassDescription|add_class:"form-control" }}
+                            {{ product_form.InventoryClassDescription|add_class:"form-control fixed-width" }}
                         </div>
                     </div>
                 </div>
@@ -70,13 +70,13 @@
                     <div class="col-md-6">
                         <div class="form-group">
                             <label for="ParentProductGroup">Parent Product Group</label>
-                            {{ product_form.ParentProductGroup|add_class:"form-control" }}
+                            {{ product_form.ParentProductGroup|add_class:"form-control fixed-width" }}
                         </div>
                     </div>
                     <div class="col-md-6">
                         <div class="form-group">
                             <label for="ParentProductGroupDescription">Parent Product Group Description</label>
-                            {{ product_form.ParentProductGroupDescription|add_class:"form-control" }}
+                            {{ product_form.ParentProductGroupDescription|add_class:"form-control fixed-width" }}
                         </div>
                     </div>
                 </div>
@@ -84,13 +84,13 @@
                     <div class="col-md-6">
                         <div class="form-group">
                             <label for="ProductFamily">Product Family</label>
-                            {{ product_form.ProductFamily|add_class:"form-control" }}
+                            {{ product_form.ProductFamily|add_class:"form-control fixed-width" }}
                         </div>
                     </div>
                     <div class="col-md-6">
                         <div class="form-group">
                             <label for="ProductFamilyDescription">Product Family Description</label>
-                            {{ product_form.ProductFamilyDescription|add_class:"form-control" }}
+                            {{ product_form.ProductFamilyDescription|add_class:"form-control fixed-width" }}
                         </div>
                     </div>
                 </div>
@@ -98,13 +98,13 @@
                     <div class="col-md-6">
                         <div class="form-group">
                             <label for="DressMass">Dress Mass</label>
-                            {{ product_form.DressMass|add_class:"form-control" }}
+                            {{ product_form.DressMass|add_class:"form-control fixed-width" }}
                         </div>
                     </div>
                     <div class="col-md-6">
                         <div class="form-group">
                             <label for="CastMass">Cast Mass</label>
-                            {{ product_form.CastMass|add_class:"form-control" }}
+                            {{ product_form.CastMass|add_class:"form-control fixed-width" }}
                         </div>
                     </div>
                 </div>
@@ -112,13 +112,13 @@
                     <div class="col-md-6">
                         <div class="form-group">
                             <label for="Grade">Grade</label>
-                            {{ product_form.Grade|add_class:"form-control" }}
+                            {{ product_form.Grade|add_class:"form-control fixed-width" }}
                         </div>
                     </div>
                     <div class="col-md-6">
                         <div class="form-group">
                             <label for="PartClassID">Part Class ID</label>
-                            {{ product_form.PartClassID|add_class:"form-control" }}
+                            {{ product_form.PartClassID|add_class:"form-control fixed-width" }}
                         </div>
                     </div>
                 </div>
@@ -126,13 +126,14 @@
                     <div class="col-md-6">
                         <div class="form-group">
                             <label for="PartClassDescription">Part Class Description</label>
-                            {{ product_form.PartClassDescription|add_class:"form-control" }}
+                            {{ product_form.PartClassDescription|add_class:"form-control fixed-width" }}
                         </div>
                     </div>
                     <div class="col-md-6">
                         <div class="form-group">
                             <label for="ExistsInEpicor">Exists In Epicor</label>
-                            {{ product_form.ExistsInEpicor|add_class:"form-control" }}
+                            <input type="text" class="form-control fixed-width"
+                                value="{{ product_form.ExistsInEpicor.value }}" readonly>
                         </div>
                     </div>
                 </div>
@@ -146,19 +147,62 @@
                 </div>
                 <button type="submit" class="btn btn-success btn-block">Save</button>
             </form>
+
+            <form method="POST" action="{% url 'delete_product' pk %}" class="mt-3">
+                {% csrf_token %}
+                <button type="submit" class="btn btn-danger">Delete Product</button>
+            </form>
+
+
             <div class="mt-4">
                 <h3>Current Image:</h3>
-                {% if product_picture and product_picture.Image %}
-                <img src="{{ product_picture.Image.url }}" class="img-fluid rounded mx-auto d-block"
-                    alt="Product Image">
-                {% else %}
-                <div class="border border-secondary d-flex align-items-center justify-content-center"
-                    style="width: 200px; height: 200px;">
-                    <span>No Image Available</span>
+                <div class="row">
+                    <div class="col-md-12">
+                        {% if product_picture and product_picture.Image %}
+                        <div class="card mx-auto" style="max-width: 600px;">
+                            <img src="{{ product_picture.Image.url }}" class="card-img-top" alt="Product Image"
+                                style="width: 100%; height: auto;">
+                        </div>
+                        {% else %}
+                        <div class="card mx-auto" style="max-width: 600px;">
+                            <div class="card-body d-flex align-items-center justify-content-center"
+                                style="height: 600px;">
+                                <span>No Image Available</span>
+                            </div>
+                        </div>
+                        {% endif %}
+                    </div>
                 </div>
-                {% endif %}
             </div>
         </div>
     </div>
 </div>
 {% endblock %}
+
+<style>
+    .form-group {
+        display: flex;
+        align-items: flex-start;
+        margin-bottom: 10px;
+    }
+
+    .form-group label {
+        margin-right: 10px;
+    }
+
+    .form-group .form-control.fixed-width {
+        width: 100%;
+        /* Ensure all form controls have the same width */
+        max-width: 300px;
+        /* Set a maximum width to match the Product box */
+    }
+
+    .card {
+        max-width: 600px;
+    }
+
+    .card-img-top {
+        width: 100%;
+        height: auto;
+    }
+</style>

@@ -1,0 +1,73 @@
+{% extends 'website/base.html' %}
+
+{% block content %}
+<div class="container mt-5">
+    <div class="card">
+        <div class="card-header">
+            Edit Plant
+        </div>
+        <div class="card-body">
+            <form method="post">
+                {% csrf_token %}
+                <div class="mb-3">
+                    {{ plant_form.SiteName.label_tag }}
+                    {{ plant_form.SiteName }}
+                </div>
+                <div class="mb-3">
+                    {{ plant_form.Company.label_tag }}
+                    {{ plant_form.Company }}
+                </div>
+                <div class="mb-3">
+                    {{ plant_form.Country.label_tag }}
+                    {{ plant_form.Country }}
+                </div>
+                <div class="mb-3">
+                    {{ plant_form.Location.label_tag }}
+                    {{ plant_form.Location }}
+                </div>
+                <div class="mb-3">
+                    {{ plant_form.PlantRegion.label_tag }}
+                    {{ plant_form.PlantRegion }}
+                </div>
+                <div class="mb-3">
+                    {{ plant_form.SiteType.label_tag }}
+                    {{ plant_form.SiteType }}
+                </div>
+                <button type="submit" class="btn btn-primary">Save</button>
+                <a href="{% url 'PlantsList' %}" class="btn btn-secondary">Cancel</a>
+            </form>
+        </div>
+    </div>
+
+    {% if weather_data %}
+    <div class="card mt-4">
+        <div class="card-header">
+            Weather Forecast for the Next 5 Days in {{ weather_data.city.name }}
+        </div>
+        <div class="card-body bg-light-blue">
+            <div class="row">
+                {% for forecast in weather_data.list %}
+                {% if forloop.counter0|divisibleby:8 %}
+                <div class="col-md-2 text-center">
+                    <p><strong>
+                            {% if forloop.counter0 == 0 %}
+                            Today
+                            {% elif forloop.counter0 == 8 %}
+                            Tomorrow
+                            {% else %}
+                            {{ forecast.dt_txt|date:"D, M d" }}
+                            {% endif %}
+                        </strong></p>
+                    <img src="http://openweathermap.org/img/wn/{{ forecast.weather.0.icon }}@2x.png" alt="Weather icon"
+                        class="img-fluid">
+                    <p>{{ forecast.weather.0.description }}</p>
+                    <p><strong>Temp:</strong> {{ forecast.main.temp }} °C</p>
+                </div>
+                {% endif %}
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

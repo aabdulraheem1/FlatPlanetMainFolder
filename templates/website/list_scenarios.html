@@ -1,0 +1,27 @@
+<!-- list_scenarios.html -->
+{% extends 'website/base.html' %}
+
+{% block title %}List of Scenarios{% endblock %}
+
+{% block content %}
+<h2>List of Scenarios</h2>
+<table class="table">
+    <thead>
+        <tr>
+            <th>Version</th>
+            <th>Actions</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for scenario in scenarios %}
+        <tr>
+            <td>{{ scenario.version }}</td>
+            <td>
+                <a href="{% url 'edit_scenario' scenario.version %}" class="btn btn-primary btn-sm">Edit</a>
+                <a href="{% url 'delete_scenario' scenario.version %}" class="btn btn-danger btn-sm">Delete</a>
+            </td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% endblock %}

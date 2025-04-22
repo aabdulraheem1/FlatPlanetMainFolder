@@ -94,7 +94,7 @@
         <div>
             <br><br><br><br>
             <a href="{% url 'ProductsList' %}" class="d-block text-decoration-none mb-2 nav-link">Products</a><br>
-            <a href="#" class="d-block text-decoration-none mb-2 nav-link">Foundries & WHs</a><br>
+            <a href="{% url 'PlantsList' %}" class="d-block text-decoration-none mb-2 nav-link">Foundries & WHs</a><br>
             <a href="#" class="d-block text-decoration-none mb-2 nav-link">Suppliers</a><br>
 
             <button class="btn btn-link d-block text-decoration-none mb-2 nav-link" type="button"
@@ -104,7 +104,7 @@
             </button>
             <div class="collapse" id="scenariosDropdown">
                 <a href="{% url 'create_scenario' %}" class="d-block text-decoration-none mb-2 dropdown-item">Create</a>
-                <a href="#" class="d-block text-decoration-none mb-2 dropdown-item">Edit</a>
+                <a href="{% url 'list_scenarios' %}" class="d-block text-decoration-none mb-2 dropdown-item">Edit</a>
                 <a href="#" class="d-block text-decoration-none mb-2 dropdown-item">Review</a>
             </div><br>
             <a href="#" class="d-block text-decoration-none mb-2 nav-link">Production Reviews</a><br>
@@ -122,6 +122,12 @@
         </p>
         {% endblock %}
     </div>
+    <style>
+        .bg-light-blue {
+            background-color: #e0f7fa;
+            /* Very light blue */
+        }
+    </style>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script>

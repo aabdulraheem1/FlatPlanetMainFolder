@@ -1,7 +1,7 @@
 from django import forms
 from .models import SMART_Forecast_Model, scenarios
 from django import forms
-from .models import MasterDataProductModel, MasterDataProductPictures
+from .models import MasterDataProductModel, MasterDataProductPictures, MasterDataPlantModel
 
 
 class UploadFileForm(forms.Form):
@@ -14,9 +14,6 @@ class ScenarioForm(forms.ModelForm):
         widgets = {
             'scenario_description': forms.Textarea(attrs={'rows': 3, 'style': 'width:100%;'}),
         }
-
-
-
 
 class ProductForm(forms.ModelForm):
     class Meta:
@@ -33,5 +30,20 @@ class ProductPictureForm(forms.ModelForm):
         if commit:
             instance.save()
         return instance
+
+class MasterDataPlantsForm(forms.ModelForm):
+    class Meta:
+        model = MasterDataPlantModel
+        fields = '__all__'
+
+from django import forms
+
+class UploadFileForm(forms.Form):
+    file = forms.FileField()
+
+class SMARTForecastForm(forms.ModelForm):
+    class Meta:
+        model = SMART_Forecast_Model
+        fields = '__all__'
 
 
