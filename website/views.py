@@ -18,6 +18,8 @@ from .models import MasterDataProductModel, MasterDataProductPictures, MasterDat
 from django.urls import reverse
 from .forms import ProductForm, ProductPictureForm, MasterDataPlantsForm
 import requests
+from django.core.files.storage import FileSystemStorage
+
 
 from django.shortcuts import render, get_object_or_404, redirect
 
@@ -316,52 +318,7 @@ def edit_plant(request, pk):
         'weather_data': weather_data,
     })
 
-@login_required
-def manage_forecasts(request, scenario_id):
-    scenario = get_object_or_404(scenarios, id=scenario_id)
-    forecasts = SMART_Forecast_Model.objects.filter(version=scenario)
 
-    if request.method == 'POST':
-        if 'upload_file' in request.POST:
-            form = UploadFileForm(request.POST, request.FILES)
-            if form.is_valid():
-                file = request.FILES['file']
-                df = pd.read_excel(file)
-                SMART_Forecast_Model.objects.filter(version=scenario).delete()
-                for index, row in df.iterrows():
-                    SMART_Forecast_Model.objects.create(
-                        version=scenario,
-                        Forecast_Region=row['Forecast_Region'],
-                        Product_Group=row['Product_Group'],
-                        Product=row['Product'],
-                        ProductFamilyDescription=row['ProductFamilyDescription'],
-                        Customer_code=row['Customer_code'],
-                        Location=row['Location'],
-                        Forecasted_Weight_Curr=row['Forecasted_Weight_Curr'],
-                        PriceAUD=row['PriceAUD'],
-                        DP_Cycle=row['DP_Cycle'],
-                        Period_AU=row['Period_AU'],
-                        Qty=row['Qty']
-                    )
-                return redirect('manage_forecasts', scenario_id=scenario.id)
-        elif 'edit_entry' in request.POST:
-            form = SMARTForecastForm(request.POST)
-            if form.is_valid():
-                form.save()
-                return redirect('manage_forecasts', scenario_id=scenario.id)
-    else:
-        upload_form = UploadFileForm()
-        edit_form = SMARTForecastForm()
-
-    return render(request, 'website/manage_forecasts.html', {
-        'scenario': scenario,
-        'forecasts': forecasts,
-        'upload_form': upload_form,
-        'edit_form': edit_form
-    })
-
-@login_required
-def edit_forecast(request, id):
     forecast = get_object_or_404(SMART_Forecast_Model, id=id)
     if request.method == 'POST':
         form = SMARTForecastForm(request.POST, instance=forecast)
@@ -393,12 +350,14 @@ def edit_scenario(request, version):
     else:
         form = ScenarioForm(instance=scenario)
 
+    # Fetch models data to pass to the template
+ 
+
     return render(request, 'website/edit_scenario.html', {
         'scenario': scenario,
-        'scenario_form': form
+        'scenario_form': form,
+      
     })
-
-
 
 
 @login_required
@@ -411,6 +370,178 @@ def delete_scenario(request, version):
     scenario = get_object_or_404(scenarios, version=version)
     scenario.delete()
     return redirect('list_scenarios')
+
+from django.core.exceptions import ObjectDoesNotExist
+from django.shortcuts import redirect, render
+from django.core.files.storage import FileSystemStorage
+import pandas as pd
+
+@login_required
+def upload_forecast(request, forecast_type):
+    if request.method == 'POST' and request.FILES['file']:
+        file = request.FILES['file']
+        fs = FileSystemStorage()
+        filename = fs.save(file.name, file)
+        file_path = fs.path(filename)
+
+        # Read the Excel file
+        df = pd.read_excel(file_path)
+
+        try:
+            # Get the scenario version
+            version = scenarios.objects.get(version=request.POST.get('version'))
+        except ObjectDoesNotExist:
+            # Handle the case where the scenario does not exist
+            return render(request, 'upload_forecast.html', {
+                'error_message': 'Scenario matching query does not exist.'
+            })
+
+        # Set the data source based on the forecast type
+        data_source = 'SMART' if forecast_type == 'SMART' else 'Not in SMART'
+
+        # Iterate over the rows and save to the model
+        for _, row in df.iterrows():
+            SMART_Forecast_Model.objects.create(
+                version=version,
+                Data_Source=data_source,
+                Forecast_Region=row.get('Forecast_Region') if pd.notna(row.get('Forecast_Region')) else None,
+                Product_Group=row.get('Product_Group') if pd.notna(row.get('Product_Group')) else None,
+                Product=row.get('Product') if pd.notna(row.get('Product')) else None,
+                ProductFamilyDescription=row.get('ProductFamilyDescription') if pd.notna(row.get('ProductFamilyDescription')) else None,
+                Customer_code=row.get('Customer_code') if pd.notna(row.get('Customer_code')) else None,
+                Location=row.get('Location') if pd.notna(row.get('Location')) else None,
+                Forecasted_Weight_Curr=row.get('Forecasted_Weight_Curr') if pd.notna(row.get('Forecasted_Weight_Curr')) else None,
+                PriceAUD=row.get('PriceAUD') if pd.notna(row.get('PriceAUD')) else None,
+                DP_Cycle=row.get('DP_Cycle') if pd.notna(row.get('DP_Cycle')) else None,
+                Period_AU=row.get('Period_AU') if pd.notna(row.get('Period_AU')) else None,
+                Qty=row.get('Qty') if pd.notna(row.get('Qty')) else None
+            )
+
+        return redirect('edit_scenario', version=version.version)  # Redirect to a relevant view after upload
+
+    return render(request, 'upload_forecast.html')
+
+from django.shortcuts import get_object_or_404, redirect, render
+from django.views.decorators.csrf import csrf_protect
+from django.core.paginator import Paginator
+from .models import SMART_Forecast_Model
+from .forms import SMARTForecastFormSet, ForecastFilterForm
+
+@csrf_protect
+def edit_forecasts(request, version, forecast_type):
+    scenario = get_object_or_404(scenarios, version=version)
+    
+    if forecast_type == 'SMART':
+        queryset = SMART_Forecast_Model.objects.filter(version=scenario, Data_Source='SMART').order_by('id')
+    else:
+        queryset = SMART_Forecast_Model.objects.filter(version=scenario, Data_Source='Not in SMART').order_by('id')
+
+    filter_form = ForecastFilterForm(request.GET)
+    if filter_form.is_valid():
+        if filter_form.cleaned_data['forecast_region']:
+            queryset = queryset.filter(Forecast_Region=filter_form.cleaned_data['forecast_region'])
+        if filter_form.cleaned_data['product_group']:
+            queryset = queryset.filter(Product_Group=filter_form.cleaned_data['product_group'])
+        if filter_form.cleaned_data['customer_code']:
+            queryset = queryset.filter(Customer_code=filter_form.cleaned_data['customer_code'])
+
+    paginator = Paginator(queryset, 20)  # Show 20 records per page
+    page_number = request.GET.get('page')
+    page_obj = paginator.get_page(page_number)
+
+    if request.method == 'POST':
+        formset = SMARTForecastFormSet(request.POST, queryset=page_obj.object_list)
+        if formset.is_valid():
+            formset.save()
+            return redirect('edit_scenario', version=version)
+        else:
+            print(formset.errors)  # Debugging: Print formset errors if not valid
+            form_errors = formset.errors
+    else:
+        formset = SMARTForecastFormSet(queryset=page_obj.object_list)
+
+    return render(request, 'website/edit_forecasts.html', {
+        'formset': formset,
+        'scenario': scenario,
+        'page_obj': page_obj,
+        'filter_form': filter_form,
+        'form_errors': form_errors if request.method == 'POST' else None
+    })
+
+from django.shortcuts import render, get_object_or_404
+from .models import scenarios, SMART_Forecast_Model
+
+def review_scenario(request, version):
+    scenario = get_object_or_404(scenarios, version=version)
+    
+    # Retrieve forecasts with pre-calculated Tonnes
+    forecasts = SMART_Forecast_Model.objects.filter(version=scenario)
+    chart_data = {}
+    
+    for forecast in forecasts:
+        period = forecast.Period_AU.strftime('%Y-%m') if forecast.Period_AU else 'Unknown'
+        product_group = forecast.Product_Group
+        
+        if period not in chart_data:
+            chart_data[period] = {}
+        if product_group not in chart_data[period]:
+            chart_data[period][product_group] = 0
+        chart_data[period][product_group] += forecast.Tonnes
+    
+    return render(request, 'website/review_scenario.html', {'scenario': scenario, 'chart_data': chart_data})
+
+
+# signals.py
+from django.db.models.signals import pre_save
+from django.dispatch import receiver
+from .models import SMART_Forecast_Model, MasterDataProductModel
+
+@receiver(pre_save, sender=SMART_Forecast_Model)
+def calculate_tonnes(sender, instance, **kwargs):
+    dress_mass = MasterDataProductModel.objects.filter(Product=instance.Product).values_list('DressMass', flat=True).first()
+    if instance.Qty is not None and dress_mass is not None:
+        instance.Tonnes = instance.Qty * dress_mass
+    else:
+        instance.Tonnes = (instance.PriceAUD * 0.65) / 5 if instance.PriceAUD is not None else 0
+
+
+from django.shortcuts import render, get_object_or_404
+from .models import SMART_Forecast_Model, MasterDataProductModel
+
+def ScenarioWarningList(request, version):
+    scenario = get_object_or_404(scenarios, version=version)
+    
+    # Products in forecast but not in master data
+    forecast_products = SMART_Forecast_Model.objects.values_list('Product', flat=True).distinct()
+    products_not_in_master_data = forecast_products.exclude(Product__in=MasterDataProductModel.objects.values_list('Product', flat=True))
+    
+    products_without_dress_mass = MasterDataProductModel.objects.filter(Product__in=forecast_products).filter(DressMass__isnull=True) | MasterDataProductModel.objects.filter(Product__in=forecast_products).filter(DressMass=0)    
+    
+    context = {
+        'scenario': scenario,
+        'products_not_in_master_data': products_not_in_master_data,
+        'products_without_dress_mass': products_without_dress_mass,
+          }
+    
+    return render(request, "website/scenario_warning_list.html", context)
+
+def create_product(request):
+    if request.method == 'POST':
+        form = ProductForm(request.POST)
+        if form.is_valid():
+            form.save()
+            return redirect('ProductsList')  # Redirect to a list of products or another page
+    else:
+        form = ProductForm()
+    return render(request, 'website/create_product.html', {'form': form})
+
+
+
+
+
+
+
+
 
 
 

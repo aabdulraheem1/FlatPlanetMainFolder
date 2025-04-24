@@ -1,0 +1,108 @@
+{% extends 'website/base.html' %}
+
+<!DOCTYPE html>
+<html>
+{% block content %}
+
+<head>
+    <title>Create Product</title>
+    <!-- Include Bootstrap CSS -->
+    <link href="https://maxcdn.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css" rel="stylesheet">
+</head>
+
+<body>
+    <div class="container mt-5">
+        <h1 class="mb-4">Create New Product</h1>
+        <form method="post">
+            {% csrf_token %}
+            {% load widget_tweaks %}
+            <div class="row">
+                <div class="col-md-6">
+                    <div class="form-group">
+                        <label for="{{ form.Product.id_for_label }}">{{ form.Product.label }}</label>
+                        {% render_field form.Product class="form-control" %}
+                    </div>
+                    <div class="form-group">
+                        <label for="{{ form.ProductDescription.id_for_label }}">ProductDescription</label>
+                        {% render_field form.ProductDescription class="form-control" %}
+                    </div>
+                    <div class="form-group">
+                        <label for="{{ form.SalesClass.id_for_label }}">{{ form.SalesClass.label }}</label>
+                        {% render_field form.SalesClass class="form-control" %}
+                    </div>
+                    <div class="form-group">
+                        <label for="{{ form.SalesClassDescription.id_for_label }}">SalesClassDescription</label>
+                        {% render_field form.SalesClassDescription class="form-control" %}
+                    </div>
+                    <div class="form-group">
+                        <label for="{{ form.ProductGroup.id_for_label }}">{{ form.ProductGroup.label }}</label>
+                        {% render_field form.ProductGroup class="form-control" %}
+                    </div>
+                    <div class="form-group">
+                        <label for="{{ form.ProductGroupDescription.id_for_label }}">ProductGroupDescription</label>
+                        {% render_field form.ProductGroupDescription class="form-control" %}
+                    </div>
+                    <div class="form-group">
+                        <label for="{{ form.InventoryClass.id_for_label }}">{{ form.InventoryClass.label }}</label>
+                        {% render_field form.InventoryClass class="form-control" %}
+                    </div>
+                    <div class="form-group">
+                        <label for="{{ form.InventoryClassDescription.id_for_label }}">InventoryClassDescription</label>
+                        {% render_field form.InventoryClassDescription class="form-control" %}
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <div class="form-group">
+                        <label for="{{ form.ParentProductGroup.id_for_label }}">ParentProductGroup</label>
+                        {% render_field form.ParentProductGroup class="form-control" %}
+                    </div>
+                    <div class="form-group">
+                        <label
+                            for="{{ form.ParentProductGroupDescription.id_for_label }}">ParentProductGroupDescription</label>
+                        {% render_field form.ParentProductGroupDescription class="form-control" %}
+                    </div>
+                    <div class="form-group">
+                        <label for="{{ form.ProductFamily.id_for_label }}">{{ form.ProductFamily.label }}</label>
+                        {% render_field form.ProductFamily class="form-control" %}
+                    </div>
+                    <div class="form-group">
+                        <label for="{{ form.ProductFamilyDescription.id_for_label }}">ProductFamilyDescription</label>
+                        {% render_field form.ProductFamilyDescription class="form-control" %}
+                    </div>
+                    <div class="form-group">
+                        <label for="{{ form.DressMass.id_for_label }}">{{ form.DressMass.label }}</label>
+                        {% render_field form.DressMass class="form-control" %}
+                    </div>
+                    <div class="form-group">
+                        <label for="{{ form.CastMass.id_for_label }}">{{ form.CastMass.label }}</label>
+                        {% render_field form.CastMass class="form-control" %}
+                    </div>
+                    <div class="form-group">
+                        <label for="{{ form.Grade.id_for_label }}">{{ form.Grade.label }}</label>
+                        {% render_field form.Grade class="form-control" %}
+                    </div>
+                    <div class="form-group">
+                        <label for="{{ form.PartClassID.id_for_label }}">{{ form.PartClassID.label }}</label>
+                        {% render_field form.PartClassID class="form-control" %}
+                    </div>
+                    <div class="form-group">
+                        <label for="{{ form.PartClassDescription.id_for_label }}">PartClassDescription</label>
+                        {% render_field form.PartClassDescription class="form-control" %}
+                    </div>
+                </div>
+            </div>
+
+            <!-- Hidden field for ExistsInEpicor -->
+            <input type="hidden" name="ExistsInEpicor" value="False">
+
+            <button type="submit" class="btn btn-primary">Save</button>
+        </form>
+    </div>
+    <!-- Include Bootstrap JS and dependencies -->
+    <script src="https://code.jquery.com/jquery-3.5.1.slim.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@popperjs/core@2.9.2/dist/umd/popper.min.js"></script>
+    <script src="https://maxcdn.bootstrapcdn.com/bootstrap/4.5.2/js/bootstrap.min.js"></script>
+</body>
+{% endblock %}
+
+</html>

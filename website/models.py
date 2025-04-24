@@ -8,12 +8,6 @@ class test(models.Model):
 
     def __str__(self):
         return self.test
-    
-
-
-
-
-
 
 class scenarios(models.Model):
     version = models.CharField(max_length=100, primary_key=True, null=False)
@@ -26,12 +20,9 @@ class scenarios(models.Model):
     approval2 = models.BooleanField(default=False)
     approval3 = models.BooleanField(default=False)
 
-
-
-   
-
 class SMART_Forecast_Model(models.Model):
     version = models.ForeignKey(scenarios, to_field='version', on_delete=models.CASCADE)
+    Data_Source = models.CharField(max_length=100,blank=True, null=True)
     Forecast_Region = models.CharField(max_length=100,blank=True, null=True)
     Product_Group = models.CharField(max_length=100,blank=True, null=True)
     Product = models.CharField(max_length=100,blank=True, null=True)
@@ -39,15 +30,26 @@ class SMART_Forecast_Model(models.Model):
     Customer_code = models.CharField(max_length=100,blank=True, null=True)
     Location = models.CharField(max_length=100,blank=True, null=True)
     Forecasted_Weight_Curr = models.FloatField(default=0, null=True)
-    PriceAUD = models.FloatField(default=0, null=True)
-    DP_Cycle = models.DateField( null=True)
-    Period_AU = models.DateField( null=True)
-    Qty = models.FloatField(default=0, null=True)
+    PriceAUD = models.FloatField(default=0, null=True,blank=True)
+    DP_Cycle = models.DateField( null=True,blank=True)
+    Period_AU = models.DateField( null=True,blank=True)
+    Qty = models.FloatField(default=0, null=True,blank=True)
+    Tonnes = models.FloatField(default=0, null=True, blank=True) # New field to store pre-calculated Tonnes
    
-
+    def __str__(self):
+        return self.Product   
+    
+class Revenue_Forecast_Model(models.Model):
+    version = models.ForeignKey(scenarios, to_field='version', on_delete=models.CASCADE)
+    Data_Source = models.CharField(max_length=100,blank=True, null=True)
+    Forecast_Region = models.CharField(max_length=100,blank=True, null=True)
+    ParentProductGroupDescription = models.CharField(max_length=100,blank=True, null=True)
+    ProductGroupDescription = models.CharField(max_length=100,blank=True, null=True)
+    Period_AU = models.DateField( null=True)
+    Revenue = models.FloatField(default=0, null=True)
+   
     def __str__(self):
         return self.Product
-
 
 class Product_Model(models.Model):
     Product = models.CharField(max_length=100)
@@ -57,7 +59,6 @@ class Product_Model(models.Model):
     def __str__(self):
         return self.Product
         
-
 class MasterDataOrderBook(models.Model):
     version = models.CharField(max_length=100)
     site = models.CharField(max_length=100)
@@ -156,7 +157,6 @@ class MasterDataFreightModel(models.Model):
     def __str__(self):
         return self.version
 
-
 class MasterDataPlan(models.Model):
     Version	= models.CharField(max_length=250)
     SubVersion = models.CharField(max_length=250)
@@ -218,13 +218,9 @@ class MasterDataProductModel(models.Model):
     def __str__(self):
         return self.Product
     
-
 class MasterDataProductPictures(models.Model):
     product = models.ForeignKey(MasterDataProductModel, to_field='Product', on_delete=models.CASCADE)
     Image = models.ImageField(null=True)
-
-
-
 
 class MasterDataProductAttributesModel(models.Model):
     version = models.CharField(max_length=250)
@@ -261,8 +257,6 @@ class MasterDataSalesModel(models.Model):
     def __str__(self):
         self.Version  + self.SalesClass
 
-
-
 class MasterDataSKUTransferModel(models.Model):
     version = models.CharField(max_length=250)
     Product = models.CharField(max_length=250)
@@ -271,8 +265,6 @@ class MasterDataSKUTransferModel(models.Model):
 
     def __str__(self):
         self.version + self.Product + self.Date
-
-
 
 class MasterDataScheduleModel(models.Model):
     Scenario_Foreign_Key = models.ForeignKey(scenarios, to_field='version', on_delete=models.CASCADE, default=None)

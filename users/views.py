@@ -45,14 +45,14 @@ def user_logout(request):
     logout(request)
     return redirect('home')
 
-
-
-
 def home(request):
+    if request.user.is_authenticated:
+        return redirect('welcomepage')  # Replace 'welcome' with the name of your welcome page URL pattern
     context = {
         'title': 'Flat Planet',
         'image_url': '/static/images/flat_planet.jpg'  # Update this path to your image location
     }
     return render(request, 'users/home.html', context)
+
 
 

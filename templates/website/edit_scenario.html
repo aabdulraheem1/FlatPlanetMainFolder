@@ -52,12 +52,58 @@
     <table class="table">
         <thead>
             <tr>
-                <th>Model Name</th>
+                <th>Item</th>
                 <th>Has Data</th>
                 <th>Actions</th>
             </tr>
         </thead>
         <tbody>
+            <tr>
+                <td>Forecast from SMART</td>
+                <td>
+                    <input type="checkbox" checked readonly>
+                </td>
+                <td>
+                    <button type="button" class="btn btn-warning btn-sm"
+                        onclick="window.location.href='{% url 'edit_forecasts' scenario.version 'SMART' %}'">
+                        <img src="/static/icons/update.png" alt="Update"> <!-- Update this path to your update icon -->
+                    </button>
+                    <button type="button" class="btn btn-danger btn-sm">
+                        <img src="/static/icons/delete.png" alt="Delete">
+                        <!-- Update this path to your delete icon -->
+                    </button>
+                    <button type="button" class="btn btn-info btn-sm" data-bs-toggle="modal"
+                        data-bs-target="#uploadModalSMART">
+                        <img src="/static/icons/upload.png" alt="Upload">
+                        <!-- Update this path to your upload icon -->
+                    </button>
+                    <button type="button" class="btn btn-info btn-sm">
+                        <img src="/static/icons/copy.png" alt="Copy"> <!-- Update this path to your copy icon -->
+                    </button>
+                </td>
+            </tr>
+            <tr>
+                <td>Forecast not in SMART</td>
+                <td>
+                    <input type="checkbox" readonly>
+                </td>
+                <td>
+                    <button type="button" class="btn btn-warning btn-sm"
+                        onclick="window.location.href='{% url 'edit_forecasts' scenario.version 'Not in SMART' %}'">
+                        <img src="/static/icons/update.png" alt="Update"> <!-- Update this path to your update icon -->
+                    </button>
+                    <button type="button" class="btn btn-danger btn-sm">
+                        <img src="/static/icons/delete.png" alt="Delete"> <!-- Update this path to your delete icon -->
+                    </button>
+                    <button type="button" class="btn btn-info btn-sm" data-bs-toggle="modal"
+                        data-bs-target="#uploadModalNotInSMART">
+                        <img src="/static/icons/upload.png" alt="Upload"> <!-- Update this path to your upload icon -->
+                    </button>
+                    <button type="button" class="btn btn-info btn-sm">
+                        <img src="/static/icons/copy.png" alt="Copy"> <!-- Update this path to your copy icon -->
+                    </button>
+                </td>
+            </tr>
             {% for model in models %}
             <tr>
                 <td>{{ model.name }}</td>
@@ -65,17 +111,84 @@
                     <input type="checkbox" {% if model.has_data %}checked{% endif %} disabled>
                 </td>
                 <td>
-                    <form method="post" enctype="multipart/form-data" style="display:inline;">
-                        {% csrf_token %}
-                        <input type="file" name="file" class="form-control-file" style="display:inline;">
-                        <button type="submit" name="upload_file" class="btn btn-success btn-sm">Upload</button>
-                    </form>
-                    <a href="{% url 'edit_model' model.id %}" class="btn btn-warning btn-sm">Edit</a>
-                    <a href="{% url 'delete_model' model.id %}" class="btn btn-danger btn-sm">Delete</a>
+                    <button type="button" class="btn btn-warning btn-sm">
+                        <img src="/static/icons/update.png" alt="Update"> <!-- Update this path to your update icon -->
+                    </button>
+                    <button type="button" class="btn btn-danger btn-sm">
+                        <img src="/static/icons/delete.png" alt="Delete"> <!-- Update this path to your delete icon -->
+                    </button>
+                    <button type="button" class="btn btn-info btn-sm" data-bs-toggle="modal"
+                        data-bs-target="#uploadModalSMART">
+                        <img src="/static/icons/upload.png" alt="Upload"> <!-- Update this path to your upload icon -->
+                    </button>
+                    <button type="button" class="btn btn-info btn-sm">
+                        <img src="/static/icons/copy.png" alt="Copy"> <!-- Update this path to your copy icon -->
+                    </button>
+                    <button type="button" class="btn btn-info btn-sm" data-bs-toggle="modal"
+                        data-bs-target="#uploadModalNotInSMART">
+                        <img src="/static/icons/upload.png" alt="Forecast">
+                        <!-- Update this path to your forecast icon -->
+                    </button>
                 </td>
             </tr>
             {% endfor %}
         </tbody>
     </table>
+
+    <!-- Modal for SMART Forecast -->
+    <div class="modal fade" id="uploadModalSMART" tabindex="-1" role="dialog" aria-labelledby="uploadModalLabelSMART"
+        aria-hidden="true">
+        <div class="modal-dialog" role="document">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="uploadModalLabelSMART">Upload File</h5>
+                    <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                        <span aria-hidden="true">&times;</span>
+                    </button>
+                </div>
+                <div class="modal-body">
+                    <form method="post" action="{% url 'upload_forecast' 'SMART' %}" enctype="multipart/form-data">
+                        {% csrf_token %}
+                        <input type="hidden" name="version" value="{{ scenario.version }}">
+                        <div class="form-group">
+                            <label for="file">Choose file:</label>
+                            <input type="file" id="file" name="file" class="form-control-file">
+                        </div>
+                        <button type="submit" class="btn btn-primary">Upload</button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal for Not in SMART Forecast -->
+
+    <div class="modal fade" id="uploadModalNotInSMART" tabindex="-1" role="dialog"
+        aria-labelledby="uploadModalLabelNotInSMART" aria-hidden="true">
+        <div class="modal-dialog" role="document">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="uploadModalLabelNotInSMART">Upload File</h5>
+                    <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                        <span aria-hidden="true">&times;</span>
+                    </button>
+                </div>
+                <div class="modal-body">
+                    <form method="post" action="{% url 'upload_forecast' 'Not in SMART' %}"
+                        enctype="multipart/form-data">
+                        {% csrf_token %}
+                        <input type="hidden" name="version" value="{{ scenario.version }}">
+                        <div class="form-group">
+                            <label for="file">Choose file:</label>
+                            <input type="file" id="file" name="file" class="form-control-file">
+                        </div>
+                </div>
+                <button type="submit" class="btn btn-primary">Upload</button>
+                </form>
+            </div>
+        </div>
+    </div>
+
+</div>
 </div>
 {% endblock %}

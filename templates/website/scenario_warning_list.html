@@ -1,0 +1,135 @@
+<!-- scenario_warning_list.html -->
+{% extends 'website/base.html' %}
+
+
+
+{% block content %}
+{% block title %}Scenario Warning List{% endblock %}
+<div class="container mt-4">
+    <h2 class="mb-4">Scenario Warning List</h2>
+    <p><strong>Scenario Version:</strong> {{ scenario.version }}</p>
+
+    <!-- Section 1: Products in Forecast but Not in Master Data -->
+    <div class="card mb-4">
+        <div class="card-header">
+            Products in Forecast but Not in Master Data
+        </div>
+        <div class="card-body">
+            <table class="table table-striped">
+                <thead>
+                    <tr>
+                        <th>Product</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for product in products_not_in_master_data %}
+                    <tr>
+                        <td>{{ product }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Section 2: Products without Dress Mass -->
+    <div class="card mb-4">
+        <div class="card-header">
+            Products Without Dress Mass
+        </div>
+        <div class="card-body">
+            <table class="table table-striped">
+                <thead>
+                    <tr>
+                        <th>Product</th>
+                        <th>Description</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for product in products_without_dress_mass %}
+                    <tr>
+                        <td>{{ product.Product }}</td>
+                        <td>{{ product.ProductDescription }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Section 3: Products Not Allocated to Foundries -->
+    <div class="card mb-4">
+        <div class="card-header">
+            Products Not Allocated to Foundries
+        </div>
+        <div class="card-body">
+            <table class="table table-striped">
+                <thead>
+                    <tr>
+                        <th>Product</th>
+                        <th>Description</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for product in products_not_allocated_to_foundries %}
+                    <tr>
+                        <td>{{ product.Product }}</td>
+                        <td>{{ product.ProductDescription }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Section 4: Customers Without Incoterms -->
+    <div class="card mb-4">
+        <div class="card-header">
+            Customers Without Incoterms
+        </div>
+        <div class="card-body">
+            <table class="table table-striped">
+                <thead>
+                    <tr>
+                        <th>Customer Code</th>
+                        <th>Customer Name</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for customer in customers_without_incoterms %}
+                    <tr>
+                        <td>{{ customer.Customer_code }}</td>
+                        <td>{{ customer.Customer_name }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Section 5: Freight Lanes Without Defined Freight Times -->
+    <div class="card mb-4">
+        <div class="card-header">
+            Freight Lanes Without Defined Freight Times
+        </div>
+        <div class="card-body">
+            <table class="table table-striped">
+                <thead>
+                    <tr>
+                        <th>Freight Lane</th>
+                        <th>Description</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for lane in freight_lanes_without_defined_times %}
+                    <tr>
+                        <td>{{ lane.Freight_Lane }}</td>
+                        <td>{{ lane.Description }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}
