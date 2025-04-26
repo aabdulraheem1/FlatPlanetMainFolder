@@ -23,9 +23,12 @@ urlpatterns = [
     path('delete-scenario/<str:version>/', views.delete_scenario, name='delete_scenario'),
     path('upload_forecast/<str:forecast_type>/', views.upload_forecast, name='upload_forecast'),    
     path('edit_forecasts/<str:version>/<str:forecast_type>/', views.edit_forecasts, name='edit_forecasts'),
-    path('scenario/review/<str:version>/', views.review_scenario, name='review_scenario'),
+    path('scenario/review/<str:version>', views.review_scenario, name='review_scenario'),
     path('warningList/<str:version>', views.ScenarioWarningList, name='warningList'),
     path('create_product/', views.create_product, name='create_product'),
+    
+    
+    
 
 
 

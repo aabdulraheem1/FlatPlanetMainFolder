@@ -1,0 +1,92 @@
+<!-- Include Bootstrap JS and dependencies -->
+<script src="https://code.jquery.com/jquery-3.5.1.slim.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@popperjs/core@2.9.2/dist/umd/popper.min.js"></script>
+<script src="https://maxcdn.bootstrapcdn.com/bootstrap/4.5.2/js/bootstrap.min.js"></script>
+
+<!-- Include Chart.js -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+<!-- Forecast by Product Group Chart -->
+<script>
+    var ctx = document.getElementById('forecastByProductGroupChart').getContext('2d');
+    var chartData = {{ chart_data| safe }};
+    var labels = Object.keys(chartData);
+    var datasets = [];
+
+    var productGroups = new Set();
+    labels.forEach(label => {
+        Object.keys(chartData[label]).forEach(group => productGroups.add(group));
+    });
+
+    const colors = [
+        'rgba(255, 99, 132, 0.2)', 'rgba(54, 162, 235, 0.2)',
+        'rgba(255, 206, 86, 0.2)', 'rgba(75, 192, 192, 0.2)',
+        'rgba(153, 102, 255, 0.2)', 'rgba(255, 159, 64, 0.2)'
+    ];
+    const borderColors = [
+        'rgba(255, 99, 132, 1)', 'rgba(54, 162, 235, 1)',
+        'rgba(255, 206, 86, 1)', 'rgba(75, 192, 192, 1)',
+        'rgba(153, 102, 255, 1)', 'rgba(255, 159, 64, 1)'
+    ];
+
+    let colorIndex = 0;
+    productGroups.forEach(group => {
+        let data = labels.map(label => chartData[label][group] || 0);
+        datasets.push({
+            label: group,
+            data: data,
+            backgroundColor: colors[colorIndex % colors.length],
+            borderColor: borderColors[colorIndex % borderColors.length],
+            borderWidth: 1
+        });
+        colorIndex++;
+    });
+
+    new Chart(ctx, {
+        type: 'bar',
+        data: { labels: labels, datasets: datasets },
+        options: {
+            scales: {
+                x: { stacked: true, title: { display: true, text: 'Period (AUD)' } },
+                y: { stacked: true, title: { display: true, text: 'Tonnes' } }
+            }
+        }
+    });
+</script>
+
+<!-- Forecast by Parent Product Group Chart -->
+<script>
+    var ctx2 = document.getElementById('forecastByParentProductGroupChart').getContext('2d');
+    var parentChartData = {{ chart_data_parent_product_group| safe }};
+    var parentLabels = Object.keys(parentChartData);
+    var parentDatasets = [];
+
+    var parentProductGroups = new Set();
+    parentLabels.forEach(label => {
+        Object.keys(parentChartData[label]).forEach(group => parentProductGroups.add(group));
+    });
+
+    let parentColorIndex = 0;
+    parentProductGroups.forEach(group => {
+        let data = parentLabels.map(label => parentChartData[label][group] || 0);
+        parentDatasets.push({
+            label: group,
+            data: data,
+            backgroundColor: colors[parentColorIndex % colors.length],
+            borderColor: borderColors[parentColorIndex % borderColors.length],
+            borderWidth: 1
+        });
+        parentColorIndex++;
+    });
+
+    new Chart(ctx2, {
+        type: 'bar',
+        data: { labels: parentLabels, datasets: parentDatasets },
+        options: {
+            scales: {
+                x: { stacked: true, title: { display: true, text: 'Period (AUD)' } },
+                y: { stacked: true, title: { display: true, text: 'Tonnes' } }
+            }
+        }
+    });
+</script>

@@ -1,0 +1,138 @@
+<h3>Master Data from Epicor</h3>
+<table class="table">
+    <thead>
+        <tr>
+            <th>Item</th>
+            <th>Has Data</th>
+            <th>Actions</th>
+        </tr>
+    </thead>
+    <tbody>
+        <tr>
+            <td>Product allocation based on order book</td>
+            <td>
+                <input type="checkbox" {% if product_allocation_order_book %}checked{% endif %} disabled>
+            </td>
+            <td>
+                <button type="button" class="btn btn-warning btn-sm">
+                    <img src="/static/icons/update.png" alt="Update"> <!-- Update this path to your update icon -->
+                </button>
+                <button type="button" class="btn btn-danger btn-sm">
+                    <img src="/static/icons/delete.png" alt="Delete"> <!-- Update this path to your delete icon -->
+                </button>
+                <button type="button" class="btn btn-info btn-sm" data-bs-toggle="modal"
+                    data-bs-target="#uploadModalSMART">
+                    <img src="/static/icons/upload.png" alt="Upload"> <!-- Update this path to your upload icon -->
+                </button>
+                <button type="button" class="btn btn-info btn-sm">
+                    <img src="/static/icons/copy.png" alt="Copy"> <!-- Update this path to your copy icon -->
+                </button>
+            </td>
+        </tr>
+        <tr>
+            <td>Production Allocation based on pouring history</td>
+            <td>
+                <input type="checkbox" {% if production_allocation_pouring_history %}checked{% endif %} disabled>
+            </td>
+            <td>
+                <button type="button" class="btn btn-warning btn-sm">
+                    <img src="/static/icons/update.png" alt="Update"> <!-- Update this path to your update icon -->
+                </button>
+                <button type="button" class="btn btn-danger btn-sm">
+                    <img src="/static/icons/delete.png" alt="Delete"> <!-- Update this path to your delete icon -->
+                </button>
+                <button type="button" class="btn btn-info btn-sm" data-bs-toggle="modal"
+                    data-bs-target="#uploadModalSMART">
+                    <img src="/static/icons/upload.png" alt="Upload"> <!-- Update this path to your upload icon -->
+                </button>
+                <button type="button" class="btn btn-info btn-sm">
+                    <img src="/static/icons/copy.png" alt="Copy"> <!-- Update this path to your copy icon -->
+                </button>
+            </td>
+        </tr>
+        <tr>
+            <td>On hand stock</td>
+            <td>
+                <input type="checkbox" {% if on_hand_stock %}checked{% endif %} disabled>
+            </td>
+            <td>
+                <button type="button" class="btn btn-warning btn-sm">
+                    <img src="/static/icons/update.png" alt="Update"> <!-- Update this path to your update icon -->
+                </button>
+                <button type="button" class="btn btn-danger btn-sm">
+                    <img src="/static/icons/delete.png" alt="Delete"> <!-- Update this path to your delete icon -->
+                </button>
+                <button type="button" class="btn btn-info btn-sm" data-bs-toggle="modal"
+                    data-bs-target="#uploadModalSMART">
+                    <img src="/static/icons/upload.png" alt="Upload"> <!-- Update this path to your upload icon -->
+                </button>
+                <button type="button" class="btn btn-info btn-sm">
+                    <img src="/static/icons/copy.png" alt="Copy"> <!-- Update this path to your copy icon -->
+                </button>
+            </td>
+        </tr>
+        <tr>
+            <td>WIP</td>
+            <td>
+                <input type="checkbox" {% if wip %}checked{% endif %} disabled>
+            </td>
+            <td>
+                <button type="button" class="btn btn-warning btn-sm">
+                    <img src="/static/icons/update.png" alt="Update"> <!-- Update this path to your update icon -->
+                </button>
+                <button type="button" class="btn btn-danger btn-sm">
+                    <img src="/static/icons/delete.png" alt="Delete"> <!-- Update this path to your delete icon -->
+                </button>
+                <button type="button" class="btn btn-info btn-sm" data-bs-toggle="modal"
+                    data-bs-target="#uploadModalSMART">
+                    <img src="/static/icons/upload.png" alt="Upload"> <!-- Update this path to your upload icon -->
+                </button>
+                <button type="button" class="btn btn-info btn-sm">
+                    <img src="/static/icons/copy.png" alt="Copy"> <!-- Update this path to your copy icon -->
+                </button>
+            </td>
+        </tr>
+        <tr>
+            <td>Open POs</td>
+            <td>
+                <input type="checkbox" {% if open_pos %}checked{% endif %} disabled>
+            </td>
+            <td>
+                <button type="button" class="btn btn-warning btn-sm">
+                    <img src="/static/icons/update.png" alt="Update"> <!-- Update this path to your update icon -->
+                </button>
+                <button type="button" class="btn btn-danger btn-sm">
+                    <img src="/static/icons/delete.png" alt="Delete"> <!-- Update this path to your delete icon -->
+                </button>
+                <button type="button" class="btn btn-info btn-sm" data-bs-toggle="modal"
+                    data-bs-target="#uploadModalSMART">
+                    <img src="/static/icons/upload.png" alt="Upload"> <!-- Update this path to your upload icon -->
+                </button>
+                <button type="button" class="btn btn-info btn-sm">
+                    <img src="/static/icons/copy.png" alt="Copy"> <!-- Update this path to your copy icon -->
+                </button>
+            </td>
+        </tr>
+        <tr>
+            <td>Open Sales Orders</td>
+            <td>
+                <input type="checkbox" {% if open_sales_orders %}checked{% endif %} disabled>
+            </td>
+            <td>
+                <button type="button" class="btn btn-warning btn-sm">
+                    <img src="/static/icons/update.png" alt="Update"> <!-- Update this path to your update icon -->
+                </button>
+                <button type="button" class="btn btn-danger btn-sm">
+                    <img src="/static/icons/delete.png" alt="Delete"> <!-- Update this path to your delete icon -->
+                </button>
+                <button type="button" class="btn btn-info btn-sm" data-bs-toggle="modal"
+                    data-bs-target="#uploadModalSMART">
+                    <img src="/static/icons/upload.png" alt="Upload"> <!-- Update this path to your upload icon -->
+                </button>
+                <button type="button" class="btn btn-info btn-sm">
+                    <img src="/static/icons/copy.png" alt="Copy"> <!-- Update this path to your copy icon -->
+                </button>
+            </td>
+        </tr>
+    </tbody>
+</table>

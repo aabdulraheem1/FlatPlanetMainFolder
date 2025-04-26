@@ -279,6 +279,22 @@ class MasterDataScheduleModel(models.Model):
     def __str__(self):
         self.Version  + self.Plant
     
+class AggregatedForecast(models.Model):
+    version = models.ForeignKey(scenarios, to_field='version', on_delete=models.CASCADE)
+    tonnes = models.FloatField(default=0, null=True, blank=True)
+    customer_code = models.CharField(max_length=100, blank=True, null=True)
+    period = models.DateField(null=True, blank=True)
+    product = models.ForeignKey(MasterDataProductModel, to_field='Product', on_delete=models.CASCADE)
+    product_group_description = models.TextField(null=True, blank=True)
+    parent_product_group_description = models.TextField(null=True, blank=True)
+    forecast_region = models.CharField(max_length=100, null=True, blank=True)  # New field
+
+    def __str__(self):
+        return f"{self.product.Product} - {self.version.version}"
+
+
+
+
 
 
     

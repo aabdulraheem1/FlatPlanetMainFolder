@@ -1,0 +1,77 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+
+
+
+<head>
+    <meta charset="UTF-8">
+    <title>Forecast by Parent Product Group</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+
+<body>
+    <div class="container mt-5">
+        <h2>Forecast by Parent Product Group</h2>
+        <canvas id="parentGroupChart" width="400" height="200"></canvas>
+        <script id="chartDataParentProductGroup" type="application/json">
+            {{ chart_data_parent_product_group|safe }}
+        </script>
+    </div>
+    <script>
+        document.addEventListener('DOMContentLoaded', function () {
+            var chartDataElement = document.getElementById('chartDataParentProductGroup');
+            var rawData = chartDataElement.textContent;
+
+            console.log('Raw JSON data:', rawData); // Log the raw JSON data
+
+            var chartData;
+            try {
+                chartData = JSON.parse(rawData);
+            } catch (e) {
+                console.error('Error parsing JSON:', e);
+                return;
+            }
+
+            // Prepare labels and datasets for Chart.js
+            const labelsParentProductGroup = Object.keys(chartData);
+            const parentGroups = [...new Set(Object.values(chartData).flatMap(Object.keys))];
+
+            const datasetsParentProductGroup = parentGroups.map(group => ({
+                label: group,
+                data: labelsParentProductGroup.map(label => chartData[label][group] || 0),
+                backgroundColor: getRandomColor(),
+            }));
+
+            function getRandomColor() {
+                const letters = '0123456789ABCDEF';
+                let color = '#';
+                for (let i = 0; i < 6; i++) {
+                    color += letters[Math.floor(Math.random() * 16)];
+                }
+                return color;
+            }
+
+            const ctxParentGroup = document.getElementById('parentGroupChart').getContext('2d');
+            const parentGroupChart = new Chart(ctxParentGroup, {
+                type: 'bar',
+                data: {
+                    labels: labelsParentProductGroup,
+                    datasets: datasetsParentProductGroup
+                },
+                options: {
+                    scales: {
+                        x: {
+                            stacked: true
+                        },
+                    }
+                }
+            }
+            });
+        });
+    </script>
+    <script src="{% static 'js/charts.js' %}"></script>
+</body>
+
+
+</html>

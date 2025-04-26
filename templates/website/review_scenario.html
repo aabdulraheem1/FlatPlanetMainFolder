@@ -1,105 +1,80 @@
-<!-- review_scenario.html -->
 {% extends 'website/base.html' %}
-
-{% block title %}Review Scenario{% endblock %}
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
 
 {% block content %}
-<div class="container mt-4">
-    <h2>Review Scenario</h2>
-    <div class="card mb-4">
-        <div class="card-header">
-            Scenario Version: {{ scenario.version }}
-        </div>
-        <div class="card-body">
-            <h5 class="card-title">Scenario Details</h5>
-            <p class="card-text">Description: {{ scenario.description }}</p>
-            <p class="card-text">Created At: {{ scenario.created_at }}</p>
-            <p class="card-text">Updated At: {{ scenario.updated_at }}</p>
-            <!-- Add more fields as needed -->
-        </div>
-    </div>
 
-    <h3>SMART Forecast Model</h3>
-    <div class="mb-4">
-        <canvas id="forecastChart"></canvas>
-    </div>
-
+<head>
+    <meta charset="UTF-8">
+    <title>Forecast Analysis</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <script>
-        var ctx = document.getElementById('forecastChart').getContext('2d');
-        var chartData = {{ chart_data| safe }};
+    <!-- Include Bootstrap CSS -->
+    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css">
+</head>
 
-        var labels = Object.keys(chartData);
-        var datasets = [];
+<body>
+    <!-- Version Information -->
+    <div class="container mt-3">
+        <div class="alert alert-info" role="alert">
+            <strong>Version:</strong> {{ version }}
+        </div>
+    </div>
 
-        var productGroups = new Set();
-        labels.forEach(function (label) {
-            Object.keys(chartData[label]).forEach(function (group) {
-                productGroups.add(group);
-            });
-        });
+    <div class="container mt-5">
+        <h2>Forecast Analysis</h2>
+        <ul class="nav nav-tabs" id="forecastTabs" role="tablist">
+            <li class="nav-item">
+                <a class="nav-link active" id="product-group-tab" data-toggle="tab" href="#product-group" role="tab"
+                    aria-controls="product-group" aria-selected="true">By Product Group</a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link" id="parent-product-group-tab" data-toggle="tab" href="#parent-product-group"
+                    role="tab" aria-controls="parent-product-group" aria-selected="false">By Parent Product Group</a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link" id="region-tab" data-toggle="tab" href="#region" role="tab" aria-controls="region"
+                    aria-selected="false">By Region</a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link" id="customer-tab" data-toggle="tab" href="#customer" role="tab"
+                    aria-controls="customer" aria-selected="false">By Customer</a>
+            </li>
+        </ul>
+        <div class="tab-content" id="forecastTabsContent">
+            <div class="tab-pane fade show active" id="product-group" role="tabpanel"
+                aria-labelledby="product-group-tab">
+                <!-- Content for By Product Group -->
+                <canvas id="productGroupChart" width="400" height="200"></canvas>
+            </div>
+            <div class="tab-pane fade" id="parent-product-group" role="tabpanel"
+                aria-labelledby="parent-product-group-tab">
+                <canvas id="ParentGroupChart" width="400" height="200"></canvas>
+                {% include 'website/forecast_by_parent_product_group_chart.html' %}
+            </div>
+            <div class="tab-pane fade" id="region" role="tabpanel" aria-labelledby="region-tab">
+                <!-- Content for By Region -->
+                {% include 'website/forecast_by_region_chart.html' %}
+            </div>
+            <div class="tab-pane fade" id="customer" role="tabpanel" aria-labelledby="customer-tab">
+                <!-- Content for By Customer -->
+                <canvas id="customerChart" width="400" height="200"></canvas>
+            </div>
+        </div>
+    </div>
 
-        var colors = [
-            'rgba(255, 99, 132, 0.2)',
-            'rgba(54, 162, 235, 0.2)',
-            'rgba(255, 206, 86, 0.2)',
-            'rgba(75, 192, 192, 0.2)',
-            'rgba(153, 102, 255, 0.2)',
-            'rgba(255, 159, 64, 0.2)'
-        ];
-
-        var borderColors = [
-            'rgba(255, 99, 132, 1)',
-            'rgba(54, 162, 235, 1)',
-            'rgba(255, 206, 86, 1)',
-            'rgba(75, 192, 192, 1)',
-            'rgba(153, 102, 255, 1)',
-            'rgba(255, 159, 64, 1)'
-        ];
-
-        var colorIndex = 0;
-        productGroups.forEach(function (group) {
-            var data = labels.map(function (label) {
-                return chartData[label][group] || 0;
-            });
-
-            datasets.push({
-                label: group,
-                data: data,
-                backgroundColor: colors[colorIndex % colors.length],
-                borderColor: borderColors[colorIndex % borderColors.length],
-                borderWidth: 1
-            });
-            colorIndex++;
-        });
-
-        var forecastChart = new Chart(ctx, {
-            type: 'bar',
-            data: {
-                labels: labels,
-                datasets: datasets
-            },
-            options: {
-                scales: {
-                    x: {
-                        stacked: true,
-                        title: {
-                            display: true,
-                            text: 'Period (AUD)'
-                        }
-                    },
-                    y: {
-                        stacked: true,
-                        title: {
-                            display: true,
-                            text: 'Tonnes'
-                        }
-                    }
-                }
-            }
-        });
+    <script id="chartDataParentProductGroup" type="application/json">
+        {{ chart_data_parent_product_group|safe }}
     </script>
-
-    <a href="{% url 'list_scenarios' %}" class="btn btn-secondary btn-sm">Back to List</a>
-</div>
+    <script id="chartDataRegion" type="application/json">
+        {{ chart_data_forecast_region|safe }}
+    </script>
+    <script src="{% static 'js/review_scenario_charts.js' %}"></script>
+    <!-- Include jQuery and Bootstrap JS -->
+    <script src="https://code.jquery.com/jquery-3.5.1.slim.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@popperjs/core@2.9.2/dist/umd/popper"></script>
+    <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/js/bootstrap.min.js"></script>
+</body>
 {% endblock %}
+
+</html>

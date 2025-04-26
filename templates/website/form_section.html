@@ -1,0 +1,44 @@
+<div class="container mt-5">
+    <h2>Edit Scenario: <input type="text" value="{{ scenario.version }}" readonly></h2>
+    <form method="post">
+        {% csrf_token %}
+        <input type="hidden" name="version" value="{{ scenario.version }}">
+        <div class="form-group">
+            <label for="scenario_description">Description:</label>
+            <textarea id="scenario_description" name="scenario_description"
+                class="form-control">{{ scenario.scenario_description }}</textarea>
+        </div>
+        <div class="form-group">
+            <label for="created_by">Created By:</label>
+            <input type="text" id="created_by" name="created_by" value="{{ scenario.created_by }}" class="form-control">
+        </div>
+        <div class="form-group">
+            <label for="creation_date">Creation Date:</label>
+            <input type="text" id="creation_date" name="creation_date" value="{{ scenario.creation_date }}"
+                class="form-control" readonly>
+        </div>
+        <div class="form-group">
+            <label for="open_to_update">Open to Update:</label>
+            <input type="checkbox" id="open_to_update" name="open_to_update" {% if scenario.open_to_update %}checked{%
+                endif %}>
+        </div>
+        <div class="form-group">
+            <label for="visible_to_users">Visible to Users:</label>
+            <input type="checkbox" id="visible_to_users" name="visible_to_users" {% if scenario.visible_to_users
+                %}checked{% endif %}>
+        </div>
+        <div class="form-group">
+            <label for="approval1">Approval 1:</label>
+            <input type="checkbox" id="approval1" name="approval1" {% if scenario.approval1 %}checked{% endif %}>
+        </div>
+        <div class="form-group">
+            <label for="approval2">Approval 2:</label>
+            <input type="checkbox" id="approval2" name="approval2" {% if scenario.approval2 %}checked{% endif %}>
+        </div>
+        <div class="form-group">
+            <label for="approval3">Approval 3:</label>
+            <input type="checkbox" id="approval3" name="approval3" {% if scenario.approval3 %}checked{% endif %}>
+        </div>
+        <button type="submit" name="edit_scenario" class="btn btn-primary">Save Scenario</button>
+    </form>
+</div>

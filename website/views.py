@@ -14,7 +14,7 @@ from .models import MasterDataProductModel
 from sqlalchemy import create_engine, text
 from django.core.paginator import Paginator
 from django.shortcuts import render, get_object_or_404, redirect
-from .models import MasterDataProductModel, MasterDataProductPictures, MasterDataPlantModel
+from .models import MasterDataProductModel, MasterDataProductPictures, MasterDataPlantModel, AggregatedForecast
 from django.urls import reverse
 from .forms import ProductForm, ProductPictureForm, MasterDataPlantsForm
 import requests
@@ -338,6 +338,7 @@ def delete_forecast(request, id):
 
 @login_required
 def edit_scenario(request, version):
+    user_name = request.user.username
     scenario = get_object_or_404(scenarios, version=version)
     
     if request.method == 'POST':
@@ -353,7 +354,9 @@ def edit_scenario(request, version):
     # Fetch models data to pass to the template
  
 
-    return render(request, 'website/edit_scenario.html', {
+    return render(request, 'website/edit_scenario.html', 
+                  {
+        'user_name' : user_name ,
         'scenario': scenario,
         'scenario_form': form,
       
@@ -362,8 +365,10 @@ def edit_scenario(request, version):
 
 @login_required
 def list_scenarios(request):
+    user_name = request.user.username
     all_scenarios = scenarios.objects.all()
-    return render(request, 'website/list_scenarios.html', {'scenarios': all_scenarios})
+    return render(request, 'website/list_scenarios.html', {'scenarios': all_scenarios,
+                                                           'user_name':user_name})
 
 @login_required
 def delete_scenario(request, version):
@@ -468,27 +473,54 @@ def edit_forecasts(request, version, forecast_type):
         'form_errors': form_errors if request.method == 'POST' else None
     })
 
-from django.shortcuts import render, get_object_or_404
-from .models import scenarios, SMART_Forecast_Model
 
+from django.shortcuts import render
+from django.core.serializers.json import DjangoJSONEncoder
+import json
+
+@login_required
 def review_scenario(request, version):
-    scenario = get_object_or_404(scenarios, version=version)
-    
-    # Retrieve forecasts with pre-calculated Tonnes
-    forecasts = SMART_Forecast_Model.objects.filter(version=scenario)
+    user_name = request.user.username
+
+    # Fetch the version object
+    version = scenarios.objects.get(version=version)
+
+    # Fetch data from AggregatedForecast model filtered by the version
+    forecasts = AggregatedForecast.objects.filter(version=version)
+
+    # Process data to structure it for the chart
     chart_data = {}
-    
+    region_data = {}
     for forecast in forecasts:
-        period = forecast.Period_AU.strftime('%Y-%m') if forecast.Period_AU else 'Unknown'
-        product_group = forecast.Product_Group
-        
+        period = forecast.period.strftime('%Y-%m-%d')
+        parent_group = forecast.parent_product_group_description
+        tonnes = forecast.tonnes
+        region = forecast.forecast_region
+
         if period not in chart_data:
             chart_data[period] = {}
-        if product_group not in chart_data[period]:
-            chart_data[period][product_group] = 0
-        chart_data[period][product_group] += forecast.Tonnes
-    
-    return render(request, 'website/review_scenario.html', {'scenario': scenario, 'chart_data': chart_data})
+        if parent_group not in chart_data[period]:
+            chart_data[period][parent_group] = 0
+        chart_data[period][parent_group] += tonnes
+
+        if period not in region_data:
+            region_data[period] = {}
+        if region not in region_data[period]:
+            region_data[period][region] = 0
+        region_data[period][region] += tonnes
+
+    # Convert data to JSON format
+    chart_data_json = json.dumps(chart_data, cls=DjangoJSONEncoder)
+    region_data_json = json.dumps(region_data, cls=DjangoJSONEncoder)
+
+    return render(request, 'website/review_scenario.html', {
+        'version': version.version,
+        'chart_data_parent_product_group': chart_data_json,
+        'chart_data_forecast_region': region_data_json,
+        'user_name': user_name,
+    })
+
+
 
 
 # signals.py
@@ -534,6 +566,11 @@ def create_product(request):
     else:
         form = ProductForm()
     return render(request, 'website/create_product.html', {'form': form})
+
+
+
+
+
 
 
 

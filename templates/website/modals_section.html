@@ -1,0 +1,50 @@
+<!-- Modal for SMART Forecast -->
+<div class="modal fade" id="uploadModalSMART" tabindex="-1" role="dialog" aria-labelledby="uploadModalLabelSMART"
+    aria-hidden="true">
+    <div class="modal-dialog" role="document">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="uploadModalLabelSMART">Upload File</h5>
+                <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                    <span aria-hidden="true">&times;</span>
+                </button>
+            </div>
+            <div class="modal-body">
+                <form method="post" action="{% url 'upload_forecast' 'SMART' %}" enctype="multipart/form-data">
+                    {% csrf_token %}
+                    <input type="hidden" name="version" value="{{ scenario.version }}">
+                    <div class="form-group">
+                        <label for="fileSMART">Choose file:</label>
+                        <input type="file" id="fileSMART" name="fileSMART" class="form-control-file">
+                    </div>
+                    <button type="submit" class="btn btn-primary">Upload</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal for Not in SMART Forecast -->
+<div class="modal fade" id="uploadModalNotInSMART" tabindex="-1" role="dialog"
+    aria-labelledby="uploadModalLabelNotInSMART" aria-hidden="true">
+    <div class="modal-dialog" role="document">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="uploadModalLabelNotInSMART">Upload File</h5>
+                <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                    <span aria-hidden="true">&times;</span>
+                </button>
+            </div class="modal-body">
+            <form method="post" action="{% url 'upload_forecast' 'Not in SMART' %}" enctype="multipart/form-data">
+                {% csrf_token %}
+                <input type="hidden" name="version" value="{{ scenario.version }}">
+                <div class="form-group">
+                    <label for="fileNotInSMART">Choose file:</label>
+                    <input type="file" id="fileNotInSMART" name="fileNotInSMART" class="form-control-file">
+                </div>
+                <button type="submit" class="btn btn-primary">Upload</button>
+            </form>
+        </div>
+    </div>
+</div>
+</div>

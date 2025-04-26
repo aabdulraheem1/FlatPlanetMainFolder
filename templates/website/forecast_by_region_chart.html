@@ -1,0 +1,73 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Forecast by Region</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+
+<body>
+    <div class="container mt-5">
+        <h2>Forecast by Region</h2>
+        <canvas id="regionChart" width="400" height="200"></canvas>
+        <script id="chartDataRegion" type="application/json">
+            {{ chart_data_forecast_region|safe }}
+        </script>
+    </div>
+    <script>
+        document.addEventListener('DOMContentLoaded', function () {
+            var chartDataElement = document.getElementById('chartDataRegion');
+            var rawData = chartDataElement.textContent;
+
+            console.log('Raw JSON data:', rawData); // Log the raw JSON data
+
+            var chartData;
+            try {
+                chartData = JSON.parse(rawData);
+            } catch (e) {
+                console.error('Error parsing JSON:', e);
+                return;
+            }
+
+            // Prepare labels and datasets for Chart.js
+            const labelsRegion = Object.keys(chartData);
+            const regions = [...new Set(Object.values(chartData).flatMap(Object.keys))];
+
+            const datasetsRegion = regions.map(region => ({
+                label: region,
+                data: labelsRegion.map(label => chartData[label][region] || 0),
+                backgroundColor: getRandomColor(),
+            }));
+
+            function getRandomColor() {
+                const letters = '0123456789ABCDEF';
+                let color = '#';
+                for (let i = 0; i < 6; i++) {
+                    color += letters[Math.floor(Math.random() * 16)];
+                }
+                return color;
+            }
+
+            const ctxRegion = document.getElementById('regionChart').getContext('2d');
+            const regionChart = new Chart(ctxRegion, {
+                type: 'bar',
+                data: {
+                    labels: labelsRegion,
+                    datasets: datasetsRegion
+                },
+                options: {
+                    scales: {
+                        x: {
+                            stacked: true
+                        },
+                    }
+                }
+            });
+        });
+    </script>
+    <script src="{% static 'js/charts.js' %}"></script>
+</body>
+
+</html>

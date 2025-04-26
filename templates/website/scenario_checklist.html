@@ -1,0 +1,87 @@
+<hr>
+<h3>Scenario Checklist</h3>
+<table class="table">
+    <thead>
+        <tr>
+            <th>Item</th>
+            <th>Has Data</th>
+            <th>Actions</th>
+        </tr>
+    </thead>
+    <tbody>
+        <tr>
+            <td>Forecast from SMART</td>
+            <td>
+                <input type="checkbox" checked readonly>
+            </td>
+            <td>
+                <button type="button" class="btn btn-warning btn-sm"
+                    onclick="window.location.href='{% url 'edit_forecasts' scenario.version 'SMART' %}'">
+                    <img src="/static/icons/update.png" alt="Update"> <!-- Update this path to your update icon -->
+                </button>
+                <button type="button" class="btn btn-danger btn-sm">
+                    <img src="/static/icons/delete.png" alt="Delete">
+                    <!-- Update this path to your delete icon -->
+                </button>
+                <button type="button" class="btn btn-info btn-sm" data-bs-toggle="modal"
+                    data-bs-target="#uploadModalSMART">
+                    <img src="/static/icons/upload.png" alt="Upload">
+                    <!-- Update this path to your upload icon -->
+                </button>
+                <button type="button" class="btn btn-info btn-sm">
+                    <img src="/static/icons/copy.png" alt="Copy"> <!-- Update this path to your copy icon -->
+                </button>
+            </td>
+        </tr>
+        <tr>
+            <td>Forecast not in SMART</td>
+            <td>
+                <input type="checkbox" readonly>
+            </td>
+            <td>
+                <button type="button" class="btn btn-warning btn-sm"
+                    onclick="window.location.href='{% url 'edit_forecasts' scenario.version 'Not in SMART' %}'">
+                    <img src="/static/icons/update.png" alt="Update"> <!-- Update this path to your update icon -->
+                </button>
+                <button type="button" class="btn btn-danger btn-sm">
+                    <img src="/static/icons/delete.png" alt="Delete"> <!-- Update this path to your delete icon -->
+                </button>
+                <button type="button" class="btn btn-info btn-sm" data-bs-toggle="modal"
+                    data-bs-target="#uploadModalNotInSMART">
+                    <img src="/static/icons/upload.png" alt="Upload"> <!-- Update this path to your upload icon -->
+                </button>
+                <button type="button" class="btn btn-info btn-sm">
+                    <img src="/static/icons/copy.png" alt="Copy"> <!-- Update this path to your copy icon -->
+                </button>
+            </td>
+        </tr>
+        {% for model in models %}
+        <tr>
+            <td>{{ model.name }}</td>
+            <td>
+                <input type="checkbox" {% if model.has_data %}checked{% endif %} disabled>
+            </td>
+            <td>
+                <button type="button" class="btn btn-warning btn-sm">
+                    <img src="/static/icons/update.png" alt="Update"> <!-- Update this path to your update icon -->
+                </button>
+                <button type="button" class="btn btn-danger btn-sm">
+                    <img src="/static/icons/delete.png" alt="Delete"> <!-- Update this path to your delete icon -->
+                </button>
+                <button type="button" class="btn btn-info btn-sm" data-bs-toggle="modal"
+                    data-bs-target="#uploadModalSMART">
+                    <img src="/static/icons/upload.png" alt="Upload"> <!-- Update this path to your upload icon -->
+                </button>
+                <button type="button" class="btn btn-info btn-sm">
+                    <img src="/static/icons/copy.png" alt="Copy"> <!-- Update this path to your copy icon -->
+                </button>
+                <button type="button" class="btn btn-info btn-sm" data-bs-toggle="modal"
+                    data-bs-target="#uploadModalNotInSMART">
+                    <img src="/static/icons/upload.png" alt="Forecast">
+                    <!-- Update this path to your forecast icon -->
+                </button>
+            </td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>

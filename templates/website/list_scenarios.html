@@ -1,4 +1,3 @@
-<!-- list_scenarios.html -->
 {% extends 'website/base.html' %}
 
 {% block title %}List of Scenarios{% endblock %}
@@ -19,11 +18,18 @@
             <td>
                 <a href="{% url 'review_scenario' scenario.version %}" class="btn btn-info btn-sm">Review</a>
                 <a href="{% url 'edit_scenario' scenario.version %}" class="btn btn-primary btn-sm">Edit</a>
-                <a href="{% url 'delete_scenario' scenario.version %}" class="btn btn-danger btn-sm">Delete</a>
+                <a href="{% url 'delete_scenario' scenario.version %}" class="btn btn-danger btn-sm"
+                    onclick="return confirmDelete()">Delete</a>
                 <a href="{% url 'warningList' scenario.version %}" class="btn btn-warning btn-sm">Warning!</a>
             </td>
         </tr>
         {% endfor %}
     </tbody>
 </table>
+
+<script>
+    function confirmDelete() {
+        return confirm('Are you sure you want to delete this scenario?');
+    }
+</script>
 {% endblock %}
