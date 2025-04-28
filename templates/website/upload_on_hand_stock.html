@@ -1,0 +1,23 @@
+{% extends 'website/base.html' %}
+
+{% block content %}
+<!-- Display Scenario Version -->
+<div class="alert alert-info" role="alert">
+    <strong>Scenario Version:</strong> {{ scenario.version }}
+</div>
+<h2>Upload On Hand Stock</h2>
+
+{% if error %}
+<div class="alert alert-danger">{{ error }}</div>
+{% endif %}
+
+<form method="post">
+    {% csrf_token %}
+    <div class="form-group">
+        <label for="snapshot_date">Enter Snapshot Date (YYYY-MM-DD):</label>
+        <input type="date" id="snapshot_date" name="snapshot_date" class="form-control" required>
+    </div>
+    <button type="submit" class="btn btn-primary">Upload</button>
+    <a href="{% url 'edit_scenario' scenario.version %}" class="btn btn-secondary">Cancel</a>
+</form>
+{% endblock %}

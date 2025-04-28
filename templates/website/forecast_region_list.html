@@ -1,0 +1,34 @@
+{% extends 'website/base.html' %}
+
+{% block content %}
+<div class="container mt-4">
+    <h2>Forecast Region List</h2>
+    <table class="table table-bordered table-striped">
+        <thead class="table-dark">
+            <tr>
+                <th>ID</th>
+                <th>Forecast Region</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for region in forecast_regions %}
+            <tr>
+                <td>{{ region.Forecast_region }}</td>
+                <td>{{ region.Forecast_region }}</td>
+                <td>
+                    <a href="{% url 'update_forecast_region' region.Forecast_region %}"
+                        class="btn btn-warning btn-sm">Update</a>
+                    <a href="{% url 'delete_forecast_region' region.Forecast_region %}" class="btn btn-danger btn-sm"
+                        onclick="return confirm('Are you sure you want to delete this forecast region?');">Delete</a>
+                </td>
+            </tr>
+            {% empty %}
+            <tr>
+                <td colspan="3" class="text-center">No forecast regions found.</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}

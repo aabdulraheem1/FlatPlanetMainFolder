@@ -1,3 +1,31 @@
+<style>
+    .table th,
+    .table td {
+        text-align: center;
+        vertical-align: middle;
+    }
+
+    .table th:nth-child(2),
+    .table td:nth-child(2) {
+        width: 15%;
+    }
+
+    .table th:nth-child(3),
+    .table td:nth-child(3) {
+        width: 35%;
+    }
+
+    .table img {
+        width: 20px;
+        height: 20px;
+    }
+
+    .btn {
+        margin: 2px;
+    }
+</style>
+
+<!-- Forecast Data -->
 <h3>Forecast Data</h3>
 <table class="table">
     <thead>
@@ -11,46 +39,46 @@
         <tr>
             <td>Forecast from SMART</td>
             <td>
-                <input type="checkbox" checked readonly>
+                <!-- Visible checkbox dynamically checked based on smart_forecast_data -->
+                <input type="checkbox" {% if smart_forecast_data %}checked{% endif %} disabled>
             </td>
             <td>
                 <button type="button" class="btn btn-warning btn-sm"
                     onclick="window.location.href='{% url 'edit_forecasts' scenario.version 'SMART' %}'">
-                    <img src="/static/icons/update.png" alt="Update"> <!-- Update this path to your update icon -->
+                    <img src="/static/icons/update.png" alt="Update">
                 </button>
                 <button type="button" class="btn btn-danger btn-sm">
                     <img src="/static/icons/delete.png" alt="Delete">
-                    <!-- Update this path to your delete icon -->
                 </button>
                 <button type="button" class="btn btn-info btn-sm" data-bs-toggle="modal"
                     data-bs-target="#uploadModalSMART">
                     <img src="/static/icons/upload.png" alt="Upload">
-                    <!-- Update this path to your upload icon -->
                 </button>
                 <button type="button" class="btn btn-info btn-sm">
-                    <img src="/static/icons/copy.png" alt="Copy"> <!-- Update this path to your copy icon -->
+                    <img src="/static/icons/copy.png" alt="Copy">
                 </button>
             </td>
         </tr>
         <tr>
             <td>Forecast not in SMART</td>
             <td>
-                <input type="checkbox" readonly>
+                <!-- Visible checkbox dynamically checked based on not_in_smart_forecast_data -->
+                <input type="checkbox" {% if not_in_smart_forecast_data %}checked{% endif %} disabled>
             </td>
             <td>
                 <button type="button" class="btn btn-warning btn-sm"
                     onclick="window.location.href='{% url 'edit_forecasts' scenario.version 'Not in SMART' %}'">
-                    <img src="/static/icons/update.png" alt="Update"> <!-- Update this path to your update icon -->
+                    <img src="/static/icons/update.png" alt="Update">
                 </button>
                 <button type="button" class="btn btn-danger btn-sm">
-                    <img src="/static/icons/delete.png" alt="Delete"> <!-- Update this path to your delete icon -->
+                    <img src="/static/icons/delete.png" alt="Delete">
                 </button>
                 <button type="button" class="btn btn-info btn-sm" data-bs-toggle="modal"
                     data-bs-target="#uploadModalNotInSMART">
-                    <img src="/static/icons/upload.png" alt="Upload"> <!-- Update this path to your upload icon -->
+                    <img src="/static/icons/upload.png" alt="Upload">
                 </button>
                 <button type="button" class="btn btn-info btn-sm">
-                    <img src="/static/icons/copy.png" alt="Copy"> <!-- Update this path to your copy icon -->
+                    <img src="/static/icons/copy.png" alt="Copy">
                 </button>
             </td>
         </tr>

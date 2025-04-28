@@ -1,0 +1,13 @@
+{% extends 'website/base.html' %}
+
+{% block content %}
+<div class="container mt-4">
+    <h2>Delete Forecast Region</h2>
+    <p>Are you sure you want to delete the forecast region "{{ region.Forecast_region }}"?</p>
+    <form method="post">
+        {% csrf_token %}
+        <button type="submit" class="btn btn-danger">Delete</button>
+        <a href="{% url 'ForecastRegionList' %}" class="btn btn-secondary">Cancel</a>
+    </form>
+</div>
+{% endblock %}

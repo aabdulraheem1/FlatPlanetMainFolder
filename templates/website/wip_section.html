@@ -1,0 +1,7 @@
+<h3>WIP from Epicor</h3>
+<p>This section allows you to manage the WIP data from Epicor.</p>
+<a href="{% url 'update_wip' scenario.version %}" class="btn btn-warning">Update</a>
+<a href="{% url 'delete_wip' scenario.version %}" class="btn btn-danger"
+    onclick="return confirm('Are you sure you want to delete all records?');">Delete</a>
+<a href="{% url 'upload_wip' scenario.version %}" class="btn btn-info">Upload</a>
+<a href="{% url 'copy_wip' scenario.version %}" class="btn btn-info">Copy</a>

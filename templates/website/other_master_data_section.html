@@ -1,3 +1,54 @@
+<head>
+
+    <style>
+        .table th,
+        .table td {
+            vertical-align: middle;
+            /* Vertically align content in the middle */
+        }
+
+        .table th:nth-child(1),
+        .table td:nth-child(1) {
+            text-align: left;
+            /* Align the "Item" column to the left */
+        }
+
+        .table th:nth-child(2),
+        .table td:nth-child(2),
+        .table th:nth-child(3),
+        .table td:nth-child(3) {
+            text-align: center;
+            /* Center-align the "Has Data" and "Actions" columns */
+        }
+
+        .table th:nth-child(2),
+        .table td:nth-child(2) {
+            width: 15%;
+            /* Set a fixed width for the "Has Data" column */
+        }
+
+        .table th:nth-child(3),
+        .table td:nth-child(3) {
+            width: 35%;
+            /* Set a fixed width for the "Actions" column */
+        }
+
+        .table img {
+            width: 20px;
+            /* Set a consistent size for icons */
+            height: 20px;
+        }
+
+        .btn {
+            margin: 2px;
+            /* Add spacing between buttons */
+        }
+    </style>
+
+</head>
+
+
+<!-- Other Master Data -->
 <h3>Other Master Data</h3>
 <table class="table">
     <thead>
@@ -11,22 +62,26 @@
         <tr>
             <td>Master Data Freight</td>
             <td>
-                <input type="checkbox" readonly>
+                <input type="checkbox" {% if master_data_freight_has_data %}checked{% endif %} readonly>
             </td>
             <td>
-                <button type="button" class="btn btn-warning btn-sm">
+                <!-- Update Button -->
+                <a href="{% url 'update_master_data_freight' scenario.version %}" class="btn btn-warning btn-sm">
                     <img src="/static/icons/update.png" alt="Update">
-                </button>
-                <button type="button" class="btn btn-danger btn-sm">
+                </a>
+                <!-- Delete Button -->
+                <a href="{% url 'delete_master_data_freight' scenario.version %}" class="btn btn-danger btn-sm"
+                    onclick="return confirm('Are you sure you want to delete all Master Data Freight records for this version?');">
                     <img src="/static/icons/delete.png" alt="Delete">
-                </button>
-                <button type="button" class="btn btn-info btn-sm" data-bs-toggle="modal"
-                    data-bs-target="#uploadModalOtherMasterData">
+                </a>
+                <!-- Upload Button -->
+                <a href="{% url 'upload_master_data_freight' scenario.version %}" class="btn btn-info btn-sm">
                     <img src="/static/icons/upload.png" alt="Upload">
-                </button>
-                <button type="button" class="btn btn-info btn-sm">
+                </a>
+                <!-- Copy Button -->
+                <a href="{% url 'copy_master_data_freight' scenario.version %}" class="btn btn-info btn-sm">
                     <img src="/static/icons/copy.png" alt="Copy">
-                </button>
+                </a>
             </td>
         </tr>
         <tr>
@@ -51,195 +106,33 @@
             </td>
         </tr>
         <tr>
-            <td>Master Data Lead Times</td>
+            <td>Master Data Casto to Despatch Days</td>
             <td>
-                <input type="checkbox" readonly>
+                <input type="checkbox" {% if master_data_casto_to_despatch_days_has_data %}checked{% endif %} readonly>
             </td>
             <td>
-                <button type="button" class="btn btn-warning btn-sm">
+                <!-- Update Button -->
+                <a href="{% url 'update_master_data_casto_to_despatch_days' scenario.version %}"
+                    class="btn btn-warning btn-sm">
                     <img src="/static/icons/update.png" alt="Update">
-                </button>
-                <button type="button" class="btn btn-danger btn-sm">
+                </a>
+                <!-- Delete Button -->
+                <a href="{% url 'delete_master_data_casto_to_despatch_days' scenario.version %}"
+                    class="btn btn-danger btn-sm"
+                    onclick="return confirm('Are you sure you want to delete all Master Data Casto to Despatch Days records for this version?');">
                     <img src="/static/icons/delete.png" alt="Delete">
-                </button>
-                <button type="button" class="btn btn-info btn-sm" data-bs-toggle="modal"
-                    data-bs-target="#uploadModalOtherMasterData">
+                </a>
+                <!-- Upload Button -->
+                <button type="button" class="btn btn-info btn-sm" disabled>
                     <img src="/static/icons/upload.png" alt="Upload">
                 </button>
-                <button type="button" class="btn btn-info btn-sm">
+                <!-- Copy Button -->
+                <a href="{% url 'copy_master_data_casto_to_despatch_days' scenario.version %}"
+                    class="btn btn-info btn-sm">
                     <img src="/static/icons/copy.png" alt="Copy">
-                </button>
+                </a>
             </td>
         </tr>
-        <tr>
-            <td>Master Data Plants</td>
-            <td>
-                <input type="checkbox" readonly>
-            </td>
-            <td>
-                <button type="button" class="btn btn-warning btn-sm">
-                    <img src="/static/icons/update.png" alt="Update">
-                </button>
-                <button type="button" class="btn btn-danger btn-sm">
-                    <img src="/static/icons/delete.png" alt="Delete">
-                </button>
-                <button type="button" class="btn btn-info btn-sm" data-bs-toggle="modal"
-                    data-bs-target="#uploadModalOtherMasterData">
-                    <img src="/static/icons/upload.png" alt="Upload">
-                </button>
-                <button type="button" class="btn btn-info btn-sm">
-                    <img src="/static/icons/copy.png" alt="Copy">
-                </button>
-            </td>
-        </tr>
-        <tr>
-            <td>Master Data Capacity</td>
-            <td>
-                <input type="checkbox" readonly>
-            </td>
-            <td>
-                <button type="button" class="btn btn-warning btn-sm">
-                    <img src="/static/icons/update.png" alt="Update">
-                </button>
-                <button type="button" class="btn btn-danger btn-sm">
-                    <img src="/static/icons/delete.png" alt="Delete">
-                </button>
-                <button type="button" class="btn btn-info btn-sm" data-bs-toggle="modal"
-                    data-bs-target="#uploadModalOtherMasterData">
-                    <img src="/static/icons/upload.png" alt="Upload">
-                </button>
-                <button type="button" class="btn btn-info btn-sm">
-                    <img src="/static/icons/copy.png" alt="Copy">
-                </button>
-            </td>
-        </tr>
-        <tr>
-            <td>Master Data Plan</td>
-            <td>
-                <input type="checkbox" readonly>
-            </td>
-            <td>
-                <button type="button" class="btn btn-warning btn-sm">
-                    <img src="/static/icons/update.png" alt="Update">
-                </button>
-                <button type="button" class="btn btn-danger btn-sm">
-                    <img src="/static/icons/delete.png" alt="Delete">
-                </button>
-                <button type="button" class="btn btn-info btn-sm" data-bs-toggle="modal"
-                    data-bs-target="#uploadModalOtherMasterData">
-                    <img src="/static/icons/upload.png" alt="Upload">
-                </button>
-                <button type="button" class="btn btn-info btn-sm">
-                    <img src="/static/icons/copy.png" alt="Copy">
-                </button>
-            </td>
-        </tr>
-        <!-- Repeat similar rows for other master data items -->
-        <tr>
-            <td>Master Data Product Transfer</td>
-            <td>
-                <input type="checkbox" readonly>
-            </td>
-            <td>
-                <button type="button" class="btn btn-warning btn-sm">
-                    <img src="/static/icons/update.png" alt="Update">
-                </button>
-                <button type="button" class="btn btn-danger btn-sm">
-                    <img src="/static/icons/delete.png" alt="Delete">
-                </button>
-                <button type="button" class="btn btn-info btn-sm" data-bs-toggle="modal"
-                    data-bs-target="#uploadModalOtherMasterData">
-                    <img src="/static/icons/upload.png" alt="Upload">
-                </button>
-                <button type="button" class="btn btn-info btn-sm">
-                    <img src="/static/icons/copy.png" alt="Copy">
-                </button>
-            </td>
-        </tr>
-        <tr>
-            <td>Master Data Bill of Material</td>
-            <td>
-                <input type="checkbox" readonly>
-            </td>
-            <td>
-                <button type="button" class="btn btn-warning btn-sm">
-                    <img src="/static/icons/update.png" alt="Update">
-                </button>
-                <button type="button" class="btn btn-danger btn-sm">
-                    <img src="/static/icons/delete.png" alt="Delete">
-                </button>
-                <button type="button" class="btn btn-info btn-sm" data-bs-toggle="modal"
-                    data-bs-target="#uploadModalOtherMasterData">
-                    <img src="/static/icons/upload.png" alt="Upload">
-                </button>
-                <button type="button" class="btn btn-info btn-sm">
-                    <img src="/static/icons/copy.png" alt="Copy">
-                </button>
-            </td>
-        </tr>
-        <tr>
-            <td>Master Data Schedule</td>
-            <td>
-                <input type="checkbox" readonly>
-            </td>
-            <td>
-                <button type="button" class="btn btn-warning btn-sm">
-                    <img src="/static/icons/update.png" alt="Update">
-                </button>
-                <button type="button" class="btn btn-danger btn-sm">
-                    <img src="/static/icons/delete.png" alt="Delete">
-                </button>
-                <button type="button" class="btn btn-info btn-sm" data-bs-toggle="modal"
-                    data-bs-target="#uploadModalOtherMasterData">
-                    <img src="/static/icons/upload.png" alt="Upload">
-                </button>
-                <button type="button" class="btn btn-info btn-sm">
-                    <img src="/static/icons/copy.png" alt="Copy">
-                </button>
-            </td>
-        </tr>
-        <tr>
-            <td>Master Data Comment</td>
-            <td>
-                <input type="checkbox" readonly>
-            </td>
-            <td>
-                <button type="button" class="btn btn-warning btn-sm">
-                    <img src="/static/icons/update.png" alt="Update">
-                </button>
-                <button type="button" class="btn btn-danger btn-sm">
-                    <img src="/static/icons/delete.png" alt="Delete">
-                </button>
-                <button type="button" class="btn btn-info btn-sm" data-bs-toggle="modal"
-                    data-bs-target="#uploadModalOtherMasterData">
-                    <img src="/static/icons/upload.png" alt="Upload">
-                </button>
-                <button type="button" class="btn btn-info btn-sm">
-                    <img src="/static/icons/copy.png" alt="Copy">
-                </button>
-            </td>
-        </tr>
-        <tr>
-            <td>Master Data Schedule</td>
-            <td>
-                <input type="checkbox" readonly>
-            </td>
-            <td>
-                <button type="button" class="btn btn-warning btn-sm">
-                    <img src="/static/icons/update.png" alt="Update">
-                </button>
-                <button type="button" class="btn btn-danger btn-sm">
-                    <img src="/static/icons/delete.png" alt="Delete">
-                </button>
-                <button type="button" class="btn btn-info btn-sm" data-bs-toggle="modal"
-                    data-bs-target="#uploadModalOtherMasterData">
-                    <img src="/static/icons/upload.png" alt="Upload">
-                </button>
-                <button type="button" class="btn btn-info btn-sm">
-                    <img src="/static/icons/copy.png" alt="Copy">
-                </button>
-            </td>
-        </tr>
-        <!-- Add more rows as needed -->
+        <!-- Add other rows as needed -->
     </tbody>
 </table>

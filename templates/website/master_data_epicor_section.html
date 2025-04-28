@@ -1,3 +1,43 @@
+<style>
+    /* Style for the checkbox to make the tick blue */
+    input[type="checkbox"]:checked {
+        accent-color: blue;
+        /* Modern browsers support this */
+    }
+
+    .table th,
+    .table td {
+        text-align: center;
+        /* Center-align content in all columns */
+        vertical-align: middle;
+        /* Vertically align content in the middle */
+    }
+
+    .table th:nth-child(2),
+    .table td:nth-child(2) {
+        width: 15%;
+        /* Set a fixed width for the "Has Data" column */
+    }
+
+    .table th:nth-child(3),
+    .table td:nth-child(3) {
+        width: 35%;
+        /* Set a fixed width for the "Actions" column */
+    }
+
+    .table img {
+        width: 20px;
+        /* Set a consistent size for icons */
+        height: 20px;
+    }
+
+    .btn {
+        margin: 2px;
+        /* Add spacing between buttons */
+    }
+</style>
+
+<!-- Master Data from Epicor -->
 <h3>Master Data from Epicor</h3>
 <table class="table">
     <thead>
@@ -11,128 +51,116 @@
         <tr>
             <td>Product allocation based on order book</td>
             <td>
+                <!-- Checkbox dynamically ticked based on database records -->
                 <input type="checkbox" {% if product_allocation_order_book %}checked{% endif %} disabled>
             </td>
             <td>
-                <button type="button" class="btn btn-warning btn-sm">
-                    <img src="/static/icons/update.png" alt="Update"> <!-- Update this path to your update icon -->
-                </button>
-                <button type="button" class="btn btn-danger btn-sm">
-                    <img src="/static/icons/delete.png" alt="Delete"> <!-- Update this path to your delete icon -->
-                </button>
-                <button type="button" class="btn btn-info btn-sm" data-bs-toggle="modal"
-                    data-bs-target="#uploadModalSMART">
-                    <img src="/static/icons/upload.png" alt="Upload"> <!-- Update this path to your upload icon -->
-                </button>
-                <button type="button" class="btn btn-info btn-sm">
-                    <img src="/static/icons/copy.png" alt="Copy"> <!-- Update this path to your copy icon -->
-                </button>
+                <a href="{% url 'update_product_allocation' scenario.version %}" class="btn btn-warning btn-sm"
+                    onclick="showLoading('Updating records...');">
+                    <img src="/static/icons/update.png" alt="Update">
+                </a>
+                <a href="{% url 'delete_product_allocation' scenario.version %}" class="btn btn-danger btn-sm"
+                    onclick="return confirmDelete();">
+                    <img src="/static/icons/delete.png" alt="Delete">
+                </a>
+                <a href="{% url 'upload_product_allocation' scenario.version %}" class="btn btn-info btn-sm"
+                    onclick="showLoading('Uploading records...');">
+                    <img src="/static/icons/upload.png" alt="Upload">
+                </a>
+                <a href="{% url 'copy_product_allocation' scenario.version %}" class="btn btn-info btn-sm"
+                    onclick="showLoading('Copying records...');">
+                    <img src="/static/icons/copy.png" alt="Copy">
+                </a>
             </td>
         </tr>
         <tr>
             <td>Production Allocation based on pouring history</td>
             <td>
+                <!-- Checkbox dynamically ticked based on database records -->
                 <input type="checkbox" {% if production_allocation_pouring_history %}checked{% endif %} disabled>
             </td>
             <td>
-                <button type="button" class="btn btn-warning btn-sm">
-                    <img src="/static/icons/update.png" alt="Update"> <!-- Update this path to your update icon -->
-                </button>
-                <button type="button" class="btn btn-danger btn-sm">
-                    <img src="/static/icons/delete.png" alt="Delete"> <!-- Update this path to your delete icon -->
-                </button>
-                <button type="button" class="btn btn-info btn-sm" data-bs-toggle="modal"
-                    data-bs-target="#uploadModalSMART">
-                    <img src="/static/icons/upload.png" alt="Upload"> <!-- Update this path to your upload icon -->
-                </button>
-                <button type="button" class="btn btn-info btn-sm">
-                    <img src="/static/icons/copy.png" alt="Copy"> <!-- Update this path to your copy icon -->
-                </button>
+                <a href="{% url 'update_production_history' scenario.version %}" class="btn btn-warning btn-sm"
+                    onclick="showLoading('Updating records...');">
+                    <img src="/static/icons/update.png" alt="Update">
+                </a>
+                <a href="{% url 'delete_production_history' scenario.version %}" class="btn btn-danger btn-sm"
+                    onclick="return confirmDelete();">
+                    <img src="/static/icons/delete.png" alt="Delete">
+                </a>
+                <a href="{% url 'upload_production_history' scenario.version %}" class="btn btn-info btn-sm"
+                    onclick="showLoading('Uploading records...');">
+                    <img src="/static/icons/upload.png" alt="Upload">
+                </a>
+                <a href="{% url 'copy_production_history' scenario.version %}" class="btn btn-info btn-sm"
+                    onclick="showLoading('Copying records...');">
+                    <img src="/static/icons/copy.png" alt="Copy">
+                </a>
             </td>
         </tr>
         <tr>
-            <td>On hand stock</td>
+            <td>On Hand Stock and In Transit from Epicor</td>
             <td>
-                <input type="checkbox" {% if on_hand_stock %}checked{% endif %} disabled>
+                <!-- Checkbox dynamically ticked based on database records -->
+                <input type="checkbox" {% if on_hand_stock_in_transit %}checked{% endif %} disabled>
             </td>
             <td>
-                <button type="button" class="btn btn-warning btn-sm">
-                    <img src="/static/icons/update.png" alt="Update"> <!-- Update this path to your update icon -->
-                </button>
-                <button type="button" class="btn btn-danger btn-sm">
-                    <img src="/static/icons/delete.png" alt="Delete"> <!-- Update this path to your delete icon -->
-                </button>
-                <button type="button" class="btn btn-info btn-sm" data-bs-toggle="modal"
-                    data-bs-target="#uploadModalSMART">
-                    <img src="/static/icons/upload.png" alt="Upload"> <!-- Update this path to your upload icon -->
-                </button>
-                <button type="button" class="btn btn-info btn-sm">
-                    <img src="/static/icons/copy.png" alt="Copy"> <!-- Update this path to your copy icon -->
-                </button>
-            </td>
-        </tr>
-        <tr>
-            <td>WIP</td>
-            <td>
-                <input type="checkbox" {% if wip %}checked{% endif %} disabled>
-            </td>
-            <td>
-                <button type="button" class="btn btn-warning btn-sm">
-                    <img src="/static/icons/update.png" alt="Update"> <!-- Update this path to your update icon -->
-                </button>
-                <button type="button" class="btn btn-danger btn-sm">
-                    <img src="/static/icons/delete.png" alt="Delete"> <!-- Update this path to your delete icon -->
-                </button>
-                <button type="button" class="btn btn-info btn-sm" data-bs-toggle="modal"
-                    data-bs-target="#uploadModalSMART">
-                    <img src="/static/icons/upload.png" alt="Upload"> <!-- Update this path to your upload icon -->
-                </button>
-                <button type="button" class="btn btn-info btn-sm">
-                    <img src="/static/icons/copy.png" alt="Copy"> <!-- Update this path to your copy icon -->
-                </button>
+                <a href="{% url 'update_on_hand_stock' scenario.version %}" class="btn btn-warning btn-sm"
+                    onclick="showLoading('Updating records...');">
+                    <img src="/static/icons/update.png" alt="Update">
+                </a>
+                <a href="{% url 'delete_on_hand_stock' scenario.version %}" class="btn btn-danger btn-sm"
+                    onclick="return confirmDelete();">
+                    <img src="/static/icons/delete.png" alt="Delete">
+                </a>
+                <a href="{% url 'upload_on_hand_stock' scenario.version %}" class="btn btn-info btn-sm"
+                    onclick="showLoading('Uploading records...');">
+                    <img src="/static/icons/upload.png" alt="Upload">
+                </a>
+                <a href="{% url 'copy_on_hand_stock' scenario.version %}" class="btn btn-info btn-sm"
+                    onclick="showLoading('Copying records...');">
+                    <img src="/static/icons/copy.png" alt="Copy">
+                </a>
             </td>
         </tr>
-        <tr>
-            <td>Open POs</td>
-            <td>
-                <input type="checkbox" {% if open_pos %}checked{% endif %} disabled>
-            </td>
-            <td>
-                <button type="button" class="btn btn-warning btn-sm">
-                    <img src="/static/icons/update.png" alt="Update"> <!-- Update this path to your update icon -->
-                </button>
-                <button type="button" class="btn btn-danger btn-sm">
-                    <img src="/static/icons/delete.png" alt="Delete"> <!-- Update this path to your delete icon -->
-                </button>
-                <button type="button" class="btn btn-info btn-sm" data-bs-toggle="modal"
-                    data-bs-target="#uploadModalSMART">
-                    <img src="/static/icons/upload.png" alt="Upload"> <!-- Update this path to your upload icon -->
-                </button>
-                <button type="button" class="btn btn-info btn-sm">
-                    <img src="/static/icons/copy.png" alt="Copy"> <!-- Update this path to your copy icon -->
-                </button>
-            </td>
-        </tr>
-        <tr>
-            <td>Open Sales Orders</td>
-            <td>
-                <input type="checkbox" {% if open_sales_orders %}checked{% endif %} disabled>
-            </td>
-            <td>
-                <button type="button" class="btn btn-warning btn-sm">
-                    <img src="/static/icons/update.png" alt="Update"> <!-- Update this path to your update icon -->
-                </button>
-                <button type="button" class="btn btn-danger btn-sm">
-                    <img src="/static/icons/delete.png" alt="Delete"> <!-- Update this path to your delete icon -->
-                </button>
-                <button type="button" class="btn btn-info btn-sm" data-bs-toggle="modal"
-                    data-bs-target="#uploadModalSMART">
-                    <img src="/static/icons/upload.png" alt="Upload"> <!-- Update this path to your upload icon -->
-                </button>
-                <button type="button" class="btn btn-info btn-sm">
-                    <img src="/static/icons/copy.png" alt="Copy"> <!-- Update this path to your copy icon -->
-                </button>
-            </td>
-        </tr>
+
     </tbody>
 </table>
+
+<script>
+    function showLoading(message) {
+        // Create a loading overlay
+        const loadingOverlay = document.createElement('div');
+        loadingOverlay.id = 'loading-overlay';
+        loadingOverlay.style.position = 'fixed';
+        loadingOverlay.style.top = '0';
+        loadingOverlay.style.left = '0';
+        loadingOverlay.style.width = '100%';
+        loadingOverlay.style.height = '100%';
+        loadingOverlay.style.backgroundColor = 'rgba(0, 0, 0, 0.5)';
+        loadingOverlay.style.color = 'white';
+        loadingOverlay.style.display = 'flex';
+        loadingOverlay.style.justifyContent = 'center';
+        loadingOverlay.style.alignItems = 'center';
+        loadingOverlay.style.zIndex = '1000';
+        loadingOverlay.innerHTML = `<div><span>${message}</span><br><img src="/static/icons/spinner.gif" alt="Loading..."></div>`;
+
+        // Append the overlay to the body
+        document.body.appendChild(loadingOverlay);
+    }
+
+    function hideLoading() {
+        const loadingOverlay = document.getElementById('loading-overlay');
+        if (loadingOverlay) {
+            loadingOverlay.remove();
+        }
+    }
+
+    function confirmDelete() {
+        const confirmed = confirm('Are you sure you want to delete all records for this scenario?');
+        if (confirmed) {
+            showLoading('Deleting records...');
+        }
+        return confirmed;
+    }
+</script>

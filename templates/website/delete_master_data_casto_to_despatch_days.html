@@ -1,0 +1,13 @@
+{% extends 'website/base.html' %}
+
+{% block content %}
+<div class="container mt-4">
+    <h2>Delete Master Data Casto to Despatch Days</h2>
+    <p>Are you sure you want to delete all Master Data Casto to Despatch Days records for version "{{ version }}"?</p>
+    <form method="post">
+        {% csrf_token %}
+        <button type="submit" class="btn btn-danger">Delete</button>
+        <a href="{% url 'edit_scenario' version %}" class="btn btn-secondary">Cancel</a>
+    </form>
+</div>
+{% endblock %}

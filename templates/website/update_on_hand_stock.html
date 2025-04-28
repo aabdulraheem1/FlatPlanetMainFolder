@@ -1,0 +1,74 @@
+{% extends 'website/base.html' %}
+
+{% block content %}
+<!-- Display Scenario Version -->
+<div class="alert alert-info" role="alert">
+    <strong>Scenario Version:</strong> {{ scenario.version }}
+</div>
+<h2>Update On Hand Stock</h2>
+{% if snapshot_date %}
+<h5>Snapshot Date: {{ snapshot_date }}</h5>
+{% endif %}
+
+<form method="get" class="form-inline mb-3">
+    <div class="form-group">
+        <label for="product" class="mr-2">Filter by Product:</label>
+        <input type="text" id="product" name="product" value="{{ product_filter }}" class="form-control mr-2">
+    </div>
+    <div class="form-group">
+        <label for="site" class="mr-2">Filter by Site:</label>
+        <input type="text" id="site" name="site" value="{{ site_filter }}" class="form-control mr-2">
+    </div>
+    <button type="submit" class="btn btn-primary">Filter</button>
+</form>
+
+<form method="post">
+    {% csrf_token %}
+    <table class="table table-bordered">
+        <thead>
+            <tr>
+                <th>Site</th>
+                <th>Product</th>
+                <th>On Hand Stock Qty</th>
+                <th>In Transit Stock Qty</th>
+                <th>WIP Stock Qty</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for form in formset %}
+            <tr>
+                {% for field in form.visible_fields %}
+                <td>{{ field }}</td>
+                {% endfor %}
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    <button type="submit" class="btn btn-success">Save Changes</button>
+    <a href="{% url 'edit_scenario' scenario.version %}" class="btn btn-secondary">Cancel</a>
+</form>
+
+<div class="pagination">
+    <span class="step-links">
+        {% if page_obj.has_previous %}
+        <a
+            href="?page=1{% if product_filter %}&product={{ product_filter }}{% endif %}{% if site_filter %}&site={{ site_filter }}{% endif %}">&laquo;
+            first</a>
+        <a
+            href="?page={{ page_obj.previous_page_number }}{% if product_filter %}&product={{ product_filter }}{% endif %}{% if site_filter %}&site={{ site_filter }}{% endif %}">previous</a>
+        {% endif %}
+
+        <span class="current">
+            Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }}.
+        </span>
+
+        {% if page_obj.has_next %}
+        <a
+            href="?page={{ page_obj.next_page_number }}{% if product_filter %}&product={{ product_filter }}{% endif %}{% if site_filter %}&site={{ site_filter }}{% endif %}">next</a>
+        <a
+            href="?page={{ page_obj.paginator.num_pages }}{% if product_filter %}&product={{ product_filter }}{% endif %}{% if site_filter %}&site={{ site_filter }}{% endif %}">last
+            &raquo;</a>
+        {% endif %}
+    </span>
+</div>
+{% endblock %}

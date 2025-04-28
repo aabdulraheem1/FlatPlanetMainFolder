@@ -1,0 +1,13 @@
+{% extends 'website/base.html' %}
+
+{% block content %}
+<div class="container mt-4">
+    <h2>Add New Forecast Region</h2>
+    <form method="post">
+        {% csrf_token %}
+        {{ form.as_p }}
+        <button type="submit" class="btn btn-primary">Add Region</button>
+        <a href="{% url 'ForecastRegionList' %}" class="btn btn-secondary">Cancel</a>
+    </form>
+</div>
+{% endblock %}

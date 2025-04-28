@@ -26,11 +26,36 @@ urlpatterns = [
     path('scenario/review/<str:version>', views.review_scenario, name='review_scenario'),
     path('warningList/<str:version>', views.ScenarioWarningList, name='warningList'),
     path('create_product/', views.create_product, name='create_product'),
-    
-    
-    
+    path('update_product_allocation/<str:version>/', views.update_product_allocation, name='update_product_allocation'),
+    path('delete_product_allocation/<str:version>/', views.delete_product_allocation, name='delete_product_allocation'),
+    path('update_product_allocation/<str:version>/', views.update_product_allocation, name='update_product_allocation'),
+    path('copy_product_allocation/<str:version>/', views.copy_product_allocation, name='copy_product_allocation'),    
+    path('upload_product_allocation/<str:version>/', views.upload_product_allocation, name='upload_product_allocation'),
+    path('upload_production_history/<str:version>/', views.upload_production_history, name='upload_production_history'),
+    path('delete_production_history/<str:version>/', views.delete_production_history, name='delete_production_history'),
+    path('update_production_history/<str:version>/', views.update_production_history, name='update_production_history'),
+    path('copy_production_history/<str:version>/', views.copy_production_history, name='copy_production_history'),
+    # On hand stock and in Transit from Epicor
+    path('update_on_hand_stock/<str:version>/', views.update_on_hand_stock, name='update_on_hand_stock'),
+    path('delete_on_hand_stock/<str:version>/', views.delete_on_hand_stock, name='delete_on_hand_stock'),
+    path('upload_on_hand_stock/<str:version>/', views.upload_on_hand_stock, name='upload_on_hand_stock'),
+    path('copy_on_hand_stock/<str:version>/', views.copy_on_hand_stock, name='copy_on_hand_stock'),
 
+    path('customers/', views.customers_list, name='CustomersList'),
+    path('forecast-region/', views.forecast_region_list, name='ForecastRegionList'),
+    path('forecast-region/', views.forecast_region_list, name='ForecastRegionList'),
+    path('forecast-region/add/', views.add_forecast_region, name='add_forecast_region'),
+    path('forecast-region/update/<str:region_id>/', views.update_forecast_region, name='update_forecast_region'),
+    path('forecast-region/delete/<str:region_id>/', views.delete_forecast_region, name='delete_forecast_region'),
 
+    path('update_master_data_freight/<str:version>/', views.update_master_data_freight, name='update_master_data_freight'),
+    path('delete_master_data_freight/<str:version>/', views.delete_master_data_freight, name='delete_master_data_freight'),
+    path('copy_master_data_freight/<str:version>/', views.copy_master_data_freight, name='copy_master_data_freight'),
+    path('upload_master_data_freight/<str:version>/', views.upload_master_data_freight, name='upload_master_data_freight'),
+
+    path('update_master_data_casto_to_despatch_days/<str:version>/', views.update_master_data_casto_to_despatch_days, name='update_master_data_casto_to_despatch_days'),
+    path('delete_master_data_casto_to_despatch_days/<str:version>/', views.delete_master_data_casto_to_despatch_days, name='delete_master_data_casto_to_despatch_days'),
+    path('copy_master_data_casto_to_despatch_days/<str:version>/', views.copy_master_data_casto_to_despatch_days, name='copy_master_data_casto_to_despatch_days'),
 
 
     # Add other URL patterns as needed

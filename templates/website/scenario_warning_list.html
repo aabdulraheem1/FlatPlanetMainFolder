@@ -131,5 +131,27 @@
             </table>
         </div>
     </div>
+    <!-- Section 6: Regions Not Defined -->
+    <div class="card mb-4">
+        <div class="card-header">
+            Regions Not Defined in Freight Model
+        </div>
+        <div class="card-body">
+            <table class="table table-striped">
+                <thead>
+                    <tr>
+                        <th>Region</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for region in missing_regions %}
+                    <tr>
+                        <td>{{ region }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
 </div>
 {% endblock %}

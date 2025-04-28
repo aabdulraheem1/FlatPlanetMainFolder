@@ -1,0 +1,13 @@
+{% extends 'website/base.html' %}
+
+{% block content %}
+<h2>Delete On Hand Stock</h2>
+
+<p>Are you sure you want to delete all on-hand stock records for the scenario "{{ scenario.version }}"?</p>
+
+<form method="post">
+    {% csrf_token %}
+    <button type="submit" class="btn btn-danger">Delete</button>
+    <a href="{% url 'edit_scenario' scenario.version %}" class="btn btn-secondary">Cancel</a>
+</form>
+{% endblock %}

@@ -1,0 +1,7 @@
+<h3>On Hand Stock and in Transit from Epicor</h3>
+<p>This section allows you to manage the on-hand stock and in-transit data from Epicor.</p>
+<a href="{% url 'update_on_hand_stock' scenario.version %}" class="btn btn-warning">Update</a>
+<a href="{% url 'delete_on_hand_stock' scenario.version %}" class="btn btn-danger"
+    onclick="return confirm('Are you sure you want to delete all records?');">Delete</a>
+<a href="{% url 'upload_on_hand_stock' scenario.version %}" class="btn btn-info">Upload</a>
+<a href="{% url 'copy_on_hand_stock' scenario.version %}" class="btn btn-info">Copy</a>

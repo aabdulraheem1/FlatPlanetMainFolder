@@ -27,6 +27,7 @@ admin.site.register(MasterDataScheduleModel)
 admin.site.register(MasterDataSalesModel)
 admin.site.register(MasterDataSKUTransferModel)
 admin.site.register(MasterDataPlan)
+admin.site.register(MasterDataForecastRegionModel)
 
 
 

@@ -60,12 +60,12 @@ class Product_Model(models.Model):
         return self.Product
         
 class MasterDataOrderBook(models.Model):
-    version = models.CharField(max_length=100)
+    version = models.ForeignKey(scenarios, to_field='version', on_delete=models.CASCADE)
     site = models.CharField(max_length=100)
     productkey = models.CharField(max_length=100)
 
     def __str__(self):
-        return self.version + self.productkey
+        return f"{self.version.version} - {self.productkey}"
 
 class MasterDataCapacityModel(models.Model):
     version = models.CharField(max_length=250, null=True, blank=True)
@@ -111,14 +111,14 @@ class MasterDataCommentModel(models.Model):
         return self.version
     
 class MasterDataHistoryOfProductionModel(models.Model):
-    version = models.CharField(max_length=250)
+    version = models.ForeignKey(scenarios, to_field='version', on_delete=models.CASCADE)  # Changed to ForeignKey
     Product = models.CharField(max_length=250)
     Foundry = models.CharField(max_length=250)
     ProductionMonth = models.DateField()
     ProductionQty = models.IntegerField()
 
     def __str__(self):
-        return self.version + self.Product
+        return f"{self.version.version} - {self.Product}"
     
 class MasterDataIncotTermTypesModel(models.Model):
     version = models.CharField(max_length=250)
@@ -146,17 +146,6 @@ class MasterDataLeadTimesModel(models.Model):
     def __str__(self):
         return self.version
     
-class MasterDataFreightModel(models.Model):
-    version = models.CharField(max_length=250)
-    ForecastRegion = models.CharField(max_length=250)
-    ManufacturingSite = models.CharField(max_length=250)
-    PlantToDomesticPortDays = models.IntegerField()
-    OceanFreightDays = models.IntegerField()
-    PortToCustomerDays = models.IntegerField()
-
-    def __str__(self):
-        return self.version
-
 class MasterDataPlan(models.Model):
     Version	= models.CharField(max_length=250)
     SubVersion = models.CharField(max_length=250)
@@ -181,8 +170,8 @@ class MasterDataPlan(models.Model):
     CastTonsPerDay = models.FloatField()
 
     def __str__(self):
-        self.Version + self.Foundry
-
+        return f"{self.Version} - {self.Foundry}"
+    
 class MasterDataPlantModel(models.Model):
     SiteName = models.CharField(primary_key=True, max_length=250)
     Company = models.CharField(max_length=250,null=True, blank=True)
@@ -193,7 +182,7 @@ class MasterDataPlantModel(models.Model):
     About = models.TextField(null=True,max_length=3000, blank=True)
 
     def __str__(self):
-        self.Site
+        return self.SiteName or "Unknown Site"
 
 class MasterDataProductModel(models.Model):
     Product = models.CharField(max_length=250, primary_key=True)
@@ -232,7 +221,7 @@ class MasterDataProductAttributesModel(models.Model):
     MinOrderQty = models.FloatField()
 
     def __str__(self):
-        self.version + self.Product
+        return f"{self.version} - {self.Product}"
 
 class MasterDataSalesAllocationToPlantModel(models.Model):
     # this class is used to store the data related to revenue based demand where data is not in SKU level
@@ -243,7 +232,7 @@ class MasterDataSalesAllocationToPlantModel(models.Model):
     Allocation = models.FloatField()
     
     def __str__(self):
-        self.Version + self.Plant + self.SalesClass
+        return f"{self.Version} - {self.Plant} - {self.SalesClass}"
 
 class MasterDataSalesModel(models.Model):
     # this class is used to store the data related to revenue based demand where data is not in SKU level
@@ -255,7 +244,7 @@ class MasterDataSalesModel(models.Model):
     CostAUDPerKg = models.FloatField()
     
     def __str__(self):
-        self.Version  + self.SalesClass
+        return f"{self.Version} - {self.SalesClass}"
 
 class MasterDataSKUTransferModel(models.Model):
     version = models.CharField(max_length=250)
@@ -264,7 +253,7 @@ class MasterDataSKUTransferModel(models.Model):
     Supplier = models.CharField(max_length=250)
 
     def __str__(self):
-        self.version + self.Product + self.Date
+        return f"{self.version} - {self.Product} - {self.Date}"
 
 class MasterDataScheduleModel(models.Model):
     Scenario_Foreign_Key = models.ForeignKey(scenarios, to_field='version', on_delete=models.CASCADE, default=None)
@@ -277,7 +266,7 @@ class MasterDataScheduleModel(models.Model):
     UnitOfMeasure = models.CharField(max_length=250, blank=True,null=True)
 
     def __str__(self):
-        self.Version  + self.Plant
+        return f"{self.Version_id} - {self.Plant}"
     
 class AggregatedForecast(models.Model):
     version = models.ForeignKey(scenarios, to_field='version', on_delete=models.CASCADE)
@@ -292,10 +281,50 @@ class AggregatedForecast(models.Model):
     def __str__(self):
         return f"{self.product.Product} - {self.version.version}"
 
+class MasterDataInventory(models.Model):
+    version = models.ForeignKey(scenarios, to_field='version', on_delete=models.CASCADE)  # Foreign key from scenarios
+    date_of_snapshot = models.DateField()  # Date of the inventory snapshot
+    product = models.CharField(max_length=250)  # Product identifier
+    site = models.ForeignKey(MasterDataPlantModel, to_field='SiteName', on_delete=models.CASCADE)  # Foreign key to MasterDataPlantModel
+    site_region = models.CharField(max_length=250)  # Region of the site
+    onhandstock_qty = models.FloatField(default=0)  # Quantity of on-hand stock
+    intransitstock_qty = models.FloatField(default=0)  # Quantity of in-transit stock
+    wip_stock_qty = models.FloatField(default=0)  # Quantity of WIP stock
 
+    def __str__(self):
+        return f"{self.version.version} - {self.product} - {self.date_of_snapshot}"
 
+class MasterDataForecastRegionModel(models.Model):
+    Forecast_region = models.CharField(primary_key=True,max_length=250)
 
+class MasterDataFreightModel(models.Model):
+    version = models.ForeignKey(scenarios, to_field='version', on_delete=models.CASCADE)  # Foreign key from scenarios
+    ForecastRegion = models.ForeignKey(MasterDataForecastRegionModel, to_field='Forecast_region', on_delete=models.CASCADE)  # Foreign key from MasterDataForecastRegionModel
+    ManufacturingSite = models.ForeignKey(MasterDataPlantModel, to_field='SiteName', on_delete=models.CASCADE)  # Foreign key from MasterDataPlantModel
+    PlantToDomesticPortDays = models.IntegerField()
+    OceanFreightDays = models.IntegerField()
+    PortToCustomerDays = models.IntegerField()
 
+    def __str__(self):
+        return f"{self.version.version} - {self.ForecastRegion.Forecast_region} - {self.ManufacturingSite.SiteName}"
 
-    
+class MasterDataCustomersModel(models.Model):
+    CustomerCode = models.CharField(primary_key=True,max_length=250)
+    CustomerName = models.CharField(max_length=250,null=True, blank=True)
+    CustomerGroup = models.CharField(max_length=250,null=True, blank=True)
+    CustomerGroupDescription = models.TextField(null=True,blank=True)
+    SalesClass = models.CharField(max_length=250,null=True, blank=True)
+    SalesClassDescription = models.TextField(null=True,blank=True)
+    ProductGroup = models.CharField(max_length=250,null=True, blank=True)
+    ProductGroupDescription = models.TextField(null=True,blank=True)
 
+    def __str__(self):
+        return self.CustomerCode or "Unknown Customer"
+
+class MasterDataCastToDespatchModel(models.Model):
+    version = models.ForeignKey(scenarios, to_field='version', on_delete=models.CASCADE)  # Foreign key from scenarios
+    Foundry = models.ForeignKey(MasterDataPlantModel, to_field='SiteName', on_delete=models.CASCADE)  # Foreign key from MasterDataPlantModel
+    CastToDespatchDays = models.IntegerField()
+
+    def __str__(self):
+        return self.version.version

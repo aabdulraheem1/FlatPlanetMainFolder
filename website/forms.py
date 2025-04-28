@@ -60,3 +60,19 @@ class ForecastFilterForm(forms.Form):
     forecast_region = forms.CharField(required=False)
     product_group = forms.CharField(required=False)
     customer_code = forms.CharField(required=False)
+
+from django import forms
+from .models import MasterDataForecastRegionModel
+
+class ForecastRegionForm(forms.ModelForm):
+    class Meta:
+        model = MasterDataForecastRegionModel
+        fields = ['Forecast_region']
+
+from django import forms
+from .models import MasterDataFreightModel
+
+class MasterDataFreightForm(forms.ModelForm):
+    class Meta:
+        model = MasterDataFreightModel
+        fields = ['ForecastRegion', 'ManufacturingSite', 'PlantToDomesticPortDays', 'OceanFreightDays', 'PortToCustomerDays']

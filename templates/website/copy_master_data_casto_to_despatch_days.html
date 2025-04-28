@@ -1,0 +1,16 @@
+{% extends 'website/base.html' %}
+
+{% block content %}
+<div class="container mt-4">
+    <h2>Copy Master Data Casto to Despatch Days</h2>
+    <form method="post">
+        {% csrf_token %}
+        <div class="mb-3">
+            <label for="source_version" class="form-label">Source Version</label>
+            <input type="text" id="source_version" name="source_version" class="form-control" required>
+        </div>
+        <button type="submit" class="btn btn-primary">Copy Data</button>
+        <a href="{% url 'edit_scenario' version %}" class="btn btn-secondary">Cancel</a>
+    </form>
+</div>
+{% endblock %}

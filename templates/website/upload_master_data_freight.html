@@ -1,0 +1,27 @@
+{% extends 'website/base.html' %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="alert alert-info" role="alert">
+        <strong>Scenario Version:</strong> {{ version }}
+    </div>
+    <h2>Upload Master Data Freight</h2>
+    <p>Please upload an Excel file with the following headers:</p>
+    <ul>
+        <li>ForecastRegion</li>
+        <li>ManufacturingSite</li>
+        <li>PlantToDomesticPortDays</li>
+        <li>OceanFreightDays</li>
+        <li>PortToCustomerDays</li>
+    </ul>
+    <form method="post" enctype="multipart/form-data">
+        {% csrf_token %}
+        <div class="mb-3">
+            <label for="file" class="form-label">Choose Excel File</label>
+            <input type="file" id="file" name="file" class="form-control" required>
+        </div>
+        <button type="submit" class="btn btn-primary">Upload</button>
+        <a href="{% url 'edit_scenario' version %}" class="btn btn-secondary">Cancel</a>
+    </form>
+</div>
+{% endblock %}

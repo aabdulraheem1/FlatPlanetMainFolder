@@ -98,6 +98,28 @@
             <a href="{% url 'PlantsList' %}" class="d-block text-decoration-none mb-2 nav-link">Foundries & WHs</a><br>
             <a href="#" class="d-block text-decoration-none mb-2 nav-link">Suppliers</a><br>
 
+            <!-- Customers Dropdown -->
+            <button class="btn btn-link d-block text-decoration-none mb-2 nav-link" type="button"
+                data-bs-toggle="collapse" data-bs-target="#customersDropdown" aria-expanded="false"
+                aria-controls="customersDropdown">
+                Customers <span id="customers-icon">+</span>
+            </button>
+            <div class="collapse" id="customersDropdown">
+                <a href="{% url 'CustomersList' %}"
+                    class="d-block text-decoration-none mb-2 dropdown-item">Customers</a>
+                <button class="btn btn-link d-block text-decoration-none mb-2 dropdown-item" type="button"
+                    data-bs-toggle="collapse" data-bs-target="#forecastRegionDropdown" aria-expanded="false"
+                    aria-controls="forecastRegionDropdown">
+                    Forecast Region <span id="forecast-region-icon">+</span>
+                </button>
+                <div class="collapse" id="forecastRegionDropdown">
+                    <a href="{% url 'ForecastRegionList' %}"
+                        class="d-block text-decoration-none mb-2 dropdown-item">View All</a>
+                    <a href="{% url 'add_forecast_region' %}"
+                        class="d-block text-decoration-none mb-2 dropdown-item">Add New</a>
+                </div>
+            </div><br>
+
             <button class="btn btn-link d-block text-decoration-none mb-2 nav-link" type="button"
                 data-bs-toggle="collapse" data-bs-target="#scenariosDropdown" aria-expanded="false"
                 aria-controls="scenariosDropdown">

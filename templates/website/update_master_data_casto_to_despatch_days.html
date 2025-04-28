@@ -1,0 +1,35 @@
+{% extends 'website/base.html' %}
+
+{% block content %}
+<div class="container mt-4">
+    <!-- Display Scenario Version -->
+    <div class="alert alert-info" role="alert">
+        <strong>Scenario Version:</strong> {{ version }}
+    </div>
+    <h2>Update Master Data Casto to Despatch Days</h2>
+    <form method="post">
+        {% csrf_token %}
+        {{ formset.management_form }}
+        <input type="hidden" name="version" value="{{ version }}"> <!-- Hidden field for version -->
+        <table class="table table-bordered">
+            <thead>
+                <tr>
+                    <th>Foundry</th>
+                    <th>Cast to Despatch Days</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for form in formset %}
+                <tr>
+                    {% for field in form %}
+                    <td>{{ field }}</td>
+                    {% endfor %}
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        <button type="submit" class="btn btn-primary">Save Changes</button>
+        <a href="{% url 'edit_scenario' version %}" class="btn btn-secondary">Cancel</a>
+    </form>
+</div>
+{% endblock %}

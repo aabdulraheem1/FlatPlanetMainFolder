@@ -1,0 +1,11 @@
+<h3>Copy Product Allocation</h3>
+<form method="post">
+    {% csrf_token %}
+    <label for="source_version">Select a scenario to copy from:</label>
+    <select name="source_version" id="source_version">
+        {% for scenario in all_scenarios %}
+        <option value="{{ scenario.version }}">{{ scenario.version }}</option>
+        {% endfor %}
+    </select>
+    <button type="submit">Copy</button>
+</form>

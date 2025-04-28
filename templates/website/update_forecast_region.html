@@ -1,0 +1,17 @@
+{% extends 'website/base.html' %}
+
+{% block content %}
+<div class="container mt-4">
+    <!-- Display Scenario Version -->
+    <div class="alert alert-info" role="alert">
+        <strong>Scenario Version:</strong> {{ version }}
+    </div>
+    <h2>Update Forecast Region</h2>
+    <form method="post">
+        {% csrf_token %}
+        {{ form.as_p }}
+        <button type="submit" class="btn btn-primary">Update Region</button>
+        <a href="{% url 'update_forecast_region' region.Forecast_region %}" class="btn btn-warning btn-sm">Update</a>
+    </form>
+</div>
+{% endblock %}
