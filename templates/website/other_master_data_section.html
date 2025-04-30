@@ -62,7 +62,7 @@
         <tr>
             <td>Master Data Freight</td>
             <td>
-                <input type="checkbox" {% if master_data_freight_has_data %}checked{% endif %} readonly>
+                <input type="checkbox" {% if master_data_freight_has_data %}checked{% endif %} disabled>
             </td>
             <td>
                 <!-- Update Button -->
@@ -87,28 +87,85 @@
         <tr>
             <td>Master Data Inco Terms</td>
             <td>
-                <input type="checkbox" readonly>
+                <input type="checkbox" {% if master_data_inco_terms_has_data %}checked{% endif %} disabled>
             </td>
             <td>
-                <button type="button" class="btn btn-warning btn-sm">
+                <!-- Update Button -->
+                <a href="{% url 'master_data_inco_terms_update' scenario.version %}" class="btn btn-warning btn-sm">
                     <img src="/static/icons/update.png" alt="Update">
-                </button>
-                <button type="button" class="btn btn-danger btn-sm">
+                </a>
+                <!-- Delete Button -->
+                <a href="{% url 'master_data_inco_terms_delete' scenario.version %}" class="btn btn-danger btn-sm"
+                    onclick="return confirm('Are you sure you want to delete all Master Data Inco Terms for this scenario?');">
                     <img src="/static/icons/delete.png" alt="Delete">
-                </button>
-                <button type="button" class="btn btn-info btn-sm" data-bs-toggle="modal"
-                    data-bs-target="#uploadModalOtherMasterData">
+                </a>
+                <!-- Upload Button -->
+                <a href="#" class="btn btn-info btn-sm" data-bs-toggle="modal"
+                    data-bs-target="#uploadModalMasterDataIncoTerms">
                     <img src="/static/icons/upload.png" alt="Upload">
-                </button>
-                <button type="button" class="btn btn-info btn-sm">
+                </a>
+                <!-- Copy Button -->
+                <a href="{% url 'master_data_inco_terms_copy' scenario.version %}" class="btn btn-info btn-sm">
                     <img src="/static/icons/copy.png" alt="Copy">
-                </button>
+                </a>
+            </td>
+        </tr>
+        <!-- Upload Modal -->
+        <div class="modal fade" id="uploadModalMasterDataIncoTerms" tabindex="-1" aria-labelledby="uploadModalLabel"
+            aria-hidden="true">
+            <div class="modal-dialog">
+                <div class="modal-content">
+                    <form method="post" enctype="multipart/form-data"
+                        action="{% url 'master_data_inco_terms_upload' scenario.version %}">
+                        {% csrf_token %}
+                        <div class="modal-header">
+                            <h5 class="modal-title" id="uploadModalLabel">Upload Master Data Inco Terms</h5>
+                            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                        </div>
+                        <div class="modal-body">
+                            <div class="mb-3">
+                                <label for="fileInput" class="form-label">Select File</label>
+                                <input type="file" class="form-control" id="fileInput" name="file" required>
+                            </div>
+                        </div>
+                        <div class="modal-footer">
+                            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                            <button type="submit" class="btn btn-primary">Upload</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+        <tr>
+            <td>Master Data Incoterm Types</td>
+            <td>
+                <input type="checkbox" {% if master_data_incoterm_types_has_data %}checked{% endif %} disabled>
+            </td>
+            <td>
+                <!-- Update Button -->
+                <a href="{% url 'incoterm_update_formset' scenario.version %}" class="btn btn-warning btn-sm">
+                    <img src="/static/icons/update.png" alt="Update">
+                </a>
+                <!-- Delete Button -->
+                <a href="{% url 'incoterm_delete_all' scenario.version %}" class="btn btn-danger btn-sm"
+                    onclick="return confirm('Are you sure you want to delete all Master Data Incoterm Types for this scenario?');">
+                    <img src="/static/icons/delete.png" alt="Delete">
+                </a>
+                <!-- Upload Button -->
+                <a href="#" class="btn btn-info btn-sm" data-bs-toggle="modal"
+                    data-bs-target="#uploadModalMasterDataIncotermTypes">
+                    <img src="/static/icons/upload.png" alt="Upload">
+                </a>
+                <!-- Copy Button -->
+                <a href="{% url 'incoterm_list' %}" class="btn btn-info btn-sm">
+                    <img src="/static/icons/copy.png" alt="Copy">
+                </a>
             </td>
         </tr>
         <tr>
             <td>Master Data Casto to Despatch Days</td>
             <td>
-                <input type="checkbox" {% if master_data_casto_to_despatch_days_has_data %}checked{% endif %} readonly>
+                <input type="checkbox" {% if master_data_casto_to_despatch_days_has_data %}checked{% endif %} disabled>
             </td>
             <td>
                 <!-- Update Button -->
@@ -133,6 +190,5 @@
                 </a>
             </td>
         </tr>
-        <!-- Add other rows as needed -->
     </tbody>
 </table>

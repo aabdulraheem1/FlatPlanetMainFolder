@@ -1,0 +1,10 @@
+{% extends 'website/base.html' %}
+{% block content %}
+<h1>Upload Master Incot Terms</h1>
+<form method="post" enctype="multipart/form-data">
+    {% csrf_token %}
+    <input type="file" name="file" accept=".xlsx, .xls">
+    <button type="submit">Upload</button>
+</form>
+<a href="{% url 'incoterm_list' %}">Back to List</a>
+{% endblock %}

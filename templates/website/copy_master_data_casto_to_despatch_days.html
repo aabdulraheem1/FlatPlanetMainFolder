@@ -2,15 +2,25 @@
 
 {% block content %}
 <div class="container mt-4">
+    <!-- Display Scenario Version -->
+    <div class="alert alert-info" role="alert">
+        <strong>Scenario Version:</strong> {{ version }}
+    </div>
+
     <h2>Copy Master Data Casto to Despatch Days</h2>
     <form method="post">
         {% csrf_token %}
-        <div class="mb-3">
-            <label for="source_version" class="form-label">Source Version</label>
-            <input type="text" id="source_version" name="source_version" class="form-control" required>
+        <div class="form-group">
+            <label for="source_version">Select Source Version:</label>
+            <select id="source_version" name="source_version" class="form-control" required>
+                <option value="" disabled selected>-- Select a Version --</option>
+                {% for populated_version in populated_versions %}
+                <option value="{{ populated_version }}">{{ populated_version }}</option>
+                {% endfor %}
+            </select>
         </div>
-        <button type="submit" class="btn btn-primary">Copy Data</button>
-        <a href="{% url 'edit_scenario' version %}" class="btn btn-secondary">Cancel</a>
+        <button type="submit" class="btn btn-primary mt-3">Copy Data</button>
+        <a href="{% url 'edit_scenario' version %}" class="btn btn-secondary mt-3">Cancel</a>
     </form>
 </div>
 {% endblock %}

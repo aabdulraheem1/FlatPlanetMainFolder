@@ -23,6 +23,7 @@
 
     <div class="container mt-5">
         <h2>Forecast Analysis</h2>
+        <!-- First Line of Tabs -->
         <ul class="nav nav-tabs" id="forecastTabs" role="tablist">
             <li class="nav-item">
                 <a class="nav-link active" id="product-group-tab" data-toggle="tab" href="#product-group" role="tab"
@@ -41,6 +42,7 @@
                     aria-controls="customer" aria-selected="false">By Customer</a>
             </li>
         </ul>
+
         <div class="tab-content" id="forecastTabsContent">
             <div class="tab-pane fade show active" id="product-group" role="tabpanel"
                 aria-labelledby="product-group-tab">
@@ -59,6 +61,209 @@
             <div class="tab-pane fade" id="customer" role="tabpanel" aria-labelledby="customer-tab">
                 <!-- Content for By Customer -->
                 <canvas id="customerChart" width="400" height="200"></canvas>
+            </div>
+        </div>
+
+        <!-- Second Line of Tabs: Foundry View -->
+        <ul class="nav nav-tabs mt-3" id="foundryTabs" role="tablist">
+            <li class="nav-item">
+                <a class="nav-link active" id="mt-joli-tab" data-toggle="tab" href="#mt-joli" role="tab"
+                    aria-controls="mt-joli" aria-selected="true">Mt Joli</a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link" id="coimbatore-tab" data-toggle="tab" href="#coimbatore" role="tab"
+                    aria-controls="coimbatore" aria-selected="false">Coimbatore</a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link" id="xuzhou-tab" data-toggle="tab" href="#xuzhou" role="tab" aria-controls="xuzhou"
+                    aria-selected="false">Xuzhou</a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link" id="merlimau-tab" data-toggle="tab" href="#merlimau" role="tab"
+                    aria-controls="merlimau" aria-selected="false">Merlimau</a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link" id="wodonga-tab" data-toggle="tab" href="#wodonga" role="tab"
+                    aria-controls="wodonga" aria-selected="false">Wodonga</a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link" id="wundowie-tab" data-toggle="tab" href="#wundowie" role="tab"
+                    aria-controls="wundowie" aria-selected="false">Wundowie</a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link" id="chilcal-tab" data-toggle="tab" href="#chilcal" role="tab"
+                    aria-controls="chilcal" aria-selected="false">Chilcal</a>
+            </li>
+        </ul>
+
+        <div class="tab-content" id="foundryTabsContent">
+            <div class="tab-pane fade show active" id="mt-joli" role="tabpanel" aria-labelledby="mt-joli-tab">
+                <!-- Content for Mt Joli -->
+                <canvas id="mtJoliChart" width="400" height="200"></canvas>
+                <script>
+                    const mtJoliData = {{ mt_joli_data| safe }};
+                    const ctxMtJoli = document.getElementById('mtJoliChart').getContext('2d');
+                    new Chart(ctxMtJoli, {
+                        type: 'line',
+                        data: {
+                            labels: mtJoliData.labels, // Pouring dates
+                            datasets: [{
+                                label: 'Tons',
+                                data: mtJoliData.tons, // Tons data
+                                borderColor: 'rgba(75, 192, 192, 1)',
+                                backgroundColor: 'rgba(75, 192, 192, 0.2)',
+                                borderWidth: 1
+                            }]
+                        },
+                        options: {
+                            responsive: true,
+                            scales: {
+                                x: {
+                                    title: {
+                                        display: true,
+                                        text: 'Pouring Date'
+                                    }
+                                },
+                                y: {
+                                    title: {
+                                        display: true,
+                                        text: 'Tons'
+                                    },
+                                    beginAtZero: true
+                                }
+                            }
+                        }
+                    });
+                </script>
+            </div>
+            <div class="tab-pane fade" id="coimbatore" role="tabpanel" aria-labelledby="coimbatore-tab">
+                <!-- Content for Coimbatore -->
+                <canvas id="coimbatoreChart" width="400" height="200"></canvas>
+                <script>
+                    const coimbatoreData = {{ coimbatore_data| safe }};
+                    const ctxCoimbatore = document.getElementById('coimbatoreChart').getContext('2d');
+                    new Chart(ctxCoimbatore, {
+                        type: 'line',
+                        data: {
+                            labels: coimbatoreData.labels, // Pouring dates
+                            datasets: [{
+                                label: 'Tons',
+                                data: coimbatoreData.tons, // Tons data
+                                borderColor: 'rgba(255, 99, 132, 1)',
+                                backgroundColor: 'rgba(255, 99, 132, 0.2)',
+                                borderWidth: 1
+                            }]
+                        },
+                        options: {
+                            responsive: true,
+                            scales: {
+                                x: {
+                                    title: {
+                                        display: true,
+                                        text: 'Pouring Date'
+                                    }
+                                },
+                                y: {
+                                    title: {
+                                        display: true,
+                                        text: 'Tons'
+                                    },
+                                    beginAtZero: true
+                                }
+                            }
+                        }
+                    });
+                </script>
+            </div>
+            <div class="tab-pane fade" id="xuzhou" role="tabpanel" aria-labelledby="xuzhou-tab">
+                <!-- Content for Xuzhou -->
+                <canvas id="xuzhouChart" width="400" height="200"></canvas>
+                <script>
+                    const xuzhouData = {{ xuzhou_data| safe }};
+                    const ctxXuzhou = document.getElementById('xuzhouChart').getContext('2d');
+                    new Chart(ctxXuzhou, {
+                        type: 'bar',
+                        data: {
+                            labels: xuzhouData.labels, // Pouring dates
+                            datasets: [{
+                                label: 'Tons',
+                                data: xuzhouData.tons, // Tons data
+                                backgroundColor: 'rgba(54, 162, 235, 0.2)',
+                                borderColor: 'rgba(54, 162, 235, 1)',
+                                borderWidth: 1
+                            }]
+                        },
+                        options: {
+                            responsive: true,
+                            scales: {
+                                x: {
+                                    title: {
+                                        display: true,
+                                        text: 'Pouring Date'
+                                    }
+                                },
+                                y: {
+                                    title: {
+                                        display: true,
+                                        text: 'Tons'
+                                    },
+                                    beginAtZero: true
+                                }
+                            }
+                        }
+                    });
+                </script>
+            </div>
+            <div class="tab-pane fade" id="merlimau" role="tabpanel" aria-labelledby="merlimau-tab">
+                <!-- Content for Merlimau -->
+                <canvas id="merlimauChart" width="400" height="200"></canvas>
+                <script>
+                    const merlimauData = {{ merlimau_data| safe }};
+                    const ctxMerlimau = document.getElementById('merlimauChart').getContext('2d');
+                    new Chart(ctxMerlimau, {
+                        type: 'bar',
+                        data: {
+                            labels: merlimauData.labels, // Pouring dates
+                            datasets: [{
+                                label: 'Tons',
+                                data: merlimauData.tons, // Tons data
+                                backgroundColor: 'rgba(255, 206, 86, 0.2)',
+                                borderColor: 'rgba(255, 206, 86, 1)',
+                                borderWidth: 1
+                            }]
+                        },
+                        options: {
+                            responsive: true,
+                            scales: {
+                                x: {
+                                    title: {
+                                        display: true,
+                                        text: 'Pouring Date'
+                                    }
+                                },
+                                y: {
+                                    title: {
+                                        display: true,
+                                        text: 'Tons'
+                                    },
+                                    beginAtZero: true
+                                }
+                            }
+                        }
+                    });
+                </script>
+            </div>
+            <div class="tab-pane fade" id="wodonga" role="tabpanel" aria-labelledby="wodonga-tab">
+                <!-- Content for Wodonga -->
+                <p>Content for Wodonga Foundry View</p>
+            </div>
+            <div class="tab-pane fade" id="wundowie" role="tabpanel" aria-labelledby="wundowie-tab">
+                <!-- Content for Wundowie -->
+                <p>Content for Wundowie Foundry View</p>
+            </div>
+            <div class="tab-pane fade" id="chilcal" role="tabpanel" aria-labelledby="chilcal-tab">
+                <!-- Content for Chilcal -->
+                <p>Content for Chilcal Foundry View</p>
             </div>
         </div>
     </div>

@@ -121,20 +121,23 @@ class MasterDataHistoryOfProductionModel(models.Model):
         return f"{self.version.version} - {self.Product}"
     
 class MasterDataIncotTermTypesModel(models.Model):
-    version = models.CharField(max_length=250)
-    IncoTerm = models.CharField(max_length=250)
+    version = models.ForeignKey(scenarios, to_field='version', on_delete=models.CASCADE)  # Foreign key from scenarios
+    IncoTerm = models.CharField(max_length=250)  # Not globally unique
     IncoTermCaregory = models.CharField(max_length=250)
 
-    def __str__(self):
-        return self.version
-    
-class MasterdataIncoTermsModel(models.Model):
-    version = models.CharField(max_length=250)
-    CustomerCode = models.CharField(max_length=250)
-    Incoterm = models.CharField(max_length=250)
+    class Meta:
+        unique_together = ('version', 'IncoTerm')  # Ensure uniqueness per version
 
     def __str__(self):
-        return self.version
+        return f"{self.version.version} - {self.IncoTerm}"
+    
+class MasterdataIncoTermsModel(models.Model):
+    version = models.ForeignKey(scenarios, to_field='version', max_length=250, on_delete=models.CASCADE)
+    CustomerCode = models.CharField(max_length=250)
+    Incoterm = models.ForeignKey(MasterDataIncotTermTypesModel, on_delete=models.CASCADE)  # Reference the primary key
+
+    def __str__(self):
+        return f"{self.version.version} - {self.CustomerCode} - {self.Incoterm.IncoTerm}"
     
 class MasterDataLeadTimesModel(models.Model):
     version = models.CharField(max_length=250)
@@ -328,3 +331,25 @@ class MasterDataCastToDespatchModel(models.Model):
 
     def __str__(self):
         return self.version.version
+
+class CalcualtedReplenishmentModel(models.Model):
+    version = models.ForeignKey(scenarios, to_field='version', on_delete=models.CASCADE)
+    Product = models.ForeignKey(MasterDataProductModel, to_field='Product', on_delete=models.CASCADE)
+    Location = models.CharField(max_length=100, null=True, blank=True)  # Allow NULL values
+    Site = models.ForeignKey(MasterDataPlantModel, to_field='SiteName', on_delete=models.CASCADE, null=True, blank=True)  # Allow NULL values
+    ShippingDate = models.DateField()
+    ReplenishmentQty = models.FloatField(default=0)
+
+    def __str__(self):
+        return f"{self.version.version} - {self.Product} - {self.Site.SiteName if self.Site else 'No Site'}"
+    
+class CalculatedProductionModel(models.Model):
+    version = models.ForeignKey(scenarios, to_field='version', on_delete=models.CASCADE)
+    product = models.ForeignKey(MasterDataProductModel, to_field='Product', on_delete=models.CASCADE)
+    site = models.ForeignKey(MasterDataPlantModel, to_field='SiteName', on_delete=models.CASCADE)
+    pouring_date = models.DateField()
+    production_quantity = models.FloatField(default=0)
+    tonnes = models.FloatField(default=0)
+
+    def __str__(self):
+        return f"{self.version.version} - {self.product.Product} - {self.site.SiteName} - {self.pouring_date}"

@@ -61,13 +61,14 @@ class ForecastFilterForm(forms.Form):
     product_group = forms.CharField(required=False)
     customer_code = forms.CharField(required=False)
 
+
 from django import forms
 from .models import MasterDataForecastRegionModel
 
 class ForecastRegionForm(forms.ModelForm):
     class Meta:
         model = MasterDataForecastRegionModel
-        fields = ['Forecast_region']
+        fields = ['Forecast_region']  # Include relevant fields
 
 from django import forms
 from .models import MasterDataFreightModel
@@ -76,3 +77,27 @@ class MasterDataFreightForm(forms.ModelForm):
     class Meta:
         model = MasterDataFreightModel
         fields = ['ForecastRegion', 'ManufacturingSite', 'PlantToDomesticPortDays', 'OceanFreightDays', 'PortToCustomerDays']
+
+from django import forms
+from .models import MasterDataIncotTermTypesModel
+
+class MasterDataIncotTermTypesForm(forms.ModelForm):
+    class Meta:
+        model = MasterDataIncotTermTypesModel
+        fields = ['version', 'IncoTerm', 'IncoTermCaregory']
+
+from django import forms
+from .models import MasterDataIncotTermTypesModel
+
+class MasterDataIncotTermTypesForm(forms.ModelForm):
+    class Meta:
+        model = MasterDataIncotTermTypesModel
+        exclude = ['version']  # Exclude the version field        
+
+from django import forms
+from .models import MasterdataIncoTermsModel
+
+class MasterdataIncoTermsForm(forms.ModelForm):
+    class Meta:
+        model = MasterdataIncoTermsModel
+        exclude = ['version']  # Exclude the version field

@@ -1,0 +1,29 @@
+{% extends 'website/base.html' %}
+{% block content %}
+<h1>Master Incot Terms</h1>
+<a href="{% url 'incoterm_create' %}">Create New</a>
+<a href="{% url 'incoterm_upload' %}">Upload Excel</a>
+<table>
+    <thead>
+        <tr>
+            <th>Version</th>
+            <th>IncoTerm</th>
+            <th>IncoTerm Category</th>
+            <th>Actions</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for incoterm in incoterms %}
+        <tr>
+            <td>{{ incoterm.version }}</td>
+            <td>{{ incoterm.IncoTerm }}</td>
+            <td>{{ incoterm.IncoTermCaregory }}</td>
+            <td>
+                <a href="{% url 'incoterm_update' incoterm.pk %}">Edit</a>
+                <a href="{% url 'incoterm_delete' incoterm.pk %}">Delete</a>
+            </td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% endblock %}

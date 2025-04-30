@@ -1,30 +1,3 @@
-<style>
-    .table th,
-    .table td {
-        text-align: center;
-        vertical-align: middle;
-    }
-
-    .table th:nth-child(2),
-    .table td:nth-child(2) {
-        width: 15%;
-    }
-
-    .table th:nth-child(3),
-    .table td:nth-child(3) {
-        width: 35%;
-    }
-
-    .table img {
-        width: 20px;
-        height: 20px;
-    }
-
-    .btn {
-        margin: 2px;
-    }
-</style>
-
 <!-- Forecast Data -->
 <h3>Forecast Data</h3>
 <table class="table">
@@ -84,3 +57,77 @@
         </tr>
     </tbody>
 </table>
+
+<!-- Modal for Forecast from SMART -->
+<div class="modal fade" id="uploadModalSMART" tabindex="-1" aria-labelledby="uploadModalSMARTLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="uploadModalSMARTLabel">Upload Forecast from SMART</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p>Please ensure your Excel file contains the following fields in the header:</p>
+                <ul>
+                    <li><strong>Forecast_Region</strong>: The forecast region.</li>
+                    <li><strong>Product_Group</strong>: The product group.</li>
+                    <li><strong>Product</strong>: The product name or code.</li>
+                    <li><strong>ProductFamilyDescription</strong>: The product family description.</li>
+                    <li><strong>Customer_code</strong>: The customer code.</li>
+                    <li><strong>Location</strong>: The location.</li>
+                    <li><strong>Forecasted_Weight_Curr</strong>: The forecasted weight in the current currency.</li>
+                    <li><strong>PriceAUD</strong>: The price in AUD.</li>
+                    <li><strong>DP_Cycle</strong>: The demand planning cycle.</li>
+                    <li><strong>Period_AU</strong>: The period in AU format.</li>
+                    <li><strong>Qty</strong>: The quantity.</li>
+                </ul>
+                <form method="post" enctype="multipart/form-data" action="{% url 'upload_forecast' 'SMART' %}">
+                    {% csrf_token %}
+                    <input type="hidden" name="version" value="{{ scenario.version }}">
+                    <div class="mb-3">
+                        <label for="fileSMART" class="form-label">Select Excel File</label>
+                        <input type="file" class="form-control" id="fileSMART" name="file" accept=".xlsx, .xls">
+                    </div>
+                    <button type="submit" class="btn btn-primary">Upload</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal for Forecast not in SMART -->
+<div class="modal fade" id="uploadModalNotInSMART" tabindex="-1" aria-labelledby="uploadModalNotInSMARTLabel"
+    aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="uploadModalNotInSMARTLabel">Upload Forecast not in SMART</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p>Please ensure your Excel file contains the following fields in the header:</p>
+                <ul>
+                    <li><strong>Product</strong>: The product name or code.</li>
+                    <li><strong>Location</strong>: The location.</li>
+                    <li><strong>Customer_code</strong>: The customer code.</li>
+                    <li><strong>ProductFamilyDescription</strong>: The product family description.</li>
+                    <li><strong>LOCATIONCOUNTRY</strong>: The location country.</li>
+                    <li><strong>FORECASTREGION</strong>: The forecast region.</li>
+                    <li><strong>Forecasted_Weight_Curr</strong>: The forecasted weight in the current currency.</li>
+                    <li><strong>PriceAUD</strong>: The price in AUD.</li>
+                    <li><strong>Period_AU</strong>: The period in AU format.</li>
+                    <li><strong>Qty</strong>: The quantity.</li>
+                </ul>
+                <form method="post" enctype="multipart/form-data" action="{% url 'upload_forecast' 'Not in SMART' %}">
+                    {% csrf_token %}
+                    <input type="hidden" name="version" value="{{ scenario.version }}">
+                    <div class="mb-3">
+                        <label for="fileNotInSMART" class="form-label">Select Excel File</label>
+                        <input type="file" class="form-control" id="fileNotInSMART" name="file" accept=".xlsx, .xls">
+                    </div>
+                    <button type="submit" class="btn btn-primary">Upload</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>

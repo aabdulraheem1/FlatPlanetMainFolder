@@ -21,8 +21,10 @@ urlpatterns = [
     path('list-scenarios/', views.list_scenarios, name='list_scenarios'),
     path('edit-scenario/<str:version>/', views.edit_scenario, name='edit_scenario'),
     path('delete-scenario/<str:version>/', views.delete_scenario, name='delete_scenario'),
+
     path('upload_forecast/<str:forecast_type>/', views.upload_forecast, name='upload_forecast'),    
     path('edit_forecasts/<str:version>/<str:forecast_type>/', views.edit_forecasts, name='edit_forecasts'),
+    
     path('scenario/review/<str:version>', views.review_scenario, name='review_scenario'),
     path('warningList/<str:version>', views.ScenarioWarningList, name='warningList'),
     path('create_product/', views.create_product, name='create_product'),
@@ -56,6 +58,20 @@ urlpatterns = [
     path('update_master_data_casto_to_despatch_days/<str:version>/', views.update_master_data_casto_to_despatch_days, name='update_master_data_casto_to_despatch_days'),
     path('delete_master_data_casto_to_despatch_days/<str:version>/', views.delete_master_data_casto_to_despatch_days, name='delete_master_data_casto_to_despatch_days'),
     path('copy_master_data_casto_to_despatch_days/<str:version>/', views.copy_master_data_casto_to_despatch_days, name='copy_master_data_casto_to_despatch_days'),
+
+    path('incoterms/', views.incoterm_list, name='incoterm_list'),
+    path('incoterms/create/', views.incoterm_create, name='incoterm_create'),
+    path('incoterms/<str:version>/update/', views.incoterm_update_formset, name='incoterm_update_formset'),
+    path('incoterms/<str:version>/delete/', views.incoterm_delete_all, name='incoterm_delete_all'),
+    path('incoterms/upload/', views.incoterm_upload, name='incoterm_upload'),
+
+    # Master Data Inco Terms URLs
+    path('master-data-inco-terms/<str:version>/update/', views.master_data_inco_terms_update_formset, name='master_data_inco_terms_update'),
+    path('master-data-inco-terms/<str:version>/upload/', views.master_data_inco_terms_upload, name='master_data_inco_terms_upload'),
+    path('master-data-inco-terms/<str:version>/delete/', views.master_data_inco_terms_delete_all, name='master_data_inco_terms_delete'),
+    path('master-data-inco-terms/<str:version>/copy/', views.master_data_inco_terms_copy, name='master_data_inco_terms_copy'),
+
+
 
 
     # Add other URL patterns as needed

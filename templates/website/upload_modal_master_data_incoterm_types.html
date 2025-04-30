@@ -1,0 +1,27 @@
+<div class="modal fade" id="uploadModalMasterDataIncotermTypes" tabindex="-1" aria-labelledby="uploadModalLabel"
+    aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="uploadModalLabel">Upload Master Data Incoterm Types</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p>Please ensure your Excel file contains the following fields in the header:</p>
+                <ul>
+                    <li><strong>Version</strong>: The version of the scenario.</li>
+                    <li><strong>IncoTerm</strong>: The name of the Incoterm.</li>
+                    <li><strong>IncoTermCaregory</strong>: The category of the Incoterm.</li>
+                </ul>
+                <form method="post" enctype="multipart/form-data" action="{% url 'incoterm_upload' %}">
+                    {% csrf_token %}
+                    <div class="mb-3">
+                        <label for="file" class="form-label">Select Excel File</label>
+                        <input type="file" class="form-control" id="file" name="file" accept=".xlsx, .xls">
+                    </div>
+                    <button type="submit" class="btn btn-primary">Upload</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>

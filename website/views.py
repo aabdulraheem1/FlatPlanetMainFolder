@@ -1,7 +1,7 @@
 from django.shortcuts import render, redirect
 import pandas as pd
 from django.core.files.storage import FileSystemStorage
-from .models import SMART_Forecast_Model, scenarios, MasterDataHistoryOfProductionModel, MasterDataCastToDespatchModel
+from .models import SMART_Forecast_Model, scenarios, MasterDataHistoryOfProductionModel, MasterDataCastToDespatchModel, MasterdataIncoTermsModel, MasterDataIncotTermTypesModel
 import pandas as pd
 from django.shortcuts import render, redirect
 from django.http import HttpResponseRedirect
@@ -353,6 +353,12 @@ def edit_scenario(request, version):
     on_hand_stock_in_transit = MasterDataInventory.objects.filter(version=scenario).exists()
     master_data_freight_has_data = MasterDataFreightModel.objects.filter(version=scenario).exists()
 
+    # Check if there is data for Master Data Incoterm Types
+    master_data_incoterm_types_has_data = MasterDataIncotTermTypesModel.objects.filter(version=scenario).exists()
+    master_data_inco_terms_has_data = MasterdataIncoTermsModel.objects.filter(version=scenario).exists()
+    master_data_casto_to_despatch_days_has_data = MasterDataCastToDespatchModel.objects.filter(version=scenario).exists()
+    incoterms = MasterDataIncotTermTypesModel.objects.filter(version=scenario)  # Retrieve all incoterms for the scenario
+
     # Retrieve missing regions from the session
     missing_regions = request.session.pop('missing_regions', None)
 
@@ -376,6 +382,10 @@ def edit_scenario(request, version):
         'not_in_smart_forecast_data': not_in_smart_forecast_data,
         'on_hand_stock_in_transit': on_hand_stock_in_transit,
         'master_data_freight_has_data': master_data_freight_has_data,
+        'master_data_incoterm_types_has_data': master_data_incoterm_types_has_data,
+        'master_data_casto_to_despatch_days_has_data': master_data_casto_to_despatch_days_has_data,
+        'master_data_inco_terms_has_data': master_data_inco_terms_has_data,
+        'incoterms': incoterms,  # Pass incoterms to the template
         'missing_regions': missing_regions,  # Pass missing regions to the template
     })
 
@@ -393,10 +403,11 @@ def delete_scenario(request, version):
     scenario.delete()
     return redirect('list_scenarios')
 
-from django.core.exceptions import ObjectDoesNotExist
-from django.shortcuts import redirect, render
-from django.core.files.storage import FileSystemStorage
+# filepath: c:\Users\aali\Documents\Data\Training\SPR\SPR\website\views.py
+from django.shortcuts import get_object_or_404, render, redirect
+from .models import scenarios, SMART_Forecast_Model
 import pandas as pd
+from django.core.files.storage import FileSystemStorage
 
 @login_required
 def upload_forecast(request, forecast_type):
@@ -406,17 +417,21 @@ def upload_forecast(request, forecast_type):
         filename = fs.save(file.name, file)
         file_path = fs.path(filename)
 
+        # Debugging: Log the version from the POST request
+        version_value = request.POST.get('version')
+        print("Version from POST request:", version_value)
+
+        # Get the scenario version based on the forecast_type or version
+        try:
+            version = scenarios.objects.get(version=version_value)
+        except scenarios.DoesNotExist:
+            return render(request, 'website/upload_forecast.html', {
+                'error_message': 'The specified scenario does not exist.',
+                'version': version_value
+            })
+
         # Read the Excel file
         df = pd.read_excel(file_path)
-
-        try:
-            # Get the scenario version
-            version = scenarios.objects.get(version=request.POST.get('version'))
-        except ObjectDoesNotExist:
-            # Handle the case where the scenario does not exist
-            return render(request, 'upload_forecast.html', {
-                'error_message': 'Scenario matching query does not exist.'
-            })
 
         # Set the data source based on the forecast type
         data_source = 'SMART' if forecast_type == 'SMART' else 'Not in SMART'
@@ -439,61 +454,59 @@ def upload_forecast(request, forecast_type):
                 Qty=row.get('Qty') if pd.notna(row.get('Qty')) else None
             )
 
-        return redirect('edit_scenario', version=version.version)  # Redirect to a relevant view after upload
+        # Redirect to the edit scenario page after upload
+        return redirect('edit_scenario', version=version.version)
 
-    return render(request, 'upload_forecast.html')
+    # Pass the version to the template for the form
+    return render(request, 'website/upload_forecast.html', {'version': forecast_type})
 
-from django.shortcuts import get_object_or_404, redirect, render
-from django.views.decorators.csrf import csrf_protect
+# filepath: c:\Users\aali\Documents\Data\Training\SPR\SPR\website\views.py
 from django.core.paginator import Paginator
-from .models import SMART_Forecast_Model
-from .forms import SMARTForecastFormSet, ForecastFilterForm
+from django.db.models import Q
+from django.shortcuts import render, get_object_or_404
+from .models import SMART_Forecast_Model, scenarios
 
-@csrf_protect
+@login_required
 def edit_forecasts(request, version, forecast_type):
     scenario = get_object_or_404(scenarios, version=version)
-    
-    if forecast_type == 'SMART':
-        queryset = SMART_Forecast_Model.objects.filter(version=scenario, Data_Source='SMART').order_by('id')
-    else:
-        queryset = SMART_Forecast_Model.objects.filter(version=scenario, Data_Source='Not in SMART').order_by('id')
 
-    filter_form = ForecastFilterForm(request.GET)
-    if filter_form.is_valid():
-        if filter_form.cleaned_data['forecast_region']:
-            queryset = queryset.filter(Forecast_Region=filter_form.cleaned_data['forecast_region'])
-        if filter_form.cleaned_data['product_group']:
-            queryset = queryset.filter(Product_Group=filter_form.cleaned_data['product_group'])
-        if filter_form.cleaned_data['customer_code']:
-            queryset = queryset.filter(Customer_code=filter_form.cleaned_data['customer_code'])
+    # Get filter parameters
+    product_filter = request.GET.get('product', '')
+    region_filter = request.GET.get('region', '')
+    date_filter = request.GET.get('date', '')
+    location_filter = request.GET.get('location', '')
 
-    paginator = Paginator(queryset, 20)  # Show 20 records per page
+    # Filter the data
+    forecasts = SMART_Forecast_Model.objects.filter(version=scenario.version, Data_Source=forecast_type)
+    if product_filter:
+        forecasts = forecasts.filter(Product__icontains=product_filter)
+    if region_filter:
+        forecasts = forecasts.filter(Forecast_Region__icontains=region_filter)
+    if date_filter:
+        forecasts = forecasts.filter(Period_AU=date_filter)
+    if location_filter:
+        forecasts = forecasts.filter(Location__icontains=location_filter)
+
+    # Paginate the results
+    paginator = Paginator(forecasts, 10)  # Show 10 forecasts per page
     page_number = request.GET.get('page')
     page_obj = paginator.get_page(page_number)
 
-    if request.method == 'POST':
-        formset = SMARTForecastFormSet(request.POST, queryset=page_obj.object_list)
-        if formset.is_valid():
-            formset.save()
-            return redirect('edit_scenario', version=version)
-        else:
-            print(formset.errors)  # Debugging: Print formset errors if not valid
-            form_errors = formset.errors
-    else:
-        formset = SMARTForecastFormSet(queryset=page_obj.object_list)
-
     return render(request, 'website/edit_forecasts.html', {
-        'formset': formset,
         'scenario': scenario,
+        'formset': page_obj.object_list,
         'page_obj': page_obj,
-        'filter_form': filter_form,
-        'form_errors': form_errors if request.method == 'POST' else None
+        'request': request,
+        'forecast_type': forecast_type,
     })
 
 
 from django.shortcuts import render
 from django.core.serializers.json import DjangoJSONEncoder
 import json
+from django.db.models.functions import TruncMonth
+from django.db.models import Sum
+from .models import CalculatedProductionModel
 
 @login_required
 def review_scenario(request, version):
@@ -502,40 +515,46 @@ def review_scenario(request, version):
     # Fetch the version object
     version = scenarios.objects.get(version=version)
 
-    # Fetch data from AggregatedForecast model filtered by the version
-    forecasts = AggregatedForecast.objects.filter(version=version)
+    # Filter and group data for each site by month
+    def get_monthly_data(site_name):
+        queryset = (
+            CalculatedProductionModel.objects.filter(site__SiteName=site_name)
+            .annotate(month=TruncMonth('pouring_date'))  # Group by month
+            .values('month')  # Select the month
+            .annotate(total_tonnes=Sum('tonnes'))  # Sum the tonnes for each month
+            .order_by('month')  # Order by month
+        )
+        return queryset
 
-    # Process data to structure it for the chart
-    chart_data = {}
-    region_data = {}
-    for forecast in forecasts:
-        period = forecast.period.strftime('%Y-%m-%d')
-        parent_group = forecast.parent_product_group_description
-        tonnes = forecast.tonnes
-        region = forecast.forecast_region
+    # Prepare data for Chart.js
+    def prepare_chart_data(queryset):
+        labels = [entry['month'].strftime('%Y-%m') for entry in queryset]  # Format month as 'YYYY-MM'
+        tons = [entry['total_tonnes'] for entry in queryset]
+        return {'labels': labels, 'tons': tons}
 
-        if period not in chart_data:
-            chart_data[period] = {}
-        if parent_group not in chart_data[period]:
-            chart_data[period][parent_group] = 0
-        chart_data[period][parent_group] += tonnes
+    # Get data for each site
+    mt_joli_data = get_monthly_data('MTJ1')
+    coimbatore_data = get_monthly_data('COI2')
+    xuzhou_data = get_monthly_data('XUZ1')
+    merlimau_data = get_monthly_data('MER1')
+    wodonga_data = get_monthly_data('WON1')
+    wundowie_data = get_monthly_data('WUN1')
+    chilcal_data = get_monthly_data('CHILCA')
 
-        if period not in region_data:
-            region_data[period] = {}
-        if region not in region_data[period]:
-            region_data[period][region] = 0
-        region_data[period][region] += tonnes
-
-    # Convert data to JSON format
-    chart_data_json = json.dumps(chart_data, cls=DjangoJSONEncoder)
-    region_data_json = json.dumps(region_data, cls=DjangoJSONEncoder)
-
-    return render(request, 'website/review_scenario.html', {
+    # Prepare context with chart data
+    context = {
         'version': version.version,
-        'chart_data_parent_product_group': chart_data_json,
-        'chart_data_forecast_region': region_data_json,
         'user_name': user_name,
-    })
+        'mt_joli_data': prepare_chart_data(mt_joli_data),
+        'coimbatore_data': prepare_chart_data(coimbatore_data),
+        'xuzhou_data': prepare_chart_data(xuzhou_data),
+        'merlimau_data': prepare_chart_data(merlimau_data),
+        'wodonga_data': prepare_chart_data(wodonga_data),
+        'wundowie_data': prepare_chart_data(wundowie_data),
+        'chilcal_data': prepare_chart_data(chilcal_data),
+    }
+
+    return render(request, 'website/review_scenario.html', context)
 
 
 
@@ -1035,10 +1054,12 @@ def upload_on_hand_stock(request, version):
         # Redirect to the scenario edit page after successful update
         return redirect('edit_scenario', version=version)
 
+    
     # Render the form to enter the snapshot date
     return render(request, 'website/upload_on_hand_stock.html', {
         'scenario': scenario
     })
+    
 
 @login_required
 def copy_on_hand_stock(request, version):
@@ -1089,13 +1110,28 @@ from django.shortcuts import render, get_object_or_404, redirect
 from .models import MasterDataForecastRegionModel
 from .forms import ForecastRegionForm  # Create this form if it doesn't exist
 
+# filepath: c:\Users\aali\Documents\Data\Training\SPR\SPR\website\views.py
+from .forms import ForecastRegionForm
+
 @login_required
 def forecast_region_list(request):
     """
-    View to display the list of forecast regions.
+    View to display the list of forecast regions and add new ones.
     """
     forecast_regions = MasterDataForecastRegionModel.objects.all()
-    return render(request, 'website/forecast_region_list.html', {'forecast_regions': forecast_regions})
+
+    if request.method == 'POST':
+        form = ForecastRegionForm(request.POST)
+        if form.is_valid():
+            form.save()
+            return redirect('ForecastRegionList')  # Redirect to the same page after adding a region
+    else:
+        form = ForecastRegionForm()
+
+    return render(request, 'website/forecast_region_list.html', {
+        'forecast_regions': forecast_regions,
+        'form': form,
+    })
 
 
 @login_required
@@ -1148,15 +1184,18 @@ import pandas as pd  # For handling Excel files
 
 from django.forms import modelformset_factory
 
-from django.forms import modelformset_factory
+
 
 @login_required
 def update_master_data_freight(request, version):
     """
     View to update and add new Master Data Freight records.
     """
+    # Fetch the scenario instance
+    scenario = get_object_or_404(scenarios, version=version)
+
     # Get the records for the given version
-    freight_records = MasterDataFreightModel.objects.filter(version=version)
+    freight_records = MasterDataFreightModel.objects.filter(version=scenario)
 
     # Create a formset for the records, allowing extra empty forms for new entries
     FreightFormSet = modelformset_factory(
@@ -1168,10 +1207,9 @@ def update_master_data_freight(request, version):
     if request.method == 'POST':
         formset = FreightFormSet(request.POST, queryset=freight_records)
         if formset.is_valid():
-            # Save the formset
             instances = formset.save(commit=False)
             for instance in instances:
-                instance.version = version  # Ensure the version is set for new records
+                instance.version = scenario  # Assign the scenario instance to the version field
                 instance.save()
             return redirect('edit_scenario', version=version)
     else:
@@ -1306,25 +1344,179 @@ def delete_master_data_casto_to_despatch_days(request, version):
         return redirect('edit_scenario', version=version)
     return render(request, 'website/delete_master_data_casto_to_despatch_days.html', {'version': version})
 
-
 @login_required
 def copy_master_data_casto_to_despatch_days(request, version):
     """
     View to copy Master Data Casto to Despatch Days records from one version to another.
     """
+    # Get the current scenario
+    scenario = get_object_or_404(scenarios, version=version)
+
+    # Fetch versions with populated data for MasterDataCastToDespatchModel
+    populated_versions = MasterDataCastToDespatchModel.objects.values_list('version__version', flat=True).distinct()
+
     if request.method == 'POST':
         source_version = request.POST.get('source_version')
         if source_version:
-            source_records = MasterDataCastToDespatchModel.objects.filter(version=source_version)
+            source_scenario = get_object_or_404(scenarios, version=source_version)
+            source_records = MasterDataCastToDespatchModel.objects.filter(version=source_scenario)
             for record in source_records:
                 record.pk = None  # Create a new record
-                record.version = version
+                record.version = scenario  # Assign the current scenario
                 record.save()
             return redirect('edit_scenario', version=version)
-    return render(request, 'website/copy_master_data_casto_to_despatch_days.html', {'version': version})
+
+    return render(request, 'website/copy_master_data_casto_to_despatch_days.html', {
+        'version': version,
+        'populated_versions': populated_versions,
+    })
+
+from django.shortcuts import render, get_object_or_404, redirect
+from django.http import HttpResponse
+from .models import MasterDataIncotTermTypesModel
+from .forms import MasterDataIncotTermTypesForm
+import pandas as pd
+
+def incoterm_list(request):
+    """List all Master Incot Terms."""
+    incoterms = MasterDataIncotTermTypesModel.objects.all()
+    return render(request, 'website/incoterm_list.html', {'incoterms': incoterms})
+
+def incoterm_create(request):
+    """Create a new Master Incot Term."""
+    if request.method == 'POST':
+        form = MasterDataIncotTermTypesForm(request.POST)
+        if form.is_valid():
+            form.save()
+            return redirect('incoterm_list')
+    else:
+        form = MasterDataIncotTermTypesForm()
+    return render(request, 'website/incoterm_form.html', {'form': form})
+
+from django.shortcuts import render, redirect, get_object_or_404
+from django.forms import modelformset_factory
+from .models import MasterDataIncotTermTypesModel
+from .forms import MasterDataIncotTermTypesForm
+
+def incoterm_update_formset(request, version):
+    scenario = get_object_or_404(scenarios, version=version)
+    IncotermFormSet = modelformset_factory(MasterDataIncotTermTypesModel, form=MasterDataIncotTermTypesForm, extra=0)
+
+    if request.method == 'POST':
+        formset = IncotermFormSet(request.POST, queryset=MasterDataIncotTermTypesModel.objects.filter(version=scenario))
+        if formset.is_valid():
+            formset.save()
+            return redirect('edit_scenario', version=version)
+    else:
+        formset = IncotermFormSet(queryset=MasterDataIncotTermTypesModel.objects.filter(version=scenario))
+
+    return render(request, 'website/incoterm_formset.html', {'formset': formset, 'scenario': scenario})
+
+from django.shortcuts import redirect, get_object_or_404
+from .models import MasterDataIncotTermTypesModel
+
+def incoterm_delete_all(request, version):
+    scenario = get_object_or_404(scenarios, version=version)
+    MasterDataIncotTermTypesModel.objects.filter(version=scenario).delete()
+    return redirect('edit_scenario', version=version)
+
+# views.py
+from django.shortcuts import render, redirect
+from django.http import HttpResponse
+import pandas as pd
+from .models import MasterDataIncotTermTypesModel
+
+def incoterm_upload(request):
+    if request.method == 'POST' and request.FILES['file']:
+        excel_file = request.FILES['file']
+        try:
+            df = pd.read_excel(excel_file)
+            required_columns = ['Version', 'IncoTerm', 'IncoTermCaregory']
+            if not all(col in df.columns for col in required_columns):
+                return HttpResponse("Invalid file format. Required columns: Version, IncoTerm, IncoTermCaregory.")
+            for _, row in df.iterrows():
+                MasterDataIncotTermTypesModel.objects.update_or_create(
+                    version_id=row['Version'],
+                    IncoTerm=row['IncoTerm'],
+                    defaults={'IncoTermCaregory': row['IncoTermCaregory']}
+                )
+            return redirect('incoterm_list')
+        except Exception as e:
+            return HttpResponse(f"Error processing file: {e}")
+    return render(request, 'website/incoterm_upload.html')
+
+from django.shortcuts import render, redirect, get_object_or_404
+from django.forms import modelformset_factory
+from .models import MasterdataIncoTermsModel, scenarios
+from .forms import MasterdataIncoTermsForm
+
+def master_data_inco_terms_update_formset(request, version):
+    scenario = get_object_or_404(scenarios, version=version)
+    IncoTermsFormSet = modelformset_factory(MasterdataIncoTermsModel, form=MasterdataIncoTermsForm, extra=0)
+
+    if request.method == 'POST':
+        formset = IncoTermsFormSet(request.POST, queryset=MasterdataIncoTermsModel.objects.filter(version=scenario))
+        if formset.is_valid():
+            formset.save()
+            return redirect('edit_scenario', version=version)
+    else:
+        formset = IncoTermsFormSet(queryset=MasterdataIncoTermsModel.objects.filter(version=scenario))
+
+    return render(request, 'website/master_data_inco_terms_formset.html', {'formset': formset, 'scenario': scenario})
+
+from django.shortcuts import render, redirect, get_object_or_404
+from django.contrib import messages
+from .models import MasterdataIncoTermsModel
+import csv
+
+@login_required
+def master_data_inco_terms_upload(request, version):
+    scenario = get_object_or_404(scenarios, version=version)
+
+    if request.method == 'POST' and request.FILES['file']:
+        file = request.FILES['file']
+        try:
+            # Process the uploaded file (example: CSV file)
+            decoded_file = file.read().decode('utf-8').splitlines()
+            reader = csv.DictReader(decoded_file)
+
+            for row in reader:
+                # Example: Save each row to the database
+                MasterDataIncoTermsModel.objects.create(
+                    version=scenario,
+                    inco_term=row['IncoTerm'],
+                    description=row['Description'],
+                )
+
+            messages.success(request, 'Master Data Inco Terms uploaded successfully.')
+        except Exception as e:
+            messages.error(request, f'Error uploading file: {e}')
+
+        return redirect('other_master_data_section', version=version)
+
+    return render(request, 'website/other_master_data_section.html', {'scenario': scenario})
+
+def master_data_inco_terms_delete_all(request, version):
+    scenario = get_object_or_404(scenarios, version=version)
+    MasterdataIncoTermsModel.objects.filter(version=scenario).delete()
+    return redirect('edit_scenario', version=version)
 
 
 
+def master_data_inco_terms_copy(request, version):
+    scenario = get_object_or_404(scenarios, version=version)
+    new_version = request.POST.get('new_version')
+    new_scenario = get_object_or_404(scenarios, version=new_version)
+
+    for record in MasterdataIncoTermsModel.objects.filter(version=scenario):
+        MasterdataIncoTermsModel.objects.create(
+            version=new_scenario,
+            CustomerCode=record.CustomerCode,
+            Incoterm=record.Incoterm
+        )
+    return redirect('edit_scenario', version=new_version)
+
+        
 
 
 

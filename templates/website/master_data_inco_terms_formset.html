@@ -1,0 +1,56 @@
+{% extends 'website/base.html' %}
+{% block content %}
+<h1 class="mb-4">Update Master Data Inco Terms for {{ scenario.version }}</h1>
+
+<!-- Filter Section -->
+<div class="mb-3">
+    <label for="customerFilter" class="form-label">Filter by Customer Code:</label>
+    <input type="text" id="customerFilter" class="form-control" placeholder="Enter Customer Code to filter...">
+</div>
+
+<!-- Form Section -->
+<form method="post" class="mb-4">
+    {% csrf_token %}
+    {{ formset.management_form }}
+    <table class="table table-bordered table-striped" id="incotermsTable">
+        <thead>
+            <tr>
+                <th>#</th>
+                <th>Customer Code</th>
+                <th>Incoterm</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for form in formset %}
+            <tr>
+                <td>{{ forloop.counter }}</td>
+                <td class="customer-code">{{ form.instance.CustomerCode }}</td>
+                <td>{{ form.Incoterm }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    <button type="submit" class="btn btn-primary">Save Changes</button>
+    <a href="{% url 'edit_scenario' scenario.version %}" class="btn btn-secondary">Cancel</a>
+</form>
+
+<!-- JavaScript for Filtering -->
+<script>
+    document.getElementById('customerFilter').addEventListener('input', function () {
+        const filterValue = this.value.toLowerCase().trim(); // Normalize input
+        const rows = document.querySelectorAll('#incotermsTable tbody tr');
+
+        rows.forEach(row => {
+            const customerCodeElement = row.querySelector('.customer-code');
+            const customerCode = customerCodeElement ? customerCodeElement.textContent.toLowerCase().trim() : '';
+
+            // Show or hide the row based on the filter
+            if (customerCode.includes(filterValue)) {
+                row.style.display = '';
+            } else {
+                row.style.display = 'none';
+            }
+        });
+    });
+</script>
+{% endblock %}

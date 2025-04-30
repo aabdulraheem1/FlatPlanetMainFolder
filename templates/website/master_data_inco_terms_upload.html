@@ -1,0 +1,18 @@
+{% extends 'website/base.html' %}
+{% block content %}
+<h1 class="mb-4">Upload Master Data Inco Terms for {{ scenario.version }}</h1>
+<form method="post" enctype="multipart/form-data">
+    {% csrf_token %}
+    <div class="mb-3">
+        <label for="file" class="form-label">Select Excel File</label>
+        <input type="file" class="form-control" id="file" name="file" accept=".xlsx, .xls">
+    </div>
+    <p>Please ensure your Excel file contains the following columns:</p>
+    <ul>
+        <li><strong>CustomerCode</strong>: The customer code.</li>
+        <li><strong>Incoterm</strong>: The name of the Incoterm.</li>
+    </ul>
+    <button type="submit" class="btn btn-primary">Upload</button>
+    <a href="{% url 'edit_scenario' scenario.version %}" class="btn btn-secondary">Cancel</a>
+</form>
+{% endblock %}

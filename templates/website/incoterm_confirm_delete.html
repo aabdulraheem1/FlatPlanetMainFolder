@@ -1,0 +1,10 @@
+{% extends 'website/base.html' %}
+{% block content %}
+<h1>Delete Master Incot Term</h1>
+<p>Are you sure you want to delete "{{ incoterm }}"?</p>
+<form method="post">
+    {% csrf_token %}
+    <button type="submit">Yes, delete</button>
+</form>
+<a href="{% url 'incoterm_list' %}">Cancel</a>
+{% endblock %}
