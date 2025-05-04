@@ -17,10 +17,25 @@ class Command(BaseCommand):
         forecasts = SMART_Forecast_Model.objects.all()
         for forecast in forecasts:
             try:
+                # Fetch the related product data
                 product_data = MasterDataProductModel.objects.get(Product=forecast.Product)
+
+                # Calculate Tonnes
+                dress_mass = product_data.DressMass
+                if forecast.Qty is not None and dress_mass not in [None, 0]:
+                    # Primary calculation: Qty * DressMass / 1000
+                    tonnes = forecast.Qty * dress_mass / 1000
+                elif forecast.Qty is not None and forecast.PriceAUD is not None:
+                    # Fallback calculation: (Qty * Price * 0.65) / 5000
+                    tonnes = (forecast.Qty * forecast.PriceAUD * 0.65) / 5000
+                else:
+                    # Default to 0 if neither calculation is possible
+                    tonnes = 0
+
+                # Create an AggregatedForecast instance
                 aggregated_forecast = AggregatedForecast(
                     version=forecast.version,
-                    tonnes=forecast.Tonnes,
+                    tonnes=tonnes,  # Use the calculated tonnes
                     forecast_region=forecast.Forecast_Region,
                     customer_code=forecast.Customer_code,
                     period=forecast.Period_AU,

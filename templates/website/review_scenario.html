@@ -7,7 +7,7 @@
 
 <head>
     <meta charset="UTF-8">
-    <title>Forecast Analysis</title>
+    <title>Review Scenario</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <!-- Include Bootstrap CSS -->
     <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css">
@@ -21,9 +21,9 @@
         </div>
     </div>
 
+    <!-- Section 1: Forecast Analysis -->
     <div class="container mt-5">
         <h2>Forecast Analysis</h2>
-        <!-- First Line of Tabs -->
         <ul class="nav nav-tabs" id="forecastTabs" role="tablist">
             <li class="nav-item">
                 <a class="nav-link active" id="product-group-tab" data-toggle="tab" href="#product-group" role="tab"
@@ -46,26 +46,79 @@
         <div class="tab-content" id="forecastTabsContent">
             <div class="tab-pane fade show active" id="product-group" role="tabpanel"
                 aria-labelledby="product-group-tab">
-                <!-- Content for By Product Group -->
                 <canvas id="productGroupChart" width="400" height="200"></canvas>
             </div>
             <div class="tab-pane fade" id="parent-product-group" role="tabpanel"
                 aria-labelledby="parent-product-group-tab">
                 <canvas id="ParentGroupChart" width="400" height="200"></canvas>
-                {% include 'website/forecast_by_parent_product_group_chart.html' %}
+                <script>
+                    const parentProductGroupData = {{ chart_data_parent_product_group| safe }};
+                    const ctxParentGroup = document.getElementById('ParentGroupChart').getContext('2d');
+
+                    // Prepare datasets for each parent product group
+                    const datasets = Object.keys(parentProductGroupData).map(group => ({
+                        label: group, // Legend for the parent product group
+                        data: parentProductGroupData[group].tons, // Tonnes data
+                        backgroundColor: `rgba(${Math.floor(Math.random() * 255)}, ${Math.floor(Math.random() * 255)}, ${Math.floor(Math.random() * 255)}, 0.6)`,
+                        borderColor: `rgba(${Math.floor(Math.random() * 255)}, ${Math.floor(Math.random() * 255)}, ${Math.floor(Math.random() * 255)}, 1)`,
+                        borderWidth: 1
+                    }));
+
+                    // Use the labels from the first group (assuming all groups have the same labels)
+                    const labels = parentProductGroupData[Object.keys(parentProductGroupData)[0]].labels;
+
+                    new Chart(ctxParentGroup, {
+                        type: 'bar',
+                        data: {
+                            labels: labels, // Monthly buckets
+                            datasets: datasets // Datasets for each parent product group
+                        },
+                        options: {
+                            responsive: true,
+                            plugins: {
+                                title: {
+                                    display: true,
+                                    text: 'Forecast by Parent Product Group (Stacked)'
+                                },
+                                tooltip: {
+                                    mode: 'index',
+                                    intersect: false
+                                }
+                            },
+                            scales: {
+                                x: {
+                                    stacked: true, // Enable stacking on the x-axis
+                                    title: {
+                                        display: true,
+                                        text: 'Month'
+                                    }
+                                },
+                                y: {
+                                    stacked: true, // Enable stacking on the y-axis
+                                    title: {
+                                        display: true,
+                                        text: 'Tons'
+                                    },
+                                    beginAtZero: true
+                                }
+                            }
+                        }
+                    });
+                </script>
             </div>
             <div class="tab-pane fade" id="region" role="tabpanel" aria-labelledby="region-tab">
-                <!-- Content for By Region -->
-                {% include 'website/forecast_by_region_chart.html' %}
+                <canvas id="regionChart" width="400" height="200"></canvas>
             </div>
             <div class="tab-pane fade" id="customer" role="tabpanel" aria-labelledby="customer-tab">
-                <!-- Content for By Customer -->
                 <canvas id="customerChart" width="400" height="200"></canvas>
             </div>
         </div>
+    </div>
 
-        <!-- Second Line of Tabs: Foundry View -->
-        <ul class="nav nav-tabs mt-3" id="foundryTabs" role="tablist">
+    <!-- Section 2: Foundry Tabs -->
+    <div class="container mt-5">
+        <h2>Foundry Review</h2>
+        <ul class="nav nav-tabs" id="foundryTabs" role="tablist">
             <li class="nav-item">
                 <a class="nav-link active" id="mt-joli-tab" data-toggle="tab" href="#mt-joli" role="tab"
                     aria-controls="mt-joli" aria-selected="true">Mt Joli</a>
@@ -82,38 +135,39 @@
                 <a class="nav-link" id="merlimau-tab" data-toggle="tab" href="#merlimau" role="tab"
                     aria-controls="merlimau" aria-selected="false">Merlimau</a>
             </li>
-            <li class="nav-item">
-                <a class="nav-link" id="wodonga-tab" data-toggle="tab" href="#wodonga" role="tab"
-                    aria-controls="wodonga" aria-selected="false">Wodonga</a>
-            </li>
-            <li class="nav-item">
-                <a class="nav-link" id="wundowie-tab" data-toggle="tab" href="#wundowie" role="tab"
-                    aria-controls="wundowie" aria-selected="false">Wundowie</a>
-            </li>
-            <li class="nav-item">
-                <a class="nav-link" id="chilcal-tab" data-toggle="tab" href="#chilcal" role="tab"
-                    aria-controls="chilcal" aria-selected="false">Chilcal</a>
-            </li>
         </ul>
 
         <div class="tab-content" id="foundryTabsContent">
+            <!-- Mt Joli Chart -->
             <div class="tab-pane fade show active" id="mt-joli" role="tabpanel" aria-labelledby="mt-joli-tab">
-                <!-- Content for Mt Joli -->
                 <canvas id="mtJoliChart" width="400" height="200"></canvas>
                 <script>
-                    const mtJoliData = {{ mt_joli_data| safe }};
+                    const mtJoliData = {{ mt_joli_chart_data| safe }};
                     const ctxMtJoli = document.getElementById('mtJoliChart').getContext('2d');
+
                     new Chart(ctxMtJoli, {
-                        type: 'line',
+                        type: 'bar',
                         data: {
-                            labels: mtJoliData.labels, // Pouring dates
-                            datasets: [{
-                                label: 'Tons',
-                                data: mtJoliData.tons, // Tons data
-                                borderColor: 'rgba(75, 192, 192, 1)',
-                                backgroundColor: 'rgba(75, 192, 192, 0.2)',
-                                borderWidth: 1
-                            }]
+                            labels: mtJoliData.labels,
+                            datasets: [
+                                {
+                                    label: 'Tonnes',
+                                    data: mtJoliData.tons,
+                                    backgroundColor: 'rgba(75, 192, 192, 0.2)',
+                                    borderColor: 'rgba(75, 192, 192, 1)',
+                                    borderWidth: 1
+                                },
+                                {
+                                    label: 'Dress Mass',
+                                    data: mtJoliData.dress_mass,
+                                    type: 'line',
+                                    borderColor: 'rgba(255, 99, 132, 1)',
+                                    backgroundColor: 'rgba(255, 99, 132, 0.2)',
+                                    borderWidth: 2,
+                                    fill: false,
+                                    tension: 0.4
+                                }
+                            ]
                         },
                         options: {
                             responsive: true,
@@ -121,13 +175,13 @@
                                 x: {
                                     title: {
                                         display: true,
-                                        text: 'Pouring Date'
+                                        text: 'Month'
                                     }
                                 },
                                 y: {
                                     title: {
                                         display: true,
-                                        text: 'Tons'
+                                        text: 'Tonnes / Dress Mass'
                                     },
                                     beginAtZero: true
                                 }
@@ -136,23 +190,37 @@
                     });
                 </script>
             </div>
+
+            <!-- Coimbatore Chart -->
             <div class="tab-pane fade" id="coimbatore" role="tabpanel" aria-labelledby="coimbatore-tab">
-                <!-- Content for Coimbatore -->
                 <canvas id="coimbatoreChart" width="400" height="200"></canvas>
                 <script>
-                    const coimbatoreData = {{ coimbatore_data| safe }};
+                    const coimbatoreData = {{ coimbatore_chart_data| safe }};
                     const ctxCoimbatore = document.getElementById('coimbatoreChart').getContext('2d');
+
                     new Chart(ctxCoimbatore, {
-                        type: 'line',
+                        type: 'bar',
                         data: {
-                            labels: coimbatoreData.labels, // Pouring dates
-                            datasets: [{
-                                label: 'Tons',
-                                data: coimbatoreData.tons, // Tons data
-                                borderColor: 'rgba(255, 99, 132, 1)',
-                                backgroundColor: 'rgba(255, 99, 132, 0.2)',
-                                borderWidth: 1
-                            }]
+                            labels: coimbatoreData.labels,
+                            datasets: [
+                                {
+                                    label: 'Tonnes',
+                                    data: coimbatoreData.tons,
+                                    backgroundColor: 'rgba(75, 192, 192, 0.2)',
+                                    borderColor: 'rgba(75, 192, 192, 1)',
+                                    borderWidth: 1
+                                },
+                                {
+                                    label: 'Dress Mass',
+                                    data: coimbatoreData.dress_mass,
+                                    type: 'line',
+                                    borderColor: 'rgba(255, 99, 132, 1)',
+                                    backgroundColor: 'rgba(255, 99, 132, 0.2)',
+                                    borderWidth: 2,
+                                    fill: false,
+                                    tension: 0.4
+                                }
+                            ]
                         },
                         options: {
                             responsive: true,
@@ -160,13 +228,13 @@
                                 x: {
                                     title: {
                                         display: true,
-                                        text: 'Pouring Date'
+                                        text: 'Month'
                                     }
                                 },
                                 y: {
                                     title: {
                                         display: true,
-                                        text: 'Tons'
+                                        text: 'Tonnes / Dress Mass'
                                     },
                                     beginAtZero: true
                                 }
@@ -175,23 +243,37 @@
                     });
                 </script>
             </div>
+
+            <!-- Xuzhou Chart -->
             <div class="tab-pane fade" id="xuzhou" role="tabpanel" aria-labelledby="xuzhou-tab">
-                <!-- Content for Xuzhou -->
                 <canvas id="xuzhouChart" width="400" height="200"></canvas>
                 <script>
-                    const xuzhouData = {{ xuzhou_data| safe }};
+                    const xuzhouData = {{ xuzhou_chart_data| safe }};
                     const ctxXuzhou = document.getElementById('xuzhouChart').getContext('2d');
+
                     new Chart(ctxXuzhou, {
                         type: 'bar',
                         data: {
-                            labels: xuzhouData.labels, // Pouring dates
-                            datasets: [{
-                                label: 'Tons',
-                                data: xuzhouData.tons, // Tons data
-                                backgroundColor: 'rgba(54, 162, 235, 0.2)',
-                                borderColor: 'rgba(54, 162, 235, 1)',
-                                borderWidth: 1
-                            }]
+                            labels: xuzhouData.labels,
+                            datasets: [
+                                {
+                                    label: 'Tonnes',
+                                    data: xuzhouData.tons,
+                                    backgroundColor: 'rgba(75, 192, 192, 0.2)',
+                                    borderColor: 'rgba(75, 192, 192, 1)',
+                                    borderWidth: 1
+                                },
+                                {
+                                    label: 'Dress Mass',
+                                    data: xuzhouData.dress_mass,
+                                    type: 'line',
+                                    borderColor: 'rgba(255, 99, 132, 1)',
+                                    backgroundColor: 'rgba(255, 99, 132, 0.2)',
+                                    borderWidth: 2,
+                                    fill: false,
+                                    tension: 0.4
+                                }
+                            ]
                         },
                         options: {
                             responsive: true,
@@ -199,13 +281,13 @@
                                 x: {
                                     title: {
                                         display: true,
-                                        text: 'Pouring Date'
+                                        text: 'Month'
                                     }
                                 },
                                 y: {
                                     title: {
                                         display: true,
-                                        text: 'Tons'
+                                        text: 'Tonnes / Dress Mass'
                                     },
                                     beginAtZero: true
                                 }
@@ -214,23 +296,37 @@
                     });
                 </script>
             </div>
+
+            <!-- Merlimau Chart -->
             <div class="tab-pane fade" id="merlimau" role="tabpanel" aria-labelledby="merlimau-tab">
-                <!-- Content for Merlimau -->
                 <canvas id="merlimauChart" width="400" height="200"></canvas>
                 <script>
-                    const merlimauData = {{ merlimau_data| safe }};
+                    const merlimauData = {{ merlimau_chart_data| safe }};
                     const ctxMerlimau = document.getElementById('merlimauChart').getContext('2d');
+
                     new Chart(ctxMerlimau, {
                         type: 'bar',
                         data: {
-                            labels: merlimauData.labels, // Pouring dates
-                            datasets: [{
-                                label: 'Tons',
-                                data: merlimauData.tons, // Tons data
-                                backgroundColor: 'rgba(255, 206, 86, 0.2)',
-                                borderColor: 'rgba(255, 206, 86, 1)',
-                                borderWidth: 1
-                            }]
+                            labels: merlimauData.labels,
+                            datasets: [
+                                {
+                                    label: 'Tonnes',
+                                    data: merlimauData.tons,
+                                    backgroundColor: 'rgba(75, 192, 192, 0.2)',
+                                    borderColor: 'rgba(75, 192, 192, 1)',
+                                    borderWidth: 1
+                                },
+                                {
+                                    label: 'Dress Mass',
+                                    data: merlimauData.dress_mass,
+                                    type: 'line',
+                                    borderColor: 'rgba(255, 99, 132, 1)',
+                                    backgroundColor: 'rgba(255, 99, 132, 0.2)',
+                                    borderWidth: 2,
+                                    fill: false,
+                                    tension: 0.4
+                                }
+                            ]
                         },
                         options: {
                             responsive: true,
@@ -238,13 +334,13 @@
                                 x: {
                                     title: {
                                         display: true,
-                                        text: 'Pouring Date'
+                                        text: 'Month'
                                     }
                                 },
                                 y: {
                                     title: {
                                         display: true,
-                                        text: 'Tons'
+                                        text: 'Tonnes / Dress Mass'
                                     },
                                     beginAtZero: true
                                 }
@@ -252,28 +348,34 @@
                         }
                     });
                 </script>
-            </div>
-            <div class="tab-pane fade" id="wodonga" role="tabpanel" aria-labelledby="wodonga-tab">
-                <!-- Content for Wodonga -->
-                <p>Content for Wodonga Foundry View</p>
-            </div>
-            <div class="tab-pane fade" id="wundowie" role="tabpanel" aria-labelledby="wundowie-tab">
-                <!-- Content for Wundowie -->
-                <p>Content for Wundowie Foundry View</p>
-            </div>
-            <div class="tab-pane fade" id="chilcal" role="tabpanel" aria-labelledby="chilcal-tab">
-                <!-- Content for Chilcal -->
-                <p>Content for Chilcal Foundry View</p>
             </div>
         </div>
     </div>
 
-    <script id="chartDataParentProductGroup" type="application/json">
-        {{ chart_data_parent_product_group|safe }}
-    </script>
-    <script id="chartDataRegion" type="application/json">
-        {{ chart_data_forecast_region|safe }}
-    </script>
+    <!-- Section 3: Supplier Tabs -->
+    <div class="container mt-5">
+        <h2>Supplier Review</h2>
+        <ul class="nav nav-tabs" id="supplierTabs" role="tablist">
+            <li class="nav-item">
+                <a class="nav-link active" id="supplier-a-tab" data-toggle="tab" href="#supplier-a" role="tab"
+                    aria-controls="supplier-a" aria-selected="true">Supplier A</a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link" id="supplier-b-tab" data-toggle="tab" href="#supplier-b" role="tab"
+                    aria-controls="supplier-b" aria-selected="false">Supplier B</a>
+            </li>
+        </ul>
+
+        <div class="tab-content" id="supplierTabsContent">
+            <div class="tab-pane fade show active" id="supplier-a" role="tabpanel" aria-labelledby="supplier-a-tab">
+                <canvas id="supplierAChart" width="400" height="200"></canvas>
+            </div>
+            <div class="tab-pane fade" id="supplier-b" role="tabpanel" aria-labelledby="supplier-b-tab">
+                <canvas id="supplierBChart" width="400" height="200"></canvas>
+            </div>
+        </div>
+    </div>
+
     <script src="{% static 'js/review_scenario_charts.js' %}"></script>
     <!-- Include jQuery and Bootstrap JS -->
     <script src="https://code.jquery.com/jquery-3.5.1.slim.min.js"></script>

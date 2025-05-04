@@ -1,0 +1,22 @@
+{% extends 'website/base.html' %}
+
+{% block title %}Copy Master Data Plan{% endblock %}
+
+{% block content %}
+<h2>Copy Master Data Plan</h2>
+
+<p>Select a scenario to copy data from:</p>
+
+<form method="post">
+    {% csrf_token %}
+    <label for="source_version">Source Scenario:</label>
+    <select id="source_version" name="source_version" required>
+        {% for scenario in all_scenarios %}
+        <option value="{{ scenario.version }}">{{ scenario.version }}</option>
+        {% endfor %}
+    </select>
+    <button type="submit">Copy</button>
+</form>
+
+<a href="{% url 'edit_scenario' target_scenario.version %}">Cancel</a>
+{% endblock %}

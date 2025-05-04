@@ -1,0 +1,72 @@
+{% extends 'website/base.html' %}
+
+{% block title %}Update Pour Plan Data{% endblock %}
+
+{% block content %}
+<h2>Update Pour Plan Data</h2>
+
+<!-- Display success messages -->
+{% if messages %}
+<div class="alert alert-success">
+    {% for message in messages %}
+    <p>{{ message }}</p>
+    {% endfor %}
+</div>
+{% endif %}
+
+<!-- Filter Form -->
+<form method="get" id="filterForm">
+    <label for="foundryFilter">Filter by Foundry:</label>
+    <input type="text" id="foundryFilter" name="foundry" placeholder="Search for Foundry..">
+
+    <label for="monthFilter">Filter by Month:</label>
+    <input type="text" id="monthFilter" name="month" placeholder="Search for Month..">
+
+    <button type="submit">Search</button>
+</form>
+
+<form method="post">
+    {% csrf_token %}
+    <table id="dataTable">
+        <thead>
+            <tr>
+                <th>Foundry</th>
+                <th>Month</th>
+                <th>Calendar Days</th>
+                <th>Yield</th>
+                <th>Waster Percentage</th>
+                <th>Planned Maintenance Days</th>
+                <th>Public Holidays</th>
+                <th>Weekends</th>
+                <th>Other Non Pouring Days</th>
+                <th>Available Days</th>
+                <th>Heats Per Day</th>
+                <th>Tons Per Heat</th>
+                <th>Plan Dress Mass</th>
+            </tr>
+        </thead>
+        <tbody>
+            {{ formset.management_form }}
+            {% for form in formset %}
+            <tr>
+                {{ form.id }} <!-- Render the hidden id field -->
+                <td>{{ form.Foundry }}</td>
+                <td>{{ form.Month }}</td>
+                <td>{{ form.CalendarDays }}</td>
+                <td>{{ form.Yield }}</td>
+                <td>{{ form.WasterPercentage }}</td>
+                <td>{{ form.PlannedMaintenanceDays }}</td>
+                <td>{{ form.PublicHolidays }}</td>
+                <td>{{ form.Weekends }}</td>
+                <td>{{ form.OtherNonPouringDays }}</td>
+                <td>{{ form.AvailableDays }}</td>
+                <td>{{ form.heatsperdays }}</td>
+                <td>{{ form.TonsPerHeat }}</td>
+                <td>{{ form.PlanDressMass }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    <button type="submit">Save Changes</button>
+</form>
+{% endblock %}

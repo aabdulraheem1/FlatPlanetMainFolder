@@ -1,0 +1,76 @@
+{% extends 'website/base.html' %}
+
+<!DOCTYPE html>
+<html>
+
+{% block content %}
+
+<div class="container mt-5">
+    <h1>Supply Options</h1>
+    <form method="GET" action="">
+        <div class="table-responsive">
+            <table class="table table-bordered">
+                <thead class="thead-light">
+                    <tr>
+                        <th>Product
+                            <input type="text" class="form-control" name="product" value="{{ product_filter }}">
+                        </th>
+                        <th>Inhouse/Outsource
+                            <input type="text" class="form-control" name="inhouse_or_outsource"
+                                value="{{ inhouse_or_outsource_filter }}">
+                        </th>
+                        <th>Source
+                            <input type="text" class="form-control" name="source" value="{{ source_filter }}">
+                        </th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for option in page_obj %}
+                    <tr>
+                        <td>{{ option.Product.Product }}</td>
+                        <td>{{ option.InhouseOrOutsource }}</td>
+                        <td>{{ option.Source }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        <div class="d-flex justify-content-between">
+            <button type="submit" class="btn btn-primary">Filter</button>
+        </div>
+    </form>
+
+    <nav aria-label="Page navigation">
+        <ul class="pagination justify-content-center mt-4">
+            {% if page_obj.has_previous %}
+            <li class="page-item">
+                <a class="page-link"
+                    href="?page=1{% if product_filter %}&product={{ product_filter }}{% endif %}{% if inhouse_or_outsource_filter %}&inhouse_or_outsource={{ inhouse_or_outsource_filter }}{% endif %}{% if source_filter %}&source={{ source_filter }}{% endif %}">First</a>
+            </li>
+            <li class="page-item">
+                <a class="page-link"
+                    href="?page={{ page_obj.previous_page_number }}{% if product_filter %}&product={{ product_filter }}{% endif %}{% if inhouse_or_outsource_filter %}&inhouse_or_outsource={{ inhouse_or_outsource_filter }}{% endif %}{% if source_filter %}&source={{ source_filter }}{% endif %}">Previous</a>
+            </li>
+            {% endif %}
+
+            <li class="page-item disabled">
+                <span class="page-link">Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }}</span>
+            </li>
+
+            {% if page_obj.has_next %}
+            <li class="page-item">
+                <a class="page-link"
+                    href="?page={{ page_obj.next_page_number }}{% if product_filter %}&product={{ product_filter }}{% endif %}{% if inhouse_or_outsource_filter %}&inhouse_or_outsource={{ inhouse_or_outsource_filter }}{% endif %}{% if source_filter %}&source={{ source_filter }}{% endif %}">Next</a>
+            </li>
+            <li class="page-item">
+                <a class="page-link"
+                    href="?page={{ page_obj.paginator.num_pages }}{% if product_filter %}&product={{ product_filter }}{% endif %}{% if inhouse_or_outsource_filter %}&inhouse_or_outsource={{ inhouse_or_outsource_filter }}{% endif %}{% if source_filter %}&source={{ source_filter }}{% endif %}">Last</a>
+            </li>
+            {% endif %}
+        </ul>
+    </nav>
+</div>
+
+{% endblock %}
+
+</html>

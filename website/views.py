@@ -359,6 +359,9 @@ def edit_scenario(request, version):
     master_data_casto_to_despatch_days_has_data = MasterDataCastToDespatchModel.objects.filter(version=scenario).exists()
     incoterms = MasterDataIncotTermTypesModel.objects.filter(version=scenario)  # Retrieve all incoterms for the scenario
 
+    # Check if there is data for MasterDataPlan
+    pour_plan_data_has_data = MasterDataPlan.objects.filter(Version=scenario).exists()
+
     # Retrieve missing regions from the session
     missing_regions = request.session.pop('missing_regions', None)
 
@@ -387,6 +390,7 @@ def edit_scenario(request, version):
         'master_data_inco_terms_has_data': master_data_inco_terms_has_data,
         'incoterms': incoterms,  # Pass incoterms to the template
         'missing_regions': missing_regions,  # Pass missing regions to the template
+        'pour_plan_data_has_data': pour_plan_data_has_data,
     })
 
 
@@ -500,78 +504,173 @@ def edit_forecasts(request, version, forecast_type):
         'forecast_type': forecast_type,
     })
 
-
 from django.shortcuts import render
-from django.core.serializers.json import DjangoJSONEncoder
-import json
+from django.contrib.auth.decorators import login_required
 from django.db.models.functions import TruncMonth
 from django.db.models import Sum
-from .models import CalculatedProductionModel
+from .models import AggregatedForecast, CalculatedProductionModel, scenarios
+
+from django.shortcuts import render
+from django.contrib.auth.decorators import login_required
+from django.db.models.functions import TruncMonth
+from django.db.models import Sum
+from .models import AggregatedForecast, CalculatedProductionModel, scenarios
+
+def get_dress_mass_data(site_name, version):
+    """
+    Fetch Dress Mass data from MasterDataPlan for the given site and version.
+    """
+    queryset = MasterDataPlan.objects.filter(Foundry__SiteName=site_name, Version=version).order_by('Month')
+    
+    # Calculate Dress Mass for each record
+    dress_mass_data = []
+    for record in queryset:
+        dress_mass = (
+            record.AvailableDays
+            * record.heatsperdays
+            * record.TonsPerHeat
+            * record.Yield
+            * (1 - (record.WasterPercentage or 0) / 100)
+        ) if record.AvailableDays and record.heatsperdays and record.TonsPerHeat and record.Yield else 0
+        dress_mass_data.append({'month': record.Month, 'dress_mass': dress_mass})
+    
+    return dress_mass_data
 
 @login_required
 def review_scenario(request, version):
     user_name = request.user.username
+    
 
-    # Fetch the version object
-    version = scenarios.objects.get(version=version)
+    # Fetch the scenario object
+    scenario = get_object_or_404(scenarios, version=version)
 
-    # Filter and group data for each site by month
-    def get_monthly_data(site_name):
+    # Filter and group data for the second set of graphs (CalculatedProductionModel)
+    def get_production_data(site_name):
         queryset = (
-            CalculatedProductionModel.objects.filter(site__SiteName=site_name)
+            CalculatedProductionModel.objects.filter(site__SiteName=site_name, version=scenario.version)
             .annotate(month=TruncMonth('pouring_date'))  # Group by month
             .values('month')  # Select the month
-            .annotate(total_tonnes=Sum('tonnes'))  # Sum the tonnes for each month
+            .annotate(total_tonnes=Sum('tonnes'))  # Sum the tonnes
             .order_by('month')  # Order by month
         )
         return queryset
 
-    # Prepare data for Chart.js
-    def prepare_chart_data(queryset):
+    # Get data for Supply Planning Foundry Review (second set of graphs)
+    mt_joli_data = get_production_data('MTJ1')
+    mt_joli_dress_mass_data = get_dress_mass_data('MTJ1', scenario.version)
+
+    coimbatore_data = get_production_data('COI2')
+    coimbatore_dress_mass_data = get_dress_mass_data('COI2', scenario.version)
+
+    xuzhou_data = get_production_data('XUZ1')
+    xuzhou_dress_mass_data = get_dress_mass_data('XUZ1', scenario.version)
+
+    merlimau_data = get_production_data('MER1')
+    merlimau_dress_mass_data = get_dress_mass_data('MER1', scenario.version)
+
+    # Filter and group data for the first set of graphs (AggregatedForecast)
+    def get_forecast_data():
+        queryset = (
+            AggregatedForecast.objects.filter(version=version)
+            .annotate(month=TruncMonth('period'))  # Group by month
+            .values('month', 'parent_product_group_description')  # Select month and parent product group
+            .annotate(total_tonnes=Sum('tonnes'))  # Sum the tonnes
+            .order_by('month', 'parent_product_group_description')  # Order by month and parent product group
+        )
+        return queryset
+
+    # Prepare data for the first set of graphs (Forecast Analysis)
+    def prepare_forecast_chart_data(queryset):
+        data = {}
+        for entry in queryset:
+            month = entry['month'].strftime('%Y-%m')  # Format month as 'YYYY-MM'
+            group = entry['parent_product_group_description'] or 'Unknown'
+            if group not in data:
+                data[group] = {'labels': [], 'tons': []}
+            if month not in data[group]['labels']:
+                data[group]['labels'].append(month)
+                data[group]['tons'].append(entry['total_tonnes'])
+        return data
+
+    # Prepare data for "By Parent Product Group"
+    def prepare_parent_group_data(queryset):
+        data = {}
+        for entry in queryset:
+            month = entry['month'].strftime('%Y-%m')  # Format month as 'YYYY-MM'
+            group = entry['parent_product_group_description'] or 'Unknown'
+            if group not in data:
+                data[group] = {'labels': [], 'tons': []}
+            if month not in data[group]['labels']:
+                data[group]['labels'].append(month)
+                data[group]['tons'].append(entry['total_tonnes'])
+        return data
+
+   
+
+    # Prepare data for the second set of graphs (Supply Planning Foundry Review)
+    def prepare_production_chart_data(queryset):
         labels = [entry['month'].strftime('%Y-%m') for entry in queryset]  # Format month as 'YYYY-MM'
         tons = [entry['total_tonnes'] for entry in queryset]
         return {'labels': labels, 'tons': tons}
 
-    # Get data for each site
-    mt_joli_data = get_monthly_data('MTJ1')
-    coimbatore_data = get_monthly_data('COI2')
-    xuzhou_data = get_monthly_data('XUZ1')
-    merlimau_data = get_monthly_data('MER1')
-    wodonga_data = get_monthly_data('WON1')
-    wundowie_data = get_monthly_data('WUN1')
-    chilcal_data = get_monthly_data('CHILCA')
+    # Get data for Forecast Analysis (first set of graphs)
+    forecast_data = get_forecast_data()
+    forecast_chart_data = prepare_forecast_chart_data(forecast_data)
 
-    # Prepare context with chart data
+    # Get data for "By Parent Product Group"
+    parent_product_group_data = (
+    AggregatedForecast.objects.filter(version=version)
+    .annotate(month=TruncMonth('period'))  # Group by month
+    .values('month', 'parent_product_group_description')  # Select month and parent product group
+    .annotate(total_tonnes=Sum('tonnes'))  # Sum the tonnes
+    .order_by('month', 'parent_product_group_description')  # Order by month and parent product group
+)
+    chart_data_parent_product_group = prepare_parent_group_data(parent_product_group_data)
+
+    # Get data for Supply Planning Foundry Review (second set of graphs)
+    mt_joli_data = get_production_data('MTJ1')
+    mt_joli_dress_mass_data = get_dress_mass_data('MTJ1', version)
+    coimbatore_data = get_production_data('COI2')
+    xuzhou_data = get_production_data('XUZ1')
+    merlimau_data = get_production_data('MER1')
+    wodonga_data = get_production_data('WON1')
+    wundowie_data = get_production_data('WUN1')
+    chilcal_data = get_production_data('CHILCA')
+
+    # Prepare data for the charts
+    def prepare_combined_chart_data(production_data, dress_mass_data):
+        labels = [entry['month'].strftime('%Y-%m') for entry in production_data]  # Format month as 'YYYY-MM'
+        tonnes = [entry['total_tonnes'] for entry in production_data]
+        dress_mass = {entry['month'].strftime('%Y-%m'): entry['dress_mass'] for entry in dress_mass_data}
+        dress_mass_values = [dress_mass.get(label, 0) for label in labels]  # Match Dress Mass to production months
+        return {'labels': labels, 'tons': tonnes, 'dress_mass': dress_mass_values}
+
+    mt_joli_chart_data = prepare_combined_chart_data(mt_joli_data, mt_joli_dress_mass_data)
+    coimbatore_chart_data = prepare_combined_chart_data(coimbatore_data, coimbatore_dress_mass_data)
+    xuzhou_chart_data = prepare_combined_chart_data(xuzhou_data, xuzhou_dress_mass_data)
+    merlimau_chart_data = prepare_combined_chart_data(merlimau_data, merlimau_dress_mass_data)
+
+
+    # Add all data to the context
     context = {
-        'version': version.version,
+        'version': scenario.version,
         'user_name': user_name,
-        'mt_joli_data': prepare_chart_data(mt_joli_data),
-        'coimbatore_data': prepare_chart_data(coimbatore_data),
-        'xuzhou_data': prepare_chart_data(xuzhou_data),
-        'merlimau_data': prepare_chart_data(merlimau_data),
-        'wodonga_data': prepare_chart_data(wodonga_data),
-        'wundowie_data': prepare_chart_data(wundowie_data),
-        'chilcal_data': prepare_chart_data(chilcal_data),
+        'forecast_chart_data': forecast_chart_data,  # Data for Forecast Analysis
+        'chart_data_parent_product_group': chart_data_parent_product_group,  # Data for Parent Product Group
+        'mt_joli_data': prepare_production_chart_data(mt_joli_data),
+        'coimbatore_data': prepare_production_chart_data(coimbatore_data),
+        'xuzhou_data': prepare_production_chart_data(xuzhou_data),
+        'merlimau_data': prepare_production_chart_data(merlimau_data),
+        'wodonga_data': prepare_production_chart_data(wodonga_data),
+        'wundowie_data': prepare_production_chart_data(wundowie_data),
+        'chilcal_data': prepare_production_chart_data(chilcal_data),
+        'mt_joli_chart_data': mt_joli_chart_data,
+        'coimbatore_chart_data': coimbatore_chart_data,
+        'xuzhou_chart_data': xuzhou_chart_data,
+        'merlimau_chart_data': merlimau_chart_data,
     }
 
     return render(request, 'website/review_scenario.html', context)
-
-
-
-
-# signals.py
-from django.db.models.signals import pre_save
-from django.dispatch import receiver
-from .models import SMART_Forecast_Model, MasterDataProductModel
-
-@receiver(pre_save, sender=SMART_Forecast_Model)
-def calculate_tonnes(sender, instance, **kwargs):
-    dress_mass = MasterDataProductModel.objects.filter(Product=instance.Product).values_list('DressMass', flat=True).first()
-    if instance.Qty is not None and dress_mass is not None:
-        instance.Tonnes = instance.Qty * dress_mass
-    else:
-        instance.Tonnes = (instance.PriceAUD * 0.65) / 5 if instance.PriceAUD is not None else 0
-
 
 from django.shortcuts import render, get_object_or_404
 from .models import SMART_Forecast_Model, MasterDataProductModel
@@ -1501,8 +1600,6 @@ def master_data_inco_terms_delete_all(request, version):
     MasterdataIncoTermsModel.objects.filter(version=scenario).delete()
     return redirect('edit_scenario', version=version)
 
-
-
 def master_data_inco_terms_copy(request, version):
     scenario = get_object_or_404(scenarios, version=version)
     new_version = request.POST.get('new_version')
@@ -1516,19 +1613,423 @@ def master_data_inco_terms_copy(request, version):
         )
     return redirect('edit_scenario', version=new_version)
 
-        
+from django.shortcuts import render, get_object_or_404, redirect
+from django.forms import modelformset_factory
+from django.contrib import messages
+from .models import MasterDataPlan
+from .forms import MasterDataPlanForm
 
+def update_master_data_plan(request, version):
+    # Filter records by version
+    plans = MasterDataPlan.objects.filter(Version=version)
 
+    # Create a formset for editing multiple records
+    MasterDataPlanFormSet = modelformset_factory(MasterDataPlan, form=MasterDataPlanForm, extra=0)
 
+    if request.method == 'POST':
+        formset = MasterDataPlanFormSet(request.POST, queryset=plans)
+        if formset.is_valid():
+            formset.save()
+            messages.success(request, "Master Data Plan updated successfully!")
+            return redirect('edit_scenario', version=version)
+    else:
+        formset = MasterDataPlanFormSet(queryset=plans)
 
+    return render(request, 'website/update_master_data_plan.html', {
+        'formset': formset,
+        'version': version,
+    })
 
+def delete_master_data_plan(request, version):
+    MasterDataPlan.objects.filter(Version=version).delete()
+    messages.success(request, "All Master Data Plan records deleted successfully!")
+    return redirect('edit_scenario', version=version)
 
+import csv
+from django.http import HttpResponse
 
+def upload_master_data_plan(request, version):
+    if request.method == 'POST' and request.FILES['file']:
+        csv_file = request.FILES['file']
+        decoded_file = csv_file.read().decode('utf-8').splitlines()
+        reader = csv.DictReader(decoded_file)
 
+        for row in reader:
+            MasterDataPlan.objects.update_or_create(
+                Version_id=version,
+                Foundry=row['Foundry'],
+                defaults={
+                    'SubVersion': row.get('SubVersion'),
+                    'PouringDaysperweek': row.get('PouringDaysperweek'),
+                    'CalendarDays': row.get('CalendarDays'),
+                    'Month': row.get('Month'),
+                    'Yield': row.get('Yield'),
+                    'WasterPercentage': row.get('WasterPercentage'),
+                    'PlanDressMass': row.get('PlanDressMass'),
+                    'UnavailableDays': row.get('UnavailableDays'),
+                    'AvailableDays': row.get('AvailableDays'),
+                    'PlannedMaintenanceDays': row.get('PlannedMaintenanceDays'),
+                    'PublicHolidays': row.get('PublicHolidays'),
+                    'Weekends': row.get('Weekends'),
+                    'OtherNonPouringDays': row.get('OtherNonPouringDays'),
+                    'HeatsPerweek': row.get('HeatsPerweek'),
+                    'heatsperdays': row.get('heatsperdays'),
+                    'CastMass': row.get('CastMass'),
+                    'TonsPerHeat': row.get('TonsPerHeat'),
+                    'CastTonsPerDay': row.get('CastTonsPerDay'),
+                }
+            )
+        messages.success(request, "Master Data Plan uploaded successfully!")
+        return redirect('edit_scenario', version=version)
 
+    return render(request, 'website/upload_master_data_plan.html', {'version': version})
 
+from django.shortcuts import render, get_object_or_404, redirect
+from django.contrib import messages
+from .models import MasterDataPlan, scenarios
 
+def copy_master_data_plan(request, version):
+    target_scenario = get_object_or_404(scenarios, version=version)
 
+    if request.method == 'POST':
+        # Get the source scenario from the form
+        source_version = request.POST.get('source_version')
+        source_scenario = get_object_or_404(scenarios, version=source_version)
 
+        # Delete all existing records for the target scenario
+        MasterDataPlan.objects.filter(Version=target_scenario).delete()
 
+        # Copy records from the source scenario to the target scenario
+        source_plans = MasterDataPlan.objects.filter(Version=source_scenario)
+        for plan in source_plans:
+            plan.pk = None  # Reset primary key to create a new record
+            plan.Version = target_scenario  # Assign the target scenario
+            plan.save()
 
+        messages.success(request, f"Data successfully copied from scenario '{source_version}' to '{version}'.")
+        return redirect('edit_scenario', version=version)
+
+    # Get all scenarios except the current one
+    all_scenarios = scenarios.objects.exclude(version=version)
+
+    return render(request, 'website/copy_master_data_plan.html', {
+        'target_scenario': target_scenario,
+        'all_scenarios': all_scenarios,
+    })
+
+from django.shortcuts import render, redirect
+from django.forms import modelformset_factory
+from django.contrib import messages
+from .models import MasterDataCapacityModel
+from .forms import MasterDataCapacityForm
+
+def update_master_data_capacity(request, version):
+    # Filter records by version
+    capacities = MasterDataCapacityModel.objects.filter(version=version)
+
+    # Create a formset for editing multiple records
+    MasterDataCapacityFormSet = modelformset_factory(MasterDataCapacityModel, form=MasterDataCapacityForm, extra=0)
+
+    if request.method == 'POST':
+        formset = MasterDataCapacityFormSet(request.POST, queryset=capacities)
+        if formset.is_valid():
+            formset.save()
+            messages.success(request, "Master Data Capacity updated successfully!")
+            return redirect('edit_scenario', version=version)
+    else:
+        formset = MasterDataCapacityFormSet(queryset=capacities)
+
+    return render(request, 'website/update_master_data_capacity.html', {
+        'formset': formset,
+        'version': version,
+    })
+
+def delete_master_data_capacity(request, version):
+    MasterDataCapacityModel.objects.filter(version=version).delete()
+    messages.success(request, "All Master Data Capacity records deleted successfully!")
+    return redirect('edit_scenario', version=version)
+
+import csv
+
+def upload_master_data_capacity(request, version):
+    if request.method == 'POST' and request.FILES['file']:
+        csv_file = request.FILES['file']
+        decoded_file = csv_file.read().decode('utf-8').splitlines()
+        reader = csv.DictReader(decoded_file)
+
+        for row in reader:
+            MasterDataCapacityModel.objects.update_or_create(
+                version=version,
+                Foundry=row['Foundry'],
+                defaults={
+                    'PouringDaysPerWeek': row.get('PouringDaysPerWeek'),
+                    'ShiftsPerDay': row.get('ShiftsPerDay'),
+                    'HoursPershift': row.get('HoursPershift'),
+                    'Maxnumberofheatsperday': row.get('Maxnumberofheatsperday'),
+                    'Minnumberofheatsperday': row.get('Minnumberofheatsperday'),
+                    'Averagenumberofheatsperday': row.get('Averagenumberofheatsperday'),
+                    'Month': row.get('Month'),
+                    'Yiled': row.get('Yiled'),
+                    'Waster': row.get('Waster'),
+                    'Dresspouringcapacity': row.get('Dresspouringcapacity'),
+                    'Calendardays': row.get('Calendardays'),
+                    'Plannedmaintenancedays': row.get('Plannedmaintenancedays'),
+                    'Publicholidays': row.get('Publicholidays'),
+                    'Weekends': row.get('Weekends'),
+                    'Othernonpouringdays': row.get('Othernonpouringdays'),
+                    'Unavailabiledays': row.get('Unavailabiledays'),
+                    'Availabledays': row.get('Availabledays'),
+                    'Heatsperday': row.get('Heatsperday'),
+                    'CastMasstonsperheat': row.get('CastMasstonsperheat'),
+                    'Casttonnesperday': row.get('Casttonnesperday'),
+                }
+            )
+        messages.success(request, "Master Data Capacity uploaded successfully!")
+        return redirect('edit_scenario', version=version)
+
+    return render(request, 'website/upload_master_data_capacity.html', {'version': version})
+
+def copy_master_data_capacity(request, version):
+    capacities = MasterDataCapacityModel.objects.filter(version=version)
+    for capacity in capacities:
+        capacity.pk = None  # Reset primary key to create a new record
+        capacity.save()
+    messages.success(request, "Master Data Capacity copied successfully!")
+    return redirect('edit_scenario', version=version)
+
+def update_pour_plan_data(request, version):
+    # Get the scenario object for the given version
+    scenario = scenarios.objects.get(version=version)
+
+    # Filter records by version
+    plans = MasterDataPlan.objects.filter(Version=scenario)
+
+    # Apply filters from GET parameters
+    foundry_filter = request.GET.get('foundry', '').strip()
+    month_filter = request.GET.get('month', '').strip()
+
+    if foundry_filter:
+        plans = plans.filter(Foundry__SiteName__icontains=foundry_filter)
+    if month_filter:
+        plans = plans.filter(Month__icontains=month_filter)
+
+    # Create a formset for editing multiple records with 5 extra rows
+    MasterDataPlanFormSet = modelformset_factory(MasterDataPlan, form=MasterDataPlanForm, extra=5, can_delete=True)
+
+    if request.method == 'POST':
+        formset = MasterDataPlanFormSet(request.POST, queryset=plans)
+
+        # Allow empty extra forms by setting `empty_permitted=True`
+        for form in formset.forms:
+            if not form.has_changed():  # Ignore empty forms
+                form.empty_permitted = True
+
+        if formset.is_valid():
+            # Save each form instance and set the Version field
+            instances = formset.save(commit=False)
+            for instance in instances:
+                # Skip saving if only one of Foundry or Month is entered
+                if not instance.Foundry or not instance.Month:
+                    continue
+                if instance.pk or form.has_changed():  # Only process forms with changes or existing records
+                    instance.Version = scenario  # Set the foreign key
+                    instance.save()
+            # Delete any records marked for deletion
+            for instance in formset.deleted_objects:
+                instance.delete()
+            messages.success(request, "Pour Plan Data updated successfully!")
+            # Refresh the queryset to include updated data
+            plans = MasterDataPlan.objects.filter(Version=scenario)
+            formset = MasterDataPlanFormSet(queryset=plans)  # Reinitialize the formset with updated data
+        else:
+            # Log validation errors
+            print("Formset errors:", formset.errors)
+            messages.error(request, "There were errors in the form. Please correct them.")
+    else:
+        formset = MasterDataPlanFormSet(queryset=plans)
+
+    return render(request, 'website/update_pour_plan_data.html', {
+        'formset': formset,
+        'version': version,
+    })
+
+from . models import MasterDataSuppliersModel, MasterDataCustomersModel
+@login_required
+def suppliers_fetch_data_from_mssql(request):
+    # Connect to the database
+    Server = 'bknew-sql02'
+    Database = 'Bradken_Data_Warehouse'
+    Driver = 'ODBC Driver 17 for SQL Server'
+    Database_Con = f'mssql+pyodbc://@{Server}/{Database}?driver={Driver}'
+    engine = create_engine(Database_Con)
+    connection = engine.connect()
+
+    # Fetch new data from the database
+    query = text("SELECT * FROM PowerBI.Supplier")
+    result = connection.execute(query)
+
+    Supplier_dict = {}
+
+    for row in result:
+        if not row.VendorID or row.VendorID.strip() == "":  # Skip if VendorID is null or blank
+            continue
+        Supplier_dict[row.VendorID] = {
+            'TradingName': row.TradingName,
+            'Address1': row.Address1,
+        }
+
+    # Update or create records in the model
+    for vendor_id, data in Supplier_dict.items():
+        MasterDataSuppliersModel.objects.update_or_create(
+            VendorID=vendor_id,
+            defaults=data
+        )
+
+    connection.close()
+    return redirect('suppliers_list')  # Replace 'SuppliersList' with the actual view name for the suppliers list
+
+@login_required
+def customers_fetch_data_from_mssql(request):
+    # Connect to the database
+    Server = 'bknew-sql02'
+    Database = 'Bradken_Data_Warehouse'
+    Driver = 'ODBC Driver 17 for SQL Server'
+    Database_Con = f'mssql+pyodbc://@{Server}/{Database}?driver={Driver}'
+    engine = create_engine(Database_Con)
+    connection = engine.connect()
+
+    # Fetch new data from the database
+    query = text("SELECT * FROM PowerBI.Customers WHERE RowEndDate IS NULL")
+    result = connection.execute(query)
+
+    Customer_dict = {}
+
+    for row in result:
+        if not row.CustomerId or row.CustomerId.strip() == "":  # Skip if CustomerId is null or blank
+            continue
+        Customer_dict[row.CustomerId] = {
+            'CustomerName': row.CustomerName,
+            'CustomerRegion': row.CustomerRegion,
+            'ForecastRegion': row.ForecastRegion,
+        }
+
+    # Update or create records in the model
+    for customer_id, data in Customer_dict.items():
+        MasterDataCustomersModel.objects.update_or_create(
+            CustomerId=customer_id,
+            defaults=data
+        )
+
+    connection.close()
+    return redirect('CustomersList')  # Replace 'CustomersList' with the actual view name for the customers list
+
+@login_required
+def suppliers_list(request):
+    user_name = request.user.username
+    suppliers = MasterDataSuppliersModel.objects.all().order_by('VendorID')
+
+    # Filtering logic
+    VendorID_filter = request.GET.get('VendorID', '')
+    TradingName_filter = request.GET.get('TradingName', '')
+    Address1_filter = request.GET.get('Address1', '')
+
+    if VendorID_filter:
+        suppliers = suppliers.filter(VendorID__icontains=VendorID_filter)
+    if TradingName_filter:
+        suppliers = suppliers.filter(TradingName__icontains=TradingName_filter)
+    if Address1_filter:
+        suppliers = suppliers.filter(Address1__icontains=Address1_filter)
+
+    # Pagination logic
+    paginator = Paginator(suppliers, 15)  # Show 15 suppliers per page
+    page_number = request.GET.get('page')
+    page_obj = paginator.get_page(page_number)
+
+    context = {
+        'page_obj': page_obj,
+        'VendorID_Filter': VendorID_filter,
+        'TradingName_Filter': TradingName_filter,
+        'Address1_Filter': Address1_filter,
+        'user_name': user_name,
+    }
+    return render(request, 'website/suppliers_list.html', context)
+
+@login_required
+def customers_list(request):
+    user_name = request.user.username
+    customers = MasterDataCustomersModel.objects.all().order_by('CustomerId')
+
+    # Filtering logic
+    CustomerId_filter = request.GET.get('CustomerId', '')
+    CustomerName_filter = request.GET.get('CustomerName', '')
+    CustomerRegion_filter = request.GET.get('CustomerRegion', '')
+    ForecastRegion_filter = request.GET.get('ForecastRegion', '')
+
+    if CustomerId_filter:
+        customers = customers.filter(CustomerId__icontains=CustomerId_filter)
+    if CustomerName_filter:
+        customers = customers.filter(CustomerName__icontains=CustomerName_filter)
+    if CustomerRegion_filter:
+        customers = customers.filter(CustomerRegion__icontains=CustomerRegion_filter)
+    if ForecastRegion_filter:
+        customers = customers.filter(ForecastRegion__icontains=ForecastRegion_filter)
+
+    # Pagination logic
+    paginator = Paginator(customers, 15)  # Show 15 customers per page
+    page_number = request.GET.get('page')
+    page_obj = paginator.get_page(page_number)
+
+    context = {
+        'page_obj': page_obj,
+        'CustomerId_Filter': CustomerId_filter,
+        'CustomerName_Filter': CustomerName_filter,
+        'CustomerRegion_Filter': CustomerRegion_filter,
+        'ForecastRegion_Filter': ForecastRegion_filter,
+        'user_name': user_name,
+    }
+    return render(request, 'website/customers_list.html', context)
+
+from django.db.models import Q
+from django.core.paginator import Paginator
+from django.shortcuts import render
+from .models import MasterDataSupplyOptionsModel
+
+def SupplyOptions(request):
+    # Filters
+    product_filter = request.GET.get('product', '')
+    inhouse_or_outsource_filter = request.GET.get('inhouse_or_outsource', '')
+    source_filter = request.GET.get('source', '')
+
+    # Queryset with filters
+    queryset = MasterDataSupplyOptionsModel.objects.select_related('Product', 'Supplier', 'Site').all()
+    if product_filter:
+        queryset = queryset.filter(Product__Product__icontains=product_filter)
+    if inhouse_or_outsource_filter:
+        queryset = queryset.filter(InhouseOrOutsource__icontains=inhouse_or_outsource_filter)
+    if source_filter:
+        queryset = queryset.filter(
+            Q(Supplier__VendorID__icontains=source_filter) |
+            Q(Site__SiteName__icontains=source_filter)
+        )
+
+    # Deduplicate manually in Python
+    unique_options = {}
+    for option in queryset:
+        key = (option.Product.Product, option.InhouseOrOutsource, option.Source)
+        if key not in unique_options:
+            unique_options[key] = option
+
+    # Convert the deduplicated values back to a list
+    deduplicated_queryset = list(unique_options.values())
+
+    # Pagination
+    paginator = Paginator(deduplicated_queryset, 10)  # Show 10 records per page
+    page_number = request.GET.get('page')
+    page_obj = paginator.get_page(page_number)
+
+    return render(request, 'website/Supply_Options.html', {
+        'page_obj': page_obj,
+        'product_filter': product_filter,
+        'inhouse_or_outsource_filter': inhouse_or_outsource_filter,
+        'source_filter': source_filter,
+    })

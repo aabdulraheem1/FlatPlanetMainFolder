@@ -72,6 +72,30 @@ urlpatterns = [
     path('master-data-inco-terms/<str:version>/copy/', views.master_data_inco_terms_copy, name='master_data_inco_terms_copy'),
 
 
+    path('edit_scenario/<str:version>/update_master_data_plan/', views.update_master_data_plan, name='update_master_data_plan'),
+    path('edit_scenario/<str:version>/delete_master_data_plan/', views.delete_master_data_plan, name='delete_master_data_plan'),
+    path('edit_scenario/<str:version>/upload_master_data_plan/', views.upload_master_data_plan, name='upload_master_data_plan'),
+    path('edit_scenario/<str:version>/copy_master_data_plan/', views.copy_master_data_plan, name='copy_master_data_plan'),
+    path('edit_scenario/<str:version>/update_pour_plan_data/', views.update_pour_plan_data, name='update_pour_plan_data'),
+
+    path('edit_scenario/<str:version>/update_master_data_capacity/', views.update_master_data_capacity, name='update_master_data_capacity'),
+    path('edit_scenario/<str:version>/delete_master_data_capacity/', views.delete_master_data_capacity, name='delete_master_data_capacity'),
+    path('edit_scenario/<str:version>/upload_master_data_capacity/', views.upload_master_data_capacity, name='upload_master_data_capacity'),
+    path('edit_scenario/<str:version>/copy_master_data_capacity/', views.copy_master_data_capacity, name='copy_master_data_capacity'),
+
+    # URL for the suppliers list
+    path('suppliers/', views.suppliers_list, name='suppliers_list'),
+
+    # URL for the customers list
+    path('customers/', views.customers_list, name='customers_list'),
+
+    # URL for fetching suppliers data from the server
+    path('suppliers/fetch/', views.suppliers_fetch_data_from_mssql, name='suppliers_fetch_data'),
+
+    # URL for fetching customers data from the server
+    path('customers/fetch/', views.customers_fetch_data_from_mssql, name='customers_fetch_data'),
+
+    path('supplyoptions', views.SupplyOptions, name='supplyoptions'),
 
 
     # Add other URL patterns as needed

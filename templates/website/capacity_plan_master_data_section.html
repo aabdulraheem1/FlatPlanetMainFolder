@@ -1,0 +1,37 @@
+<h3>Capacity Plan Master Data</h3>
+<table class="table">
+    <thead>
+        <tr>
+            <th>Item</th>
+            <th>Has Data</th>
+            <th>Actions</th>
+        </tr>
+    </thead>
+    <tbody>
+        <tr>
+            <td>Capacity Plan Data</td>
+            <td>
+                <input type="checkbox" {% if capacity_plan_data_has_data %}checked{% endif %} disabled>
+            </td>
+            <td>
+                <!-- Update Button -->
+                <a href="{% url 'update_master_data_capacity' scenario.version %}" class="btn btn-warning btn-sm">
+                    <img src="/static/icons/update.png" alt="Update">
+                </a>
+                <!-- Delete Button -->
+                <a href="{% url 'delete_master_data_capacity' scenario.version %}" class="btn btn-danger btn-sm"
+                    onclick="return confirm('Are you sure you want to delete all Capacity Plan Data records for this version?');">
+                    <img src="/static/icons/delete.png" alt="Delete">
+                </a>
+                <!-- Upload Button -->
+                <a href="{% url 'upload_master_data_capacity' scenario.version %}" class="btn btn-info btn-sm">
+                    <img src="/static/icons/upload.png" alt="Upload">
+                </a>
+                <!-- Copy Button -->
+                <a href="{% url 'copy_master_data_capacity' scenario.version %}" class="btn btn-info btn-sm">
+                    <img src="/static/icons/copy.png" alt="Copy">
+                </a>
+            </td>
+        </tr>
+    </tbody>
+</table>

@@ -22,7 +22,6 @@
             flex-direction: column;
             justify-content: space-between;
             background-color: #f8f9fa;
-            ;
         }
 
         .logout-link {
@@ -96,7 +95,7 @@
             <br><br><br><br>
             <a href="{% url 'ProductsList' %}" class="d-block text-decoration-none mb-2 nav-link">Products</a><br>
             <a href="{% url 'PlantsList' %}" class="d-block text-decoration-none mb-2 nav-link">Foundries & WHs</a><br>
-            <a href="#" class="d-block text-decoration-none mb-2 nav-link">Suppliers</a><br>
+            <a href="{% url 'suppliers_list' %}" class="d-block text-decoration-none mb-2 nav-link">Suppliers</a><br>
 
             <!-- Customers Dropdown -->
             <button class="btn btn-link d-block text-decoration-none mb-2 nav-link" type="button"
@@ -105,7 +104,7 @@
                 Customers <span id="customers-icon">+</span>
             </button>
             <div class="collapse" id="customersDropdown">
-                <a href="{% url 'CustomersList' %}"
+                <a href="{% url 'customers_list' %}"
                     class="d-block text-decoration-none mb-2 dropdown-item">Customers</a>
                 <button class="btn btn-link d-block text-decoration-none mb-2 dropdown-item" type="button"
                     data-bs-toggle="collapse" data-bs-target="#forecastRegionDropdown" aria-expanded="false"
@@ -130,7 +129,7 @@
                 <a href="{% url 'list_scenarios' %}" class="d-block text-decoration-none mb-2 dropdown-item">Edit</a>
                 <a href="#" class="d-block text-decoration-none mb-2 dropdown-item">Review</a>
             </div><br>
-            <a href="#" class="d-block text-decoration-none mb-2 nav-link">Production Reviews</a><br>
+            <a href="#" class="d-block text-decoration-none mb-2 nav-link">Optimization</a><br>
             <a href="#" class="d-block text-decoration-none mb-2 nav-link">Inventory Review</a><br>
             <a href="#" class="d-block text-decoration-none mb-2 nav-link">Contact</a><br>
             <a href="{% url 'logout' %}" class="d-block text-decoration-none nav-link logout-link">Logout</a>

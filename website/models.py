@@ -9,6 +9,18 @@ class test(models.Model):
     def __str__(self):
         return self.test
 
+class MasterDataPlantModel(models.Model):
+    SiteName = models.CharField(primary_key=True, max_length=250)
+    Company = models.CharField(max_length=250,null=True, blank=True)
+    Country = models.CharField(max_length=250,null=True, blank=True)
+    Location = models.CharField(max_length=250,null=True, blank=True)
+    PlantRegion = models.CharField(max_length=250,null=True, blank=True)
+    SiteType = models.CharField(max_length=250,null=True, blank=True)
+    About = models.TextField(null=True,max_length=3000, blank=True)
+
+    def __str__(self):
+        return self.SiteName or "Unknown Site"
+
 class scenarios(models.Model):
     version = models.CharField(max_length=100, primary_key=True, null=False)
     scenario_description = models.TextField(default="type your description of this version here", null=False)
@@ -68,9 +80,9 @@ class MasterDataOrderBook(models.Model):
         return f"{self.version.version} - {self.productkey}"
 
 class MasterDataCapacityModel(models.Model):
-    version = models.CharField(max_length=250, null=True, blank=True)
+    version = models.ForeignKey(scenarios, to_field='version', on_delete=models.CASCADE)  # Foreign key from scenarios
     subversion = models.CharField(max_length=250, null=True, blank=True)
-    Foundry = models.CharField(max_length=250, null=True, blank=True)
+    Foundry = models.ForeignKey(MasterDataPlantModel, to_field='SiteName', on_delete=models.CASCADE)  # Foreign key from MasterDataPlantModel
     PouringDaysPerWeek = models.IntegerField(null=True, blank=True)
     ShiftsPerDay = models.IntegerField(null=True, blank=True)
     HoursPershift = models.IntegerField(null=True, blank=True)
@@ -94,7 +106,7 @@ class MasterDataCapacityModel(models.Model):
     Workcentre = models.CharField(max_length=250, default="Pouring")
 
     def __str__(self):
-        return self.Workcentre
+        return f"{self.Workcentre} - {self.version.version} - {self.Foundry.SiteName}"
     
 class MasterDataCommentModel(models.Model):
     version = models.CharField(max_length=250)
@@ -149,44 +161,63 @@ class MasterDataLeadTimesModel(models.Model):
     def __str__(self):
         return self.version
     
+from django.db import models
+
 class MasterDataPlan(models.Model):
-    Version	= models.CharField(max_length=250)
-    SubVersion = models.CharField(max_length=250)
-    Foundry = models.CharField(max_length=250)
-    FB = models.CharField(max_length=250)
-    PouringDaysperweek = models.IntegerField()
-    CalendarDays = models.IntegerField()
-    Month = models.DateField()
-    Yield = models.FloatField()
-    WasterPercentage = models.FloatField()
-    PlanDressMass = models.FloatField()
-    UnavailableDays = models.IntegerField()
-    AvailableDays = models.IntegerField()
-    PlannedMaintenanceDays = models.IntegerField()
-    PublicHolidays = models.IntegerField()
-    Weekends = models.IntegerField()
-    OtherNonPouringDays = models.IntegerField()
-    HeatsPerweek = models.FloatField()
-    heatsperdays = models.FloatField()
-    CastMass = models.FloatField()
-    TonsPerHeat = models.FloatField()
-    CastTonsPerDay = models.FloatField()
+    Version = models.ForeignKey(scenarios, to_field='version', on_delete=models.CASCADE)
+    Foundry = models.ForeignKey(MasterDataPlantModel, to_field='SiteName', on_delete=models.CASCADE)
+    Month = models.DateField(null=True, blank=True)
+    Yield = models.FloatField(null=True, blank=True)
+    WasterPercentage = models.FloatField(null=True, blank=True)
+    PlannedMaintenanceDays = models.IntegerField(null=True, blank=True)
+    PublicHolidays = models.IntegerField(null=True, blank=True)
+    Weekends = models.IntegerField(null=True, blank=True)
+    OtherNonPouringDays = models.IntegerField(null=True, blank=True)
+    heatsperdays = models.FloatField(null=True, blank=True)
+    TonsPerHeat = models.FloatField(null=True, blank=True)
+
+    @property
+    def CalendarDays(self):
+        """Calculate the number of days in the given month."""
+        if self.Month:
+            from calendar import monthrange
+            return monthrange(self.Month.year, self.Month.month)[1]
+        return 0
+
+    @property
+    def AvailableDays(self):
+        """Calculate available days."""
+        if self.CalendarDays:
+            return (
+                self.CalendarDays
+                - (self.PublicHolidays or 0)
+                - (self.Weekends or 0)
+                - (self.OtherNonPouringDays or 0)
+                - (self.PlannedMaintenanceDays or 0)
+            )
+        return 0
+
+    @property
+    def PlanDressMass(self):
+        """Calculate dress mass."""
+        if self.AvailableDays and self.heatsperdays and self.TonsPerHeat and self.Yield:
+            return (
+                self.AvailableDays
+                * self.heatsperdays
+                * self.TonsPerHeat
+                * self.Yield
+                * (1 - (self.WasterPercentage or 0) / 100)
+            )
+        return 0
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=['Foundry', 'Month', 'Version'], name='unique_foundry_month_version')
+        ]
 
     def __str__(self):
-        return f"{self.Version} - {self.Foundry}"
+        return f"{self.Foundry.SiteName} - {self.Month} - {self.Version.version}"
     
-class MasterDataPlantModel(models.Model):
-    SiteName = models.CharField(primary_key=True, max_length=250)
-    Company = models.CharField(max_length=250,null=True, blank=True)
-    Country = models.CharField(max_length=250,null=True, blank=True)
-    Location = models.CharField(max_length=250,null=True, blank=True)
-    PlantRegion = models.CharField(max_length=250,null=True, blank=True)
-    SiteType = models.CharField(max_length=250,null=True, blank=True)
-    About = models.TextField(null=True,max_length=3000, blank=True)
-
-    def __str__(self):
-        return self.SiteName or "Unknown Site"
-
 class MasterDataProductModel(models.Model):
     Product = models.CharField(max_length=250, primary_key=True)
     ProductDescription = models.TextField(null=True,blank=True)
@@ -311,19 +342,6 @@ class MasterDataFreightModel(models.Model):
     def __str__(self):
         return f"{self.version.version} - {self.ForecastRegion.Forecast_region} - {self.ManufacturingSite.SiteName}"
 
-class MasterDataCustomersModel(models.Model):
-    CustomerCode = models.CharField(primary_key=True,max_length=250)
-    CustomerName = models.CharField(max_length=250,null=True, blank=True)
-    CustomerGroup = models.CharField(max_length=250,null=True, blank=True)
-    CustomerGroupDescription = models.TextField(null=True,blank=True)
-    SalesClass = models.CharField(max_length=250,null=True, blank=True)
-    SalesClassDescription = models.TextField(null=True,blank=True)
-    ProductGroup = models.CharField(max_length=250,null=True, blank=True)
-    ProductGroupDescription = models.TextField(null=True,blank=True)
-
-    def __str__(self):
-        return self.CustomerCode or "Unknown Customer"
-
 class MasterDataCastToDespatchModel(models.Model):
     version = models.ForeignKey(scenarios, to_field='version', on_delete=models.CASCADE)  # Foreign key from scenarios
     Foundry = models.ForeignKey(MasterDataPlantModel, to_field='SiteName', on_delete=models.CASCADE)  # Foreign key from MasterDataPlantModel
@@ -353,3 +371,54 @@ class CalculatedProductionModel(models.Model):
 
     def __str__(self):
         return f"{self.version.version} - {self.product.Product} - {self.site.SiteName} - {self.pouring_date}"
+    
+class MasterDataSuppliersModel(models.Model):
+    VendorID = models.CharField(primary_key=True, max_length=250)
+    TradingName = models.CharField(max_length=250, null=True, blank=True)
+    Address1 = models.CharField(max_length=250, null=True, blank=True)
+    
+    def __str__(self):
+        return self.VendorID or "Unknown Supplier"
+
+class MasterDataCustomersModel(models.Model):
+    CustomerId = models.CharField(primary_key=True, max_length=250)
+    CustomerName = models.CharField(max_length=250, null=True, blank=True)
+    CustomerRegion = models.CharField(max_length=250, null=True, blank=True)
+    ForecastRegion = models.CharField(max_length=250, null=True, blank=True)
+
+    def __str__(self):
+        return self.CustomerId or "Unknown Customer"
+    
+class MasterDataSupplyOptionsModel(models.Model):
+    Product = models.ForeignKey(MasterDataProductModel, to_field='Product', on_delete=models.CASCADE)  # Foreign key from MasterDataProductModel
+    InhouseOrOutsource = models.CharField(max_length=250, default='Inhouse')  # Default value set to 'Inhouse'
+    Supplier = models.ForeignKey(
+        MasterDataSuppliersModel,
+        to_field='VendorID',
+        on_delete=models.CASCADE,
+        null=True,  # Allow NULL values
+        blank=True  # Allow blank values in forms
+    )
+    Site = models.ForeignKey(
+        MasterDataPlantModel,
+        to_field='SiteName',
+        on_delete=models.CASCADE,
+        null=True,  # Allow NULL values
+        blank=True  # Allow blank values in forms
+    )  # Foreign key from MasterDataPlantModel
+    SourceName = models.CharField(max_length=250, null=True, blank=True)
+    DateofSupply = models.DateField(null=True, blank=True)
+    Qty = models.FloatField(default=0, null=True, blank=True)
+    Tonnes = models.FloatField(default=0, null=True, blank=True)  # New field to store pre-calculated Tonnes
+
+    @property
+    def Source(self):
+        """Return the value of Supplier or Site, whichever is not None."""
+        if self.Supplier:
+            return self.Supplier.VendorID
+        elif self.Site:
+            return self.Site.SiteName
+        return "No Source Assigned"
+
+    def __str__(self):
+        return f"{self.Product.Product} - {self.Source}"

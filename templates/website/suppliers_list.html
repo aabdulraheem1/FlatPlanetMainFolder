@@ -5,36 +5,29 @@
 {% block content %}
 
 <div class="container mt-5">
-    <h1>Customers List</h1>
+    <h1>Suppliers List</h1>
     <form method="GET" action="">
         <div class="table-responsive">
             <table class="table table-bordered">
                 <thead class="thead-light">
                     <tr>
-                        <th>Customer ID
-                            <input type="text" class="form-control" name="CustomerId" value="{{ CustomerId_Filter }}">
+                        <th>Vendor ID
+                            <input type="text" class="form-control" name="VendorID" value="{{ VendorID_Filter }}">
                         </th>
-                        <th>Customer Name
-                            <input type="text" class="form-control" name="CustomerName"
-                                value="{{ CustomerName_Filter }}">
+                        <th>Trading Name
+                            <input type="text" class="form-control" name="TradingName" value="{{ TradingName_Filter }}">
                         </th>
-                        <th>Customer Region
-                            <input type="text" class="form-control" name="CustomerRegion"
-                                value="{{ CustomerRegion_Filter }}">
-                        </th>
-                        <th>Forecast Region
-                            <input type="text" class="form-control" name="ForecastRegion"
-                                value="{{ ForecastRegion_Filter }}">
+                        <th>Address
+                            <input type="text" class="form-control" name="Address1" value="{{ Address1_Filter }}">
                         </th>
                     </tr>
                 </thead>
                 <tbody>
-                    {% for customer in page_obj %}
+                    {% for supplier in page_obj %}
                     <tr>
-                        <td>{{ customer.CustomerId }}</td>
-                        <td>{{ customer.CustomerName }}</td>
-                        <td>{{ customer.CustomerRegion }}</td>
-                        <td>{{ customer.ForecastRegion }}</td>
+                        <td>{{ supplier.VendorID }}</td>
+                        <td>{{ supplier.TradingName }}</td>
+                        <td>{{ supplier.Address1 }}</td>
                     </tr>
                     {% endfor %}
                 </tbody>
@@ -79,14 +72,14 @@
     <div class="modal-dialog">
         <div class="modal-content">
             <div class="modal-header">
-                <h5 class="modal-title" id="refreshModalLabel">Refresh Customers List</h5>
+                <h5 class="modal-title" id="refreshModalLabel">Refresh Suppliers List</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <div class="modal-body">
-                Refreshing the customers list may take a few minutes. Are you sure you want to proceed?
+                Refreshing the suppliers list may take a few minutes. Are you sure you want to proceed?
             </div>
             <div class="modal-footer">
-                <form method="post" action="{% url 'customers_fetch_data' %}">
+                <form method="post" action="{% url 'suppliers_fetch_data' %}">
                     {% csrf_token %}
                     <button type="submit" class="btn btn-warning">Refresh</button>
                 </form>
