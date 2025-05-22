@@ -1,12 +1,12 @@
 from django.shortcuts import render, redirect
 import pandas as pd
 from django.core.files.storage import FileSystemStorage
-from .models import SMART_Forecast_Model, scenarios, MasterDataHistoryOfProductionModel, MasterDataCastToDespatchModel, MasterdataIncoTermsModel, MasterDataIncotTermTypesModel
+from .models import SMART_Forecast_Model, scenarios, MasterDataHistoryOfProductionModel, MasterDataCastToDespatchModel, MasterdataIncoTermsModel, MasterDataIncotTermTypesModel, Revenue_Forecast_Model
 import pandas as pd
 from django.shortcuts import render, redirect
 from django.http import HttpResponseRedirect
 from .forms import UploadFileForm, ScenarioForm, SMARTForecastForm
-from .models import SMART_Forecast_Model
+from .models import SMART_Forecast_Model, scenarios, MasterDataOrderBook, MasterDataCapacityModel, MasterDataCommentModel, MasterDataHistoryOfProductionModel, MasterDataIncotTermTypesModel, MasterdataIncoTermsModel, MasterDataPlan,MasterDataProductAttributesModel, MasterDataSalesAllocationToPlantModel, MasterDataSalesModel, MasterDataSKUTransferModel, MasterDataScheduleModel, AggregatedForecast, MasterDataForecastRegionModel, MasterDataCastToDespatchModel, CalcualtedReplenishmentModel, CalculatedProductionModel, MasterDataFreightModel    
 from django.contrib.auth.decorators import login_required
 import pyodbc
 from django.shortcuts import render
@@ -29,20 +29,67 @@ def welcomepage(request):
     
     return render(request, 'website/welcome_page.html', { 'user_name': user_name})
 
+from django.shortcuts import render, redirect, get_object_or_404
+from django.contrib.auth.decorators import login_required
+from django.apps import apps
+from django.db.models import ForeignKey
+from django.contrib import messages
+from django.db import transaction
+from .forms import ScenarioForm
+from .models import scenarios
+
 @login_required
 def create_scenario(request):
-    
+    all_scenarios = scenarios.objects.all()  # Fetch all existing scenarios for the dropdown
+    user_name = request.user.username
+
     if request.method == 'POST':
         form = ScenarioForm(request.POST)
+        copy_from_scenario_id = request.POST.get('copy_from_scenario')  # Get the selected scenario ID
+        copy_from_checked = request.POST.get('copy_from_checkbox')  # Check if the checkbox is checked
+
         if form.is_valid():
-            scenario = form.save(commit=False)
-            scenario.created_by = request.user.username
-            scenario.save()            
-            return redirect('welcomepage')  # Redirect to a relevant view after saving
+            with transaction.atomic():
+                # Create the new scenario
+                scenario = form.save(commit=False)
+                scenario.created_by = request.user.username
+                scenario.save()
+
+                # If the user checked "Copy from another scenario"
+                if copy_from_checked and copy_from_scenario_id:
+                    copy_from_scenario = get_object_or_404(scenarios, version=copy_from_scenario_id)
+
+                    # Dynamically find all related models with a ForeignKey to `scenarios`
+                    related_models = [
+                        model for model in apps.get_models()
+                        if any(
+                            isinstance(field, ForeignKey) and field.related_model == scenarios
+                            for field in model._meta.get_fields()
+                        )
+                    ]
+
+                    # Copy related data from the selected scenario to the new one using bulk_create
+                    for related_model in related_models:
+                        related_objects = related_model.objects.filter(version=copy_from_scenario)
+                        new_objects = []
+                        for obj in related_objects:
+                            obj.pk = None  # Reset the primary key to create a new object
+                            obj.version = scenario  # Assign the new scenario
+                            new_objects.append(obj)
+                        if new_objects:
+                            related_model.objects.bulk_create(new_objects)
+
+                # Add success message and redirect to edit_scenario with scenario version
+                messages.success(request, f'Scenario "{getattr(scenario, "name", scenario.version)}" has been created.')
+                return redirect('edit_scenario', version=scenario.version)
     else:
         form = ScenarioForm()
-    
-    return render(request, 'website/create_scenario.html', {'form': form})
+
+    return render(request, 'website/create_scenario.html', {
+        'form': form,
+        'scenarios': all_scenarios,
+        'user_name': user_name,
+    })
 
 @login_required
 def fetch_data_from_mssql(request):
@@ -174,6 +221,16 @@ def delete_product(request, pk):
         return render(request, 'website/confirm_delete.html', {'product': product})
     return render(request, 'website/confirm_delete.html', {'product': product})
     
+import re
+
+def is_english(s):
+    """Returns True if the string contains only English letters, numbers, and common punctuation."""
+    try:
+        s.encode('ascii')
+    except (UnicodeEncodeError, AttributeError):
+        return False
+    return True
+
 @login_required
 def plants_fetch_data_from_mssql(request):
     # Connect to the database
@@ -184,26 +241,55 @@ def plants_fetch_data_from_mssql(request):
     engine = create_engine(Database_Con)
     connection = engine.connect()
 
-    # Fetch new data from the database
+    # Fetch and update Site data
     query = text("SELECT * from PowerBI.Site where RowEndDate IS NULL")
     result = connection.execute(query)
-
-    SiteName_dict = {}
-
-    for row in result:  
-        SiteName_dict[row.SiteName] = {
-            'Company': row.Company,
-            'Country': row.Country,
-            'Location': row.Location,
-            'PlantRegion': row.PlantRegion,
-            'SiteType': row.SiteType,
-        }
-
-    # Update or create records in the model
-    for site, data in SiteName_dict.items():
+    for row in result:
+        if not row.SiteName or str(row.SiteName).strip() == "":
+            continue
         MasterDataPlantModel.objects.update_or_create(
-            SiteName=site,
-            defaults=data
+            SiteName=row.SiteName,
+            defaults={
+                'Company': row.Company,
+                'Country': row.Country,
+                'Location': row.Location,
+                'PlantRegion': row.PlantRegion,
+                'SiteType': row.SiteType,
+            }
+        )
+
+    # Fetch and update Supplier data as Plant records
+    query = text("SELECT * FROM PowerBI.Supplier")
+    result = connection.execute(query)
+    for row in result:
+        if not row.VendorID or str(row.VendorID).strip() == "":
+            continue
+        site_name = row.VendorID  # Use VendorID as SiteName
+        company = getattr(row, 'Company', None)
+        country = getattr(row, 'Country', None)
+        location = getattr(row, 'Location', None)
+        plant_region = getattr(row, 'PlantRegion', None)
+        site_type = getattr(row, 'SiteType', None)
+        trading_name = row.TradingName
+        address1 = row.Address1
+
+        # Determine TradingName field value
+        if trading_name and not is_english(trading_name):
+            trading_name_to_store = address1
+        else:
+            trading_name_to_store = trading_name
+
+        MasterDataPlantModel.objects.update_or_create(
+            SiteName=site_name,
+            defaults={
+                'InhouseOrOutsource': 'Outsource',
+                'TradingName': trading_name_to_store,
+                'Company': company,
+                'Country': country,
+                'Location': location,
+                'PlantRegion': plant_region,
+                'SiteType': site_type,
+            }
         )
 
     connection.close()
@@ -265,7 +351,7 @@ def plants_list(request):
     Site_filter = request.GET.get('SiteName', '')
     Company_filter = request.GET.get('Company', '')
     Location_filter = request.GET.get('Location', '')
-    SiteType_filter = request.GET.get('SiteType', '')
+    TradingName_filter = request.GET.get('TradingName', '')
     
 
     if Site_filter:
@@ -274,8 +360,8 @@ def plants_list(request):
         sites = sites.filter(Company__icontains=Company_filter)
     if Location_filter:
         sites = sites.filter(Location__icontains=Location_filter)
-    if SiteType_filter:
-        sites = sites.filter(SiteType__icontains=SiteType_filter)
+    if TradingName_filter:
+        sites = sites.filter(TradingName__icontains=TradingName_filter)
     
 
     # Pagination logic
@@ -288,7 +374,7 @@ def plants_list(request):
         'Site_Filter': Site_filter,
         'Company_Filter': Company_filter,
         'Location_Filter': Location_filter,
-        'SiteType_Filter': SiteType_filter,
+        'TradingName_Filter': TradingName_filter,
         'user_name': user_name,
 
     }
@@ -332,11 +418,12 @@ def edit_plant(request, pk):
     return render(request, 'website/edit_forecast.html', {'form': form})
 
 @login_required
-def delete_forecast(request, id):
-    forecast = get_object_or_404(SMART_Forecast_Model, id=id)
-    scenario_id = forecast.version.id
-    forecast.delete()
-    return redirect('manage_forecasts', scenario_id=scenario_id)
+def delete_forecast(request, version, data_source):
+    """Delete forecast data for a specific version and data source."""
+    scenario = get_object_or_404(scenarios, version=version)
+    SMART_Forecast_Model.objects.filter(version=scenario, Data_Source=data_source).delete()
+    
+    return redirect('edit_scenario', version=version)
 
 @login_required
 def edit_scenario(request, version):
@@ -351,7 +438,12 @@ def edit_scenario(request, version):
     smart_forecast_data = SMART_Forecast_Model.objects.filter(version=scenario, Data_Source='SMART').exists()
     not_in_smart_forecast_data = SMART_Forecast_Model.objects.filter(version=scenario, Data_Source='Not in SMART').exists()
     on_hand_stock_in_transit = MasterDataInventory.objects.filter(version=scenario).exists()
+    production_allocation_epicor_master_data = MasterDataEpicorSupplierMasterDataModel.objects.filter(version=scenario).exists()
     master_data_freight_has_data = MasterDataFreightModel.objects.filter(version=scenario).exists()
+    # Check if there is data for Fixed Plant and Revenue forecasts
+    fixed_plant_forecast_data = SMART_Forecast_Model.objects.filter(version=scenario, Data_Source='Fixed Plant').exists()
+    revenue_forecast_data = SMART_Forecast_Model.objects.filter(version=scenario, Data_Source='Revenue Forecast').exists()
+
 
     # Check if there is data for Master Data Incoterm Types
     master_data_incoterm_types_has_data = MasterDataIncotTermTypesModel.objects.filter(version=scenario).exists()
@@ -360,7 +452,7 @@ def edit_scenario(request, version):
     incoterms = MasterDataIncotTermTypesModel.objects.filter(version=scenario)  # Retrieve all incoterms for the scenario
 
     # Check if there is data for MasterDataPlan
-    pour_plan_data_has_data = MasterDataPlan.objects.filter(Version=scenario).exists()
+    pour_plan_data_has_data = MasterDataPlan.objects.filter( version=scenario).exists()
 
     # Retrieve missing regions from the session
     missing_regions = request.session.pop('missing_regions', None)
@@ -383,6 +475,8 @@ def edit_scenario(request, version):
         'production_allocation_pouring_history': production_allocation_pouring_history,
         'smart_forecast_data': smart_forecast_data,
         'not_in_smart_forecast_data': not_in_smart_forecast_data,
+        'fixed_plant_forecast_data': fixed_plant_forecast_data,
+        'revenue_forecast_data': revenue_forecast_data,        
         'on_hand_stock_in_transit': on_hand_stock_in_transit,
         'master_data_freight_has_data': master_data_freight_has_data,
         'master_data_incoterm_types_has_data': master_data_incoterm_types_has_data,
@@ -390,6 +484,7 @@ def edit_scenario(request, version):
         'master_data_inco_terms_has_data': master_data_inco_terms_has_data,
         'incoterms': incoterms,  # Pass incoterms to the template
         'missing_regions': missing_regions,  # Pass missing regions to the template
+        'production_allocation_epicor_master_data': production_allocation_epicor_master_data,
         'pour_plan_data_has_data': pour_plan_data_has_data,
     })
 
@@ -421,11 +516,9 @@ def upload_forecast(request, forecast_type):
         filename = fs.save(file.name, file)
         file_path = fs.path(filename)
 
-        # Debugging: Log the version from the POST request
         version_value = request.POST.get('version')
-        print("Version from POST request:", version_value)
+        print(" version from POST request:", version_value)
 
-        # Get the scenario version based on the forecast_type or version
         try:
             version = scenarios.objects.get(version=version_value)
         except scenarios.DoesNotExist:
@@ -434,13 +527,20 @@ def upload_forecast(request, forecast_type):
                 'version': version_value
             })
 
-        # Read the Excel file
         df = pd.read_excel(file_path)
-
+        print("Excel DataFrame head:", df.head())
         # Set the data source based on the forecast type
-        data_source = 'SMART' if forecast_type == 'SMART' else 'Not in SMART'
+        if forecast_type == 'SMART':
+            data_source = 'SMART'
+        elif forecast_type == 'Not in SMART':
+            data_source = 'Not in SMART'
+        elif forecast_type == 'Fixed Plant':
+            data_source = 'Fixed Plant'
+        elif forecast_type == 'Revenue':
+            data_source = 'Revenue Forecast'
+        else:
+            data_source = forecast_type  # fallback
 
-        # Iterate over the rows and save to the model
         for _, row in df.iterrows():
             SMART_Forecast_Model.objects.create(
                 version=version,
@@ -458,30 +558,36 @@ def upload_forecast(request, forecast_type):
                 Qty=row.get('Qty') if pd.notna(row.get('Qty')) else None
             )
 
-        # Redirect to the edit scenario page after upload
         return redirect('edit_scenario', version=version.version)
 
-    # Pass the version to the template for the form
     return render(request, 'website/upload_forecast.html', {'version': forecast_type})
 
-# filepath: c:\Users\aali\Documents\Data\Training\SPR\SPR\website\views.py
-from django.core.paginator import Paginator
-from django.db.models import Q
-from django.shortcuts import render, get_object_or_404
-from .models import SMART_Forecast_Model, scenarios
+from django.forms import modelformset_factory
 
 @login_required
 def edit_forecasts(request, version, forecast_type):
+    User_name = request.user.username
     scenario = get_object_or_404(scenarios, version=version)
 
-    # Get filter parameters
+    # Map forecast_type to Data_Source for filtering
+    if forecast_type == 'SMART':
+        data_source = 'SMART'
+    elif forecast_type == 'Not in SMART':
+        data_source = 'Not in SMART'
+    elif forecast_type == 'Fixed Plant':
+        data_source = 'Fixed Plant'
+    elif forecast_type == 'Revenue':
+        data_source = 'Revenue Forecast'
+    else:
+        data_source = forecast_type
+
     product_filter = request.GET.get('product', '')
     region_filter = request.GET.get('region', '')
     date_filter = request.GET.get('date', '')
     location_filter = request.GET.get('location', '')
+    product_group_filter = request.GET.get('product_group', '')
 
-    # Filter the data
-    forecasts = SMART_Forecast_Model.objects.filter(version=scenario.version, Data_Source=forecast_type)
+    forecasts = SMART_Forecast_Model.objects.filter(version=scenario.version, Data_Source=data_source)
     if product_filter:
         forecasts = forecasts.filter(Product__icontains=product_filter)
     if region_filter:
@@ -490,18 +596,84 @@ def edit_forecasts(request, version, forecast_type):
         forecasts = forecasts.filter(Period_AU=date_filter)
     if location_filter:
         forecasts = forecasts.filter(Location__icontains=location_filter)
+    if product_group_filter:
+        forecasts = forecasts.filter(Product_Group__icontains=product_group_filter)
 
-    # Paginate the results
-    paginator = Paginator(forecasts, 10)  # Show 10 forecasts per page
+    forecasts = forecasts.order_by('id')  # <-- Add this line BEFORE pagination
+
+    paginator = Paginator(forecasts, 10)
     page_number = request.GET.get('page')
     page_obj = paginator.get_page(page_number)
 
+    # Use a ModelFormSet for editing
+    ForecastFormSet = modelformset_factory(
+        SMART_Forecast_Model,
+        fields=('Data_Source', 'Forecast_Region', 'Product_Group', 'Product', 'ProductFamilyDescription', 'Customer_code', 'Location', 'Forecasted_Weight_Curr', 'PriceAUD', 'Period_AU', 'Qty'),
+        extra=0
+    )
+    formset = ForecastFormSet(queryset=page_obj.object_list)
+
+    if request.method == 'POST':
+        formset = ForecastFormSet(request.POST, queryset=page_obj.object_list)
+        if formset.is_valid():
+            formset.save()
+            return redirect('edit_forecasts', version=version, forecast_type=forecast_type)
+
     return render(request, 'website/edit_forecasts.html', {
         'scenario': scenario,
-        'formset': page_obj.object_list,
+        'formset': formset,
         'page_obj': page_obj,
         'request': request,
         'forecast_type': forecast_type,
+        'user_name': User_name,
+    })
+
+@login_required
+def copy_forecast(request, version, data_source):
+    target_scenario = get_object_or_404(scenarios, version=version)
+
+    # Map data_source for consistency
+    if data_source == 'SMART':
+        mapped_data_source = 'SMART'
+    elif data_source == 'Not in SMART':
+        mapped_data_source = 'Not in SMART'
+    elif data_source == 'Fixed Plant':
+        mapped_data_source = 'Fixed Plant'
+    elif data_source == 'Revenue':
+        mapped_data_source = 'Revenue Forecast'
+    else:
+        mapped_data_source = data_source
+
+    if request.method == 'POST':
+        source_version = request.POST.get('source_version')
+        source_scenario = get_object_or_404(scenarios, version=source_version)
+
+        source_records = SMART_Forecast_Model.objects.filter(version=source_scenario, Data_Source=mapped_data_source)
+        for record in source_records:
+            SMART_Forecast_Model.objects.create(
+                version=target_scenario,
+                Data_Source=record.Data_Source,
+                Forecast_Region=record.Forecast_Region,
+                Product_Group=record.Product_Group,
+                Product=record.Product,
+                ProductFamilyDescription=record.ProductFamilyDescription,
+                Customer_code=record.Customer_code,
+                Location=record.Location,
+                Forecasted_Weight_Curr=record.Forecasted_Weight_Curr,
+                PriceAUD=record.PriceAUD,
+                DP_Cycle=record.DP_Cycle,
+                Period_AU=record.Period_AU,
+                Qty=record.Qty,
+            )
+
+        return redirect('edit_scenario', version=version)
+
+    all_scenarios = scenarios.objects.exclude(version=version)
+
+    return render(request, 'website/copy_forecast.html', {
+        'target_scenario': target_scenario,
+        'all_scenarios': all_scenarios,
+        'data_source': data_source,
     })
 
 from django.shortcuts import render
@@ -520,7 +692,7 @@ def get_dress_mass_data(site_name, version):
     """
     Fetch Dress Mass data from MasterDataPlan for the given site and version.
     """
-    queryset = MasterDataPlan.objects.filter(Foundry__SiteName=site_name, Version=version).order_by('Month')
+    queryset = MasterDataPlan.objects.filter(Foundry__SiteName=site_name,  version=version).order_by('Month')
     
     # Calculate Dress Mass for each record
     dress_mass_data = []
@@ -650,6 +822,30 @@ def review_scenario(request, version):
     xuzhou_chart_data = prepare_combined_chart_data(xuzhou_data, xuzhou_dress_mass_data)
     merlimau_chart_data = prepare_combined_chart_data(merlimau_data, merlimau_dress_mass_data)
 
+    # --- Add this function to get top 10 products per month for Mt Joli ---
+    def get_top_products_per_month(site_name):
+        # Query all production by product and month for this site
+        queryset = (
+            CalculatedProductionModel.objects
+            .filter(site__SiteName=site_name, version=scenario.version)
+            .annotate(month=TruncMonth('pouring_date'))
+            .values('month', 'product__Product')
+            .annotate(total_tonnes=Sum('tonnes'))
+            .order_by('month', '-total_tonnes')
+        )
+        # Build a dict: {month: [(product, tonnes), ...]}
+        top_products = {}
+        for entry in queryset:
+            month = entry['month'].strftime('%Y-%m')
+            product = entry['product__Product']
+            tonnes = entry['total_tonnes']
+            if month not in top_products:
+                top_products[month] = []
+            if len(top_products[month]) < 10:
+                top_products[month].append((product, tonnes))
+        return top_products
+
+    mt_joli_top_products = get_top_products_per_month('MTJ1')
 
     # Add all data to the context
     context = {
@@ -658,6 +854,7 @@ def review_scenario(request, version):
         'forecast_chart_data': forecast_chart_data,  # Data for Forecast Analysis
         'chart_data_parent_product_group': chart_data_parent_product_group,  # Data for Parent Product Group
         'mt_joli_data': prepare_production_chart_data(mt_joli_data),
+        'mt_joli_top_products': mt_joli_top_products,  # <-- Add this line
         'coimbatore_data': prepare_production_chart_data(coimbatore_data),
         'xuzhou_data': prepare_production_chart_data(xuzhou_data),
         'merlimau_data': prepare_production_chart_data(merlimau_data),
@@ -672,8 +869,16 @@ def review_scenario(request, version):
 
     return render(request, 'website/review_scenario.html', context)
 
-from django.shortcuts import render, get_object_or_404
-from .models import SMART_Forecast_Model, MasterDataProductModel
+from django.db.models import Sum
+from django.contrib.auth.decorators import login_required
+from django.shortcuts import get_object_or_404, render
+from .models import (
+    scenarios,
+    SMART_Forecast_Model,
+    MasterDataProductModel,
+    MasterDataFreightModel,
+    CalcualtedReplenishmentModel,
+)
 
 @login_required
 def ScenarioWarningList(request, version):
@@ -684,18 +889,44 @@ def ScenarioWarningList(request, version):
     forecast_products = SMART_Forecast_Model.objects.values_list('Product', flat=True).distinct()
     products_not_in_master_data = forecast_products.exclude(Product__in=MasterDataProductModel.objects.values_list('Product', flat=True))
     
-    products_without_dress_mass = MasterDataProductModel.objects.filter(Product__in=forecast_products).filter(DressMass__isnull=True) | MasterDataProductModel.objects.filter(Product__in=forecast_products).filter(DressMass=0)
+    # Products without dress mass
+    products_without_dress_mass_queryset = MasterDataProductModel.objects.filter(Product__in=forecast_products).filter(DressMass__isnull=True) | MasterDataProductModel.objects.filter(Product__in=forecast_products).filter(DressMass=0)
     
+    # Group products without dress mass by parent product group
+    grouped_products_without_dress_mass = {}
+    for product in products_without_dress_mass_queryset:
+        parent_group = product.ParentProductGroup
+        if parent_group not in grouped_products_without_dress_mass:
+            grouped_products_without_dress_mass[parent_group] = []
+        grouped_products_without_dress_mass[parent_group].append(product)
+
     # Regions in forecast but not defined in the freight model
     forecast_regions = SMART_Forecast_Model.objects.filter(version=scenario).values_list('Forecast_Region', flat=True).distinct()
     defined_regions = MasterDataFreightModel.objects.filter(version=scenario).values_list('ForecastRegion__Forecast_region', flat=True).distinct()
     missing_regions = set(forecast_regions) - set(defined_regions)
 
+    # Products not allocated to foundries (Site is NULL) with summed ReplenishmentQty, grouped by parent product group
+    products_not_allocated_to_foundries = (
+        CalcualtedReplenishmentModel.objects.filter(version=scenario, Site__isnull=True)
+        .values('Product__ParentProductGroup', 'Product__Product', 'Product__ProductDescription')
+        .annotate(total_replenishment_qty=Sum('ReplenishmentQty'))
+        .order_by('Product__ParentProductGroup', '-total_replenishment_qty')  # Group by parent product group and sort by qty
+    )
+
+    # Group products not allocated to foundries by parent product group
+    grouped_products = {}
+    for product in products_not_allocated_to_foundries:
+        parent_group = product['Product__ParentProductGroup']
+        if parent_group not in grouped_products:
+            grouped_products[parent_group] = []
+        grouped_products[parent_group].append(product)
+
     context = {
         'scenario': scenario,
         'products_not_in_master_data': products_not_in_master_data,
-        'products_without_dress_mass': products_without_dress_mass,
-        'missing_regions': missing_regions,  # Add missing regions to the context
+        'grouped_products_without_dress_mass': grouped_products_without_dress_mass,  # Pass grouped products without dress mass
+        'grouped_products': grouped_products,  # Pass grouped products not allocated to foundries
+        'missing_regions': missing_regions,
         'user_name': user_name,
     }
     
@@ -1530,12 +1761,12 @@ def incoterm_upload(request):
         excel_file = request.FILES['file']
         try:
             df = pd.read_excel(excel_file)
-            required_columns = ['Version', 'IncoTerm', 'IncoTermCaregory']
+            required_columns = [' version', 'IncoTerm', 'IncoTermCaregory']
             if not all(col in df.columns for col in required_columns):
-                return HttpResponse("Invalid file format. Required columns: Version, IncoTerm, IncoTermCaregory.")
+                return HttpResponse("Invalid file format. Required columns:  version, IncoTerm, IncoTermCaregory.")
             for _, row in df.iterrows():
                 MasterDataIncotTermTypesModel.objects.update_or_create(
-                    version_id=row['Version'],
+                    version_id=row[' version'],
                     IncoTerm=row['IncoTerm'],
                     defaults={'IncoTermCaregory': row['IncoTermCaregory']}
                 )
@@ -1621,7 +1852,7 @@ from .forms import MasterDataPlanForm
 
 def update_master_data_plan(request, version):
     # Filter records by version
-    plans = MasterDataPlan.objects.filter(Version=version)
+    plans = MasterDataPlan.objects.filter( version=version)
 
     # Create a formset for editing multiple records
     MasterDataPlanFormSet = modelformset_factory(MasterDataPlan, form=MasterDataPlanForm, extra=0)
@@ -1641,7 +1872,7 @@ def update_master_data_plan(request, version):
     })
 
 def delete_master_data_plan(request, version):
-    MasterDataPlan.objects.filter(Version=version).delete()
+    MasterDataPlan.objects.filter( version=version).delete()
     messages.success(request, "All Master Data Plan records deleted successfully!")
     return redirect('edit_scenario', version=version)
 
@@ -1656,10 +1887,10 @@ def upload_master_data_plan(request, version):
 
         for row in reader:
             MasterDataPlan.objects.update_or_create(
-                Version_id=version,
+                 version_id=version,
                 Foundry=row['Foundry'],
                 defaults={
-                    'SubVersion': row.get('SubVersion'),
+                    'Sub version': row.get('Sub version'),
                     'PouringDaysperweek': row.get('PouringDaysperweek'),
                     'CalendarDays': row.get('CalendarDays'),
                     'Month': row.get('Month'),
@@ -1697,13 +1928,13 @@ def copy_master_data_plan(request, version):
         source_scenario = get_object_or_404(scenarios, version=source_version)
 
         # Delete all existing records for the target scenario
-        MasterDataPlan.objects.filter(Version=target_scenario).delete()
+        MasterDataPlan.objects.filter( version=target_scenario).delete()
 
         # Copy records from the source scenario to the target scenario
-        source_plans = MasterDataPlan.objects.filter(Version=source_scenario)
+        source_plans = MasterDataPlan.objects.filter( version=source_scenario)
         for plan in source_plans:
             plan.pk = None  # Reset primary key to create a new record
-            plan.Version = target_scenario  # Assign the target scenario
+            plan. version = target_scenario  # Assign the target scenario
             plan.save()
 
         messages.success(request, f"Data successfully copied from scenario '{source_version}' to '{version}'.")
@@ -1802,7 +2033,7 @@ def update_pour_plan_data(request, version):
     scenario = scenarios.objects.get(version=version)
 
     # Filter records by version
-    plans = MasterDataPlan.objects.filter(Version=scenario)
+    plans = MasterDataPlan.objects.filter( version=scenario)
 
     # Apply filters from GET parameters
     foundry_filter = request.GET.get('foundry', '').strip()
@@ -1825,21 +2056,21 @@ def update_pour_plan_data(request, version):
                 form.empty_permitted = True
 
         if formset.is_valid():
-            # Save each form instance and set the Version field
+            # Save each form instance and set the  version field
             instances = formset.save(commit=False)
             for instance in instances:
                 # Skip saving if only one of Foundry or Month is entered
                 if not instance.Foundry or not instance.Month:
                     continue
                 if instance.pk or form.has_changed():  # Only process forms with changes or existing records
-                    instance.Version = scenario  # Set the foreign key
+                    instance. version = scenario  # Set the foreign key
                     instance.save()
             # Delete any records marked for deletion
             for instance in formset.deleted_objects:
                 instance.delete()
             messages.success(request, "Pour Plan Data updated successfully!")
             # Refresh the queryset to include updated data
-            plans = MasterDataPlan.objects.filter(Version=scenario)
+            plans = MasterDataPlan.objects.filter( version=scenario)
             formset = MasterDataPlanFormSet(queryset=plans)  # Reinitialize the formset with updated data
         else:
             # Log validation errors
@@ -1995,6 +2226,7 @@ from django.shortcuts import render
 from .models import MasterDataSupplyOptionsModel
 
 def SupplyOptions(request):
+    user_name = request.user.username
     # Filters
     product_filter = request.GET.get('product', '')
     inhouse_or_outsource_filter = request.GET.get('inhouse_or_outsource', '')
@@ -2032,4 +2264,306 @@ def SupplyOptions(request):
         'product_filter': product_filter,
         'inhouse_or_outsource_filter': inhouse_or_outsource_filter,
         'source_filter': source_filter,
+        'user_name': user_name,
     })
+
+from django.shortcuts import get_object_or_404, redirect
+from django.http import JsonResponse
+from .models import MasterDataEpicorSupplierMasterDataModel, scenarios
+
+from django.forms import modelformset_factory
+from django.core.paginator import Paginator
+
+@login_required
+def update_epicor_supplier_master_data(request, version):
+    scenario = get_object_or_404(scenarios, version=version)
+
+    # Get filter values from the query string
+    company_filter = request.GET.get('company', '')
+    plant_filter = request.GET.get('plant', '')
+    product_filter = request.GET.get('product', '')
+    vendor_filter = request.GET.get('vendor', '')
+    source_type_filter = request.GET.get('source_type', '')  # Add SourceType filter
+
+    # Filter the queryset based on exact matches
+    queryset = MasterDataEpicorSupplierMasterDataModel.objects.filter(version=scenario)
+    if company_filter:
+        queryset = queryset.filter(Company__exact=company_filter)  # Exact match for Company
+    if plant_filter:
+        queryset = queryset.filter(Plant__exact=plant_filter)  # Exact match for Plant
+    if product_filter:
+        queryset = queryset.filter(PartNum__exact=product_filter)  # Exact match for Product
+    if vendor_filter:
+        queryset = queryset.filter(VendorID__exact=vendor_filter)  # Exact match for Vendor
+    if source_type_filter:
+        queryset = queryset.filter(SourceType__exact=source_type_filter)  # Exact match for SourceType
+
+    # Apply ordering before slicing
+    queryset = queryset.order_by('id')  # Ensure the queryset is ordered before pagination
+
+    # Paginate the queryset
+    paginator = Paginator(queryset, 10)  # Show 10 records per page
+    page_number = request.GET.get('page')
+    page_obj = paginator.get_page(page_number)
+
+    # Create a formset for the current page
+    EpicorSupplierFormSet = modelformset_factory(
+        MasterDataEpicorSupplierMasterDataModel,
+        fields=('Company', 'Plant', 'PartNum', 'VendorID', 'SourceType'),  # Include SourceType
+        extra=0
+    )
+    formset = EpicorSupplierFormSet(queryset=page_obj.object_list)
+
+    return render(request, 'website/update_epicor_supplier_master_data.html', {
+        'scenario': scenario,
+        'formset': formset,
+        'page_obj': page_obj,
+        'company_filter': company_filter,
+        'plant_filter': plant_filter,
+        'product_filter': product_filter,
+        'vendor_filter': vendor_filter,
+        'source_type_filter': source_type_filter,  # Pass SourceType filter to the template
+    })
+
+@login_required
+def delete_epicor_supplier_master_data(request, version):
+    """Delete all records for a specific version in MasterDataEpicorSupplierMasterDataModel."""
+    scenario = get_object_or_404(scenarios, version=version)
+    MasterDataEpicorSupplierMasterDataModel.objects.filter(version=scenario).delete()
+    return JsonResponse({'success': True, 'message': 'Records deleted successfully.'})
+
+@login_required
+def copy_epicor_supplier_master_data(request, version):
+    """Copy all records for a specific version in MasterDataEpicorSupplierMasterDataModel."""
+    target_scenario = get_object_or_404(scenarios, version=version)
+
+    if request.method == 'POST':
+        source_version = request.POST.get('source_version')
+        source_scenario = get_object_or_404(scenarios, version=source_version)
+
+        # Copy records
+        source_records = MasterDataEpicorSupplierMasterDataModel.objects.filter(version=source_scenario)
+        bulk_data = [
+            MasterDataEpicorSupplierMasterDataModel(
+                version=target_scenario,
+                Company=record.Company,
+                Plant=record.Plant,
+                PartNum=record.PartNum,
+                VendorID=record.VendorID,
+                SourceType=record.SourceType,  # Include SourceType
+            )
+            for record in source_records
+        ]
+        MasterDataEpicorSupplierMasterDataModel.objects.bulk_create(bulk_data)
+
+        return redirect('edit_scenario', version=version)
+
+    # Get all scenarios except the current one
+    all_scenarios = scenarios.objects.exclude(version=version)
+
+    return render(request, 'website/copy_epicor_supplier_master_data.html', {
+        'target_scenario': target_scenario,
+        'all_scenarios': all_scenarios,
+    })
+
+from django.shortcuts import get_object_or_404, redirect
+from django.http import JsonResponse
+from .models import MasterDataEpicorSupplierMasterDataModel, scenarios
+from sqlalchemy import create_engine, text
+from django.contrib.auth.decorators import login_required
+
+@login_required
+def upload_epicor_supplier_master_data(request, version):
+    """Fetch data from Epicor database and upload it to MasterDataEpicorSupplierMasterDataModel."""
+    scenario = get_object_or_404(scenarios, version=version)
+
+    # Database connection details
+    server = 'bknew-sql02'
+    database = 'Bradken_Epicor_ODS'
+    driver = 'ODBC Driver 17 for SQL Server'
+    database_con = f'mssql+pyodbc://@{server}/{database}?driver={driver}'
+    engine = create_engine(database_con)
+
+    try:
+        # Establish the database connection
+        with engine.connect() as connection:
+            # Step 1: Delete existing data for the given version
+            MasterDataEpicorSupplierMasterDataModel.objects.filter(version=scenario).delete()
+
+            # Step 2: SQL query to join tables and fetch data with LEFT JOIN
+            query = text("""
+                SELECT 
+                    PartPlant.Company AS Company,
+                    PartPlant.Plant AS Plant,
+                    PartPlant.PartNum AS PartNum,
+                    PartPlant.[SourceType] AS SourceType,  -- Corrected column name
+                    Vendor.VendorID AS VendorID
+                FROM epicor.PartPlant AS PartPlant
+                LEFT JOIN epicor.Vendor AS Vendor
+                    ON PartPlant.Company = Vendor.Company
+                    AND PartPlant.VendorNum = Vendor.VendorNum
+                WHERE PartPlant.RowEndDate IS NULL
+            """)
+
+            # Step 3: Execute the query
+            result = connection.execute(query)
+
+            # Step 4: Create a list of objects to bulk insert
+            bulk_data = []
+            for row in result:
+                # Apply the custom logic for VendorID
+                vendor_id = row.VendorID
+                if row.SourceType == 'M' and row.Company == 'AU03':
+                    vendor_id = row.Plant  # Set VendorID to Plant if conditions are met
+
+                # Add the record to the bulk data list
+                bulk_data.append(
+                    MasterDataEpicorSupplierMasterDataModel(
+                        version=scenario,
+                        Company=row.Company,
+                        Plant=row.Plant,
+                        PartNum=row.PartNum,
+                        VendorID=vendor_id if vendor_id else None,  # Handle NULL values for VendorID
+                        SourceType=row.SourceType  # Save SourceType
+                    )
+                )
+
+            # Step 5: Perform bulk insert
+            MasterDataEpicorSupplierMasterDataModel.objects.bulk_create(bulk_data)
+
+        # Step 6: Redirect to the edit scenario page after successful upload
+        return redirect('edit_scenario', version=version)
+    except Exception as e:
+        # Handle any exceptions and return an error response
+        return JsonResponse({'success': False, 'message': f'An error occurred: {e}'})
+
+from django.core.management import call_command
+from django.contrib import messages
+from django.shortcuts import redirect
+from website.models import AggregatedForecast, CalcualtedReplenishmentModel, CalculatedProductionModel, scenarios
+
+from django.core.management import call_command
+from django.contrib import messages
+from django.shortcuts import redirect
+from website.models import AggregatedForecast, CalcualtedReplenishmentModel, CalculatedProductionModel, scenarios
+
+
+from django.db import transaction
+
+@login_required
+@transaction.non_atomic_requests
+def calculate_model(request, version):
+    """
+    Run the management commands to calculate the model for the given version.
+    """
+    try:
+        # Step 1: Run the first command: populate_aggregated_forecast
+        try:
+            print(f"Running populate_aggregated_forecast for version: {version}")
+            call_command('populate_aggregated_forecast', version)
+            messages.success(request, f"Aggregated forecast has been successfully populated for version '{version}'.")
+        except Exception as e:
+            messages.error(request, f"Error in populate_aggregated_forecast: {e}")
+            return redirect('list_scenarios')
+
+        # Step 2: Conditionally delete related records in CalcualtedReplenishmentModel
+        if CalcualtedReplenishmentModel.objects.filter(version=version).exists():
+            CalcualtedReplenishmentModel.objects.filter(version=version).delete()
+            messages.success(request, f"Existing records in CalcualtedReplenishmentModel for version '{version}' have been deleted.")
+        else:
+            messages.warning(request, f"No existing records found in CalcualtedReplenishmentModel for version '{version}'.")
+
+        # Step 3: Run the second command: populate_calculated_replenishment
+        try:
+            call_command('populate_calculated_replenishment', version)
+            messages.success(request, f"Calculated replenishment has been successfully populated for version '{version}'.")
+        except Exception as e:
+            messages.error(request, f"Error in populate_calculated_replenishment: {e}")
+            return redirect('list_scenarios')
+
+        # Step 4: Conditionally delete related records in CalculatedProductionModel
+        if CalculatedProductionModel.objects.filter(version=version).exists():
+            CalculatedProductionModel.objects.filter(version=version).delete()
+            messages.success(request, f"Existing records in CalculatedProductionModel for version '{version}' have been deleted.")
+        else:
+            messages.warning(request, f"No existing records found in CalculatedProductionModel for version '{version}'.")
+
+        # Step 5: Run the third command: populate_calculated_production
+        try:
+            call_command('populate_calculated_production', version)
+            messages.success(request, f"Calculated production has been successfully populated for version '{version}'.")
+        except Exception as e:
+            messages.error(request, f"Error in populate_calculated_production: {e}")
+            return redirect('list_scenarios')
+
+    except Exception as e:
+        messages.error(request, f"An error occurred while calculating the model: {e}")
+
+    # Redirect back to the list of scenarios
+    return redirect('list_scenarios')
+
+from .forms import PlantForm
+
+def create_plant(request):
+    if request.method == 'POST':
+        form = PlantForm(request.POST)
+        if form.is_valid():
+            form.save()
+            return redirect('PlantsList')  # Redirect to the plants list after saving
+    else:
+        form = PlantForm()
+    return render(request, 'website/create_plant.html', {'form': form})
+
+
+@login_required
+def BOM_fetch_data_from_mssql(request):
+    # Connect to the database
+    Server = 'bknew-sql02'
+    Database = 'Bradken_Epicor_ODS'
+    Driver = 'ODBC Driver 17 for SQL Server'
+    Database_Con = f'mssql+pyodbc://@{Server}/{Database}?driver={Driver}'
+    engine = create_engine(Database_Con)
+    connection = engine.connect()
+
+    # Fetch and update Site data
+    query = text("SELECT * from [epicor].[PartMtl] where RowEndDate IS NULL")
+    result = connection.execute(query)
+    for row in result:
+        if not row.SiteName or str(row.SiteName).strip() == "":
+            continue
+        MasterDataPlantModel.objects.update_or_create(
+            SiteName=row.SiteName,
+            defaults={
+                'Company': row.Company,
+                'Country': row.Country,
+                'Location': row.Location,
+                'PlantRegion': row.PlantRegion,
+                'SiteType': row.SiteType,
+            }
+        )
+
+    # Fetch and update Supplier data as Plant records
+    query = text("SELECT * FROM PowerBI.Supplier")
+    result = connection.execute(query)
+    for row in result:
+        if not row.VendorID or str(row.VendorID).strip() == "":
+            continue
+        site_name = row.VendorID  # Use VendorID as SiteName
+        company = getattr(row, 'Company', None)
+        country = getattr(row, 'Country', None)
+        location = getattr(row, 'Location', None)
+        plant_region = getattr(row, 'PlantRegion', None)
+        site_type = getattr(row, 'SiteType', None)
+        trading_name = row.TradingName
+        address1 = row.Address1
+
+        # Determine TradingName field value
+        if trading_name and not is_english(trading_name):
+            trading_name_to_store = address1
+        else:
+            trading_name_to_store = trading_name
+
+    
+
+    connection.close()
+    return redirect('PlantsList')

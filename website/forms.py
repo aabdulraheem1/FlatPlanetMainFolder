@@ -166,3 +166,11 @@ class MasterDataCapacityForm(forms.ModelForm):
     class Meta:
         model = MasterDataCapacityModel
         fields = '__all__'
+
+from django import forms
+from .models import MasterDataPlantModel
+
+class PlantForm(forms.ModelForm):
+    class Meta:
+        model = MasterDataPlantModel
+        fields = ['SiteName', 'Company', 'Location', 'SiteType']

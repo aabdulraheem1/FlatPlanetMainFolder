@@ -3,110 +3,126 @@
 {% block title %}Edit Forecasts{% endblock %}
 
 {% block content %}
-<div class="container mt-5">
-    <h2>Edit Forecasts for Scenario: {{ scenario.version }}</h2>
 
-    <!-- Filter Form -->
-    <form method="get" class="mb-3">
-        <div class="row">
-            <div class="col-md-3">
-                <input type="text" name="product" class="form-control" placeholder="Filter by Product"
-                    value="{{ request.GET.product }}">
-            </div>
-            <div class="col-md-3">
-                <input type="text" name="region" class="form-control" placeholder="Filter by Forecast Region"
-                    value="{{ request.GET.region }}">
-            </div>
-            <div class="col-md-3">
-                <input type="date" name="date" class="form-control" placeholder="Filter by Date"
-                    value="{{ request.GET.date }}">
-            </div>
-            <div class="col-md-3">
-                <input type="text" name="location" class="form-control" placeholder="Filter by Location"
-                    value="{{ request.GET.location }}">
-            </div>
-            <div class="col-md-2">
-                <button type="submit" class="btn btn-primary">Filter</button>
-            </div>
+<h2>Edit Forecasts for Scenario: {{ scenario.version }}</h2>
+
+<!-- Filter Form -->
+<form method="get" class="mb-3">
+    <div class="row">
+        <div class="col-md-3">
+            <input type="text" name="product" class="form-control" placeholder="Filter by Product"
+                value="{{ request.GET.product }}">
         </div>
-    </form>
+        <div class="col-md-3">
+            <input type="text" name="region" class="form-control" placeholder="Filter by Forecast Region"
+                value="{{ request.GET.region }}">
+        </div>
+        <div class="col-md-3">
+            <input type="date" name="date" class="form-control" placeholder="Filter by Date"
+                value="{{ request.GET.date }}">
+        </div>
+        <div class="col-md-3">
+            <input type="text" name="location" class="form-control" placeholder="Filter by Location"
+                value="{{ request.GET.location }}">
+        </div>
+        <div class="col-md-3 mt-2">
+            <input type="text" name="product_group" class="form-control" placeholder="Filter by Product Group"
+                value="{{ request.GET.product_group }}">
+        </div>
+        <div class="col-md-2 mt-2">
+            <button type="submit" class="btn btn-primary">Filter</button>
+        </div>
+    </div>
+</form>
 
-    <form method="post">
-        {% csrf_token %}
-        {{ formset.management_form }}
-        <table id="forecastTable" class="table">
-            <thead>
-                <tr>
-                    <th>Data Source</th>
-                    <th>Forecast Region</th>
-                    <th>Product Group</th>
-                    <th>Product</th>
-                    <th>Product Family Description</th>
-                    <th>Customer Code</th>
-                    <th>Location</th>
-                    <th>Forecasted Weight (Curr)</th>
-                    <th>Price (AUD)</th>
-                    <th>DP Cycle</th>
-                    <th>Period (AU)</th>
-                    <th>Qty</th>
-                    <th>Tonnes</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for form in formset %}
-                <tr>
-                    <td>{{ form.Data_Source }}</td>
-                    <td>{{ form.Forecast_Region }}</td>
-                    <td>{{ form.Product_Group }}</td>
-                    <td>{{ form.Product }}</td>
-                    <td>{{ form.ProductFamilyDescription }}</td>
-                    <td>{{ form.Customer_code }}</td>
-                    <td>{{ form.Location }}</td>
-                    <td>{{ form.Forecasted_Weight_Curr }}</td>
-                    <td>{{ form.PriceAUD }}</td>
-                    <td>{{ form.DP_Cycle }}</td>
-                    <td>{{ form.Period_AU }}</td>
-                    <td>{{ form.Qty }}</td>
-                    <td>{{ form.instance.Tonnes }}</td>
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
-        <button type="submit" class="btn btn-primary">Save Changes</button>
-    </form>
-
-    {% if form_errors %}
-    <div class="alert alert-danger">
-        <ul>
-            {% for error in form_errors %}
-            <li>{{ error }}</li>
+<form method="post">
+    {% csrf_token %}
+    {{ formset.management_form }}
+    <table id="forecastTable" class="table">
+        <thead>
+            <tr>
+                <th>Data Source</th>
+                <th>Forecast Region</th>
+                <th>ProductGroup</th>
+                <th>Product</th>
+                <th>Family Description</th>
+                <th>Customer Code</th>
+                <th>Location</th>
+                <th>Dress Mass</th>
+                <th>Price AUD</th>
+                <th>Date</th>
+                <th>Qty</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for form in formset %}
+            <tr>
+                <td>{{ form.Data_Source }}</td>
+                <td>{{ form.Forecast_Region }}</td>
+                <td>{{ form.Product_Group }}</td>
+                <td>{{ form.Product }}</td>
+                <td>{{ form.ProductFamilyDescription }}</td>
+                <td>{{ form.Customer_code }}</td>
+                <td>{{ form.Location }}</td>
+                <td>
+                    {% if form.Forecasted_Weight_Curr.value %}
+                    {{ form.Forecasted_Weight_Curr.value|floatformat:1 }}
+                    {% else %}
+                    {{ form.Forecasted_Weight_Curr }}
+                    {% endif %}
+                </td>
+                <td>
+                    {% if form.PriceAUD.value %}
+                    {{ form.PriceAUD.value|floatformat:1 }}
+                    {% else %}
+                    {{ form.PriceAUD }}
+                    {% endif %}
+                </td>
+                <td>
+                    {{ form.Period_AU }}
+                </td>
+                <td>
+                    {{ form.Qty }}
+                </td>
+            </tr>
             {% endfor %}
-        </ul>
-    </div>
-    {% endif %}
+        </tbody>
+    </table>
+    <button type="submit" class="btn btn-primary">Save Changes</button>
+</form>
 
-    <div class="pagination">
-        <span class="step-links">
-            {% if page_obj.has_previous %}
-            <a
-                href="?product={{ request.GET.product }}&region={{ request.GET.region }}&date={{ request.GET.date }}&location={{ request.GET.location }}&page=1">&laquo;
-                first</a>
-            <a
-                href="?product={{ request.GET.product }}&region={{ request.GET.region }}&date={{ request.GET.date }}&location={{ request.GET.location }}&page={{ page_obj.previous_page_number }}">previous</a>
-            {% endif %}
-
-            <span class="current">
-                Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }}.
-            </span>
-
-            {% if page_obj.has_next %}
-            <a
-                href="?product={{ request.GET.product }}&region={{ request.GET.region }}&date={{ request.GET.date }}&location={{ request.GET.location }}&page={{ page_obj.next_page_number }}">next</a>
-            <a
-                href="?product={{ request.GET.product }}&region={{ request.GET.region }}&date={{ request.GET.date }}&location={{ request.GET.location }}&page={{ page_obj.paginator.num_pages }}">last
-                &raquo;</a>
-            {% endif %}
-        </span>
-    </div>
+{% if form_errors %}
+<div class="alert alert-danger">
+    <ul>
+        {% for error in form_errors %}
+        <li>{{ error }}</li>
+        {% endfor %}
+    </ul>
 </div>
+{% endif %}
+
+<div class="pagination">
+    <span class="step-links">
+        {% if page_obj.has_previous %}
+        <a
+            href="?product={{ request.GET.product }}&region={{ request.GET.region }}&date={{ request.GET.date }}&location={{ request.GET.location }}&product_group={{ request.GET.product_group }}&page=1">&laquo;
+            first</a>
+        <a
+            href="?product={{ request.GET.product }}&region={{ request.GET.region }}&date={{ request.GET.date }}&location={{ request.GET.location }}&product_group={{ request.GET.product_group }}&page={{ page_obj.previous_page_number }}">previous</a>
+        {% endif %}
+
+        <span class="current">
+            Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }}.
+        </span>
+
+        {% if page_obj.has_next %}
+        <a
+            href="?product={{ request.GET.product }}&region={{ request.GET.region }}&date={{ request.GET.date }}&location={{ request.GET.location }}&product_group={{ request.GET.product_group }}&page={{ page_obj.next_page_number }}">next</a>
+        <a
+            href="?product={{ request.GET.product }}&region={{ request.GET.region }}&date={{ request.GET.date }}&location={{ request.GET.location }}&product_group={{ request.GET.product_group }}&page={{ page_obj.paginator.num_pages }}">last
+            &raquo;</a>
+        {% endif %}
+    </span>
+</div>
+
 {% endblock %}

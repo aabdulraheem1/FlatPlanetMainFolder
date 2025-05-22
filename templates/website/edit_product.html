@@ -14,13 +14,13 @@
                     <div class="col-md-6">
                         <div class="form-group">
                             <label for="Product">Product</label>
-                            {{ product_form.Product|add_class:"form-control fixed-width"|attr:"readonly" }}
+                            {{ product_form.Product|add_class:"form-control small-width"|attr:"readonly" }}
                         </div>
                     </div>
                     <div class="col-md-6">
                         <div class="form-group">
                             <label for="ProductDescription">Product Description</label>
-                            {{ product_form.ProductDescription|add_class:"form-control fixed-width" }}
+                            {{ product_form.ProductDescription|add_class:"form-control small-textarea" }}
                         </div>
                     </div>
                 </div>
@@ -28,13 +28,13 @@
                     <div class="col-md-6">
                         <div class="form-group">
                             <label for="SalesClass">Sales Class</label>
-                            {{ product_form.SalesClass|add_class:"form-control fixed-width" }}
+                            {{ product_form.SalesClass|add_class:"form-control small-width" }}
                         </div>
                     </div>
                     <div class="col-md-6">
                         <div class="form-group">
                             <label for="SalesClassDescription">Sales Class Description</label>
-                            {{ product_form.SalesClassDescription|add_class:"form-control fixed-width" }}
+                            {{ product_form.SalesClassDescription|add_class:"form-control small-textarea" }}
                         </div>
                     </div>
                 </div>
@@ -42,13 +42,13 @@
                     <div class="col-md-6">
                         <div class="form-group">
                             <label for="ProductGroup">Product Group</label>
-                            {{ product_form.ProductGroup|add_class:"form-control fixed-width" }}
+                            {{ product_form.ProductGroup|add_class:"form-control small-width" }}
                         </div>
                     </div>
                     <div class="col-md-6">
                         <div class="form-group">
                             <label for="ProductGroupDescription">Product Group Description</label>
-                            {{ product_form.ProductGroupDescription|add_class:"form-control fixed-width" }}
+                            {{ product_form.ProductGroupDescription|add_class:"form-control small-textarea" }}
                         </div>
                     </div>
                 </div>
@@ -56,13 +56,13 @@
                     <div class="col-md-6">
                         <div class="form-group">
                             <label for="InventoryClass">Inventory Class</label>
-                            {{ product_form.InventoryClass|add_class:"form-control fixed-width" }}
+                            {{ product_form.InventoryClass|add_class:"form-control small-width" }}
                         </div>
                     </div>
                     <div class="col-md-6">
                         <div class="form-group">
                             <label for="InventoryClassDescription">Inventory Class Description</label>
-                            {{ product_form.InventoryClassDescription|add_class:"form-control fixed-width" }}
+                            {{ product_form.InventoryClassDescription|add_class:"form-control small-textarea" }}
                         </div>
                     </div>
                 </div>
@@ -70,13 +70,13 @@
                     <div class="col-md-6">
                         <div class="form-group">
                             <label for="ParentProductGroup">Parent Product Group</label>
-                            {{ product_form.ParentProductGroup|add_class:"form-control fixed-width" }}
+                            {{ product_form.ParentProductGroup|add_class:"form-control small-width" }}
                         </div>
                     </div>
                     <div class="col-md-6">
                         <div class="form-group">
                             <label for="ParentProductGroupDescription">Parent Product Group Description</label>
-                            {{ product_form.ParentProductGroupDescription|add_class:"form-control fixed-width" }}
+                            {{ product_form.ParentProductGroupDescription|add_class:"form-control small-textarea" }}
                         </div>
                     </div>
                 </div>
@@ -84,13 +84,13 @@
                     <div class="col-md-6">
                         <div class="form-group">
                             <label for="ProductFamily">Product Family</label>
-                            {{ product_form.ProductFamily|add_class:"form-control fixed-width" }}
+                            {{ product_form.ProductFamily|add_class:"form-control small-width" }}
                         </div>
                     </div>
                     <div class="col-md-6">
                         <div class="form-group">
                             <label for="ProductFamilyDescription">Product Family Description</label>
-                            {{ product_form.ProductFamilyDescription|add_class:"form-control fixed-width" }}
+                            {{ product_form.ProductFamilyDescription|add_class:"form-control small-textarea" }}
                         </div>
                     </div>
                 </div>
@@ -98,13 +98,13 @@
                     <div class="col-md-6">
                         <div class="form-group">
                             <label for="DressMass">Dress Mass</label>
-                            {{ product_form.DressMass|add_class:"form-control fixed-width" }}
+                            {{ product_form.DressMass|add_class:"form-control small-width" }}
                         </div>
                     </div>
                     <div class="col-md-6">
                         <div class="form-group">
                             <label for="CastMass">Cast Mass</label>
-                            {{ product_form.CastMass|add_class:"form-control fixed-width" }}
+                            {{ product_form.CastMass|add_class:"form-control small-width" }}
                         </div>
                     </div>
                 </div>
@@ -112,13 +112,13 @@
                     <div class="col-md-6">
                         <div class="form-group">
                             <label for="Grade">Grade</label>
-                            {{ product_form.Grade|add_class:"form-control fixed-width" }}
+                            {{ product_form.Grade|add_class:"form-control small-width" }}
                         </div>
                     </div>
                     <div class="col-md-6">
                         <div class="form-group">
                             <label for="PartClassID">Part Class ID</label>
-                            {{ product_form.PartClassID|add_class:"form-control fixed-width" }}
+                            {{ product_form.PartClassID|add_class:"form-control small-width" }}
                         </div>
                     </div>
                 </div>
@@ -126,7 +126,7 @@
                     <div class="col-md-6">
                         <div class="form-group">
                             <label for="PartClassDescription">Part Class Description</label>
-                            {{ product_form.PartClassDescription|add_class:"form-control fixed-width" }}
+                            {{ product_form.PartClassDescription|add_class:"form-control small-textarea" }}
                         </div>
                     </div>
                     <div class="col-md-6">
@@ -195,6 +195,20 @@
         /* Ensure all form controls have the same width */
         max-width: 300px;
         /* Set a maximum width to match the Product box */
+    }
+
+    .form-group .form-control.small-width {
+        width: 150px;
+        /* Set a fixed small width */
+    }
+
+    form-control.small-textarea {
+        width: 150px;
+        /* Set a fixed small width */
+        height: 50px;
+        /* Set a smaller height */
+        resize: none;
+        /* Disable resizing if needed */
     }
 
     .card {

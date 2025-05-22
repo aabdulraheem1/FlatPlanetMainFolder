@@ -9,7 +9,19 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     <!-- Font Awesome -->
     <style>
+        /* Keep the horizontal navbar fixed at the top */
+        .navbar {
+            position: fixed !important;
+            top: 0;
+            left: 0;
+            width: 100%;
+            z-index: 1030;
+        }
+
+        /* Keep the vertical navbar fixed on the left */
         .vertical-navbar {
+            background: #f8f9fa;
+            border-right: 1px solid #dee2e6;
             position: fixed;
             top: 56px;
             /* Height of the horizontal navbar */
@@ -18,10 +30,10 @@
             /* Adjust as needed */
             height: calc(100vh - 56px);
             /* Full height minus the horizontal navbar */
-            display: flex;
-            flex-direction: column;
-            justify-content: space-between;
-            background-color: #f8f9fa;
+            overflow-y: auto;
+            /* Add vertical scrolling if content overflows */
+            z-index: 1020;
+            /* Ensure it stays below the horizontal navbar */
         }
 
         .logout-link {
@@ -32,14 +44,20 @@
         .main-content {
             margin-left: 200px;
             /* Width of the vertical navbar */
-            padding: 1rem;
+            margin-top: 56px;
+            /* Height of the horizontal navbar */
+            padding: 0.5rem 1rem;
+            /* Reduce left/right padding */
+            width: calc(100vw - 200px);
+            box-sizing: border-box;
+            overflow-x: auto;
+            min-width: 0;
         }
 
-        .navbar {
-            position: fixed;
-            top: 0;
+        .main-content table {
             width: 100%;
-            z-index: 1030;
+            table-layout: auto;
+            word-break: break-word;
         }
 
         .nav-link,
@@ -51,6 +69,11 @@
         .dropdown-item {
             padding-left: 40px;
             /* Adjust this value to offset the dropdown items */
+        }
+
+        body,
+        html {
+            overflow-x: hidden;
         }
     </style>
 </head>
@@ -87,12 +110,11 @@
             </div>
         </div>
     </nav>
-    <br><br>
 
     <!-- Vertical Navbar -->
     <div class="vertical-navbar">
+        <br /><br /><br /><br />
         <div>
-            <br><br><br><br>
             <a href="{% url 'ProductsList' %}" class="d-block text-decoration-none mb-2 nav-link">Products</a><br>
             <a href="{% url 'PlantsList' %}" class="d-block text-decoration-none mb-2 nav-link">Foundries & WHs</a><br>
             <a href="{% url 'suppliers_list' %}" class="d-block text-decoration-none mb-2 nav-link">Suppliers</a><br>
@@ -129,14 +151,27 @@
                 <a href="{% url 'list_scenarios' %}" class="d-block text-decoration-none mb-2 dropdown-item">Edit</a>
                 <a href="#" class="d-block text-decoration-none mb-2 dropdown-item">Review</a>
             </div><br>
-            <a href="#" class="d-block text-decoration-none mb-2 nav-link">Optimization</a><br>
+            <a href="{%  url 'supplyoptions'%}" class="d-block text-decoration-none mb-2 nav-link">Optimization</a><br>
             <a href="#" class="d-block text-decoration-none mb-2 nav-link">Inventory Review</a><br>
             <a href="#" class="d-block text-decoration-none mb-2 nav-link">Contact</a><br>
             <a href="{% url 'logout' %}" class="d-block text-decoration-none nav-link logout-link">Logout</a>
         </div>
     </div>
 
+
+
     <div class="main-content">
+        <!-- filepath: c:\Users\aali\Documents\Data\Training\SPR\SPR\templates\website\base.html -->
+        {% if messages %}
+        <div class="container mt-3">
+            {% for message in messages %}
+            <div class="alert alert-{{ message.tags }} alert-dismissible fade show" role="alert">
+                {{ message }}
+                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+            </div>
+            {% endfor %}
+        </div>
+        {% endif %}
         {% block content %}
         <h1>Main Content</h1>
         <p>
@@ -144,23 +179,16 @@
         </p>
         {% endblock %}
     </div>
-    <style>
-        .bg-light-blue {
-            background-color: #e0f7fa;
-            /* Very light blue */
-        }
-    </style>
+
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-    <script>
-        document.getElementById('scenariosDropdown').addEventListener('shown.bs.collapse', function () {
-            document.getElementById('scenarios-icon').textContent = '-';
-        });
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@4.6.2/dist/js/bootstrap.bundle.min.js"></script>
+    <!-- Include Bootstrap CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@4.6.2/dist/css/bootstrap.min.css" rel="stylesheet">
 
-        document.getElementById('scenariosDropdown').addEventListener('hidden.bs.collapse', function () {
-            document.getElementById('scenarios-icon').textContent = '+';
-        });
-    </script>
+    <!-- Include jQuery -->
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
 </body>
+
 
 </html>

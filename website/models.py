@@ -10,7 +10,9 @@ class test(models.Model):
         return self.test
 
 class MasterDataPlantModel(models.Model):
+    InhouseOrOutsource = models.CharField(max_length=250, default='Inhouse', null=True, blank=True)  # Default value set to 'Inhouse'
     SiteName = models.CharField(primary_key=True, max_length=250)
+    TradingName = models.CharField(max_length=250, null=True, blank=True)
     Company = models.CharField(max_length=250,null=True, blank=True)
     Country = models.CharField(max_length=250,null=True, blank=True)
     Location = models.CharField(max_length=250,null=True, blank=True)
@@ -33,7 +35,7 @@ class scenarios(models.Model):
     approval3 = models.BooleanField(default=False)
 
 class SMART_Forecast_Model(models.Model):
-    version = models.ForeignKey(scenarios, to_field='version', on_delete=models.CASCADE)
+    version = models.ForeignKey(scenarios,  on_delete=models.CASCADE)
     Data_Source = models.CharField(max_length=100,blank=True, null=True)
     Forecast_Region = models.CharField(max_length=100,blank=True, null=True)
     Product_Group = models.CharField(max_length=100,blank=True, null=True)
@@ -52,7 +54,7 @@ class SMART_Forecast_Model(models.Model):
         return self.Product   
     
 class Revenue_Forecast_Model(models.Model):
-    version = models.ForeignKey(scenarios, to_field='version', on_delete=models.CASCADE)
+    version = models.ForeignKey(scenarios , on_delete=models.CASCADE)
     Data_Source = models.CharField(max_length=100,blank=True, null=True)
     Forecast_Region = models.CharField(max_length=100,blank=True, null=True)
     ParentProductGroupDescription = models.CharField(max_length=100,blank=True, null=True)
@@ -72,7 +74,7 @@ class Product_Model(models.Model):
         return self.Product
         
 class MasterDataOrderBook(models.Model):
-    version = models.ForeignKey(scenarios, to_field='version', on_delete=models.CASCADE)
+    version = models.ForeignKey(scenarios , on_delete=models.CASCADE)
     site = models.CharField(max_length=100)
     productkey = models.CharField(max_length=100)
 
@@ -80,9 +82,9 @@ class MasterDataOrderBook(models.Model):
         return f"{self.version.version} - {self.productkey}"
 
 class MasterDataCapacityModel(models.Model):
-    version = models.ForeignKey(scenarios, to_field='version', on_delete=models.CASCADE)  # Foreign key from scenarios
+    version = models.ForeignKey(scenarios , on_delete=models.CASCADE)  # Foreign key from scenarios
     subversion = models.CharField(max_length=250, null=True, blank=True)
-    Foundry = models.ForeignKey(MasterDataPlantModel, to_field='SiteName', on_delete=models.CASCADE)  # Foreign key from MasterDataPlantModel
+    Foundry = models.ForeignKey(MasterDataPlantModel, on_delete=models.CASCADE)  # Foreign key from MasterDataPlantModel
     PouringDaysPerWeek = models.IntegerField(null=True, blank=True)
     ShiftsPerDay = models.IntegerField(null=True, blank=True)
     HoursPershift = models.IntegerField(null=True, blank=True)
@@ -123,7 +125,7 @@ class MasterDataCommentModel(models.Model):
         return self.version
     
 class MasterDataHistoryOfProductionModel(models.Model):
-    version = models.ForeignKey(scenarios, to_field='version', on_delete=models.CASCADE)  # Changed to ForeignKey
+    version = models.ForeignKey(scenarios , on_delete=models.CASCADE)  # Changed to ForeignKey
     Product = models.CharField(max_length=250)
     Foundry = models.CharField(max_length=250)
     ProductionMonth = models.DateField()
@@ -133,7 +135,7 @@ class MasterDataHistoryOfProductionModel(models.Model):
         return f"{self.version.version} - {self.Product}"
     
 class MasterDataIncotTermTypesModel(models.Model):
-    version = models.ForeignKey(scenarios, to_field='version', on_delete=models.CASCADE)  # Foreign key from scenarios
+    version = models.ForeignKey(scenarios , on_delete=models.CASCADE)  # Foreign key from scenarios
     IncoTerm = models.CharField(max_length=250)  # Not globally unique
     IncoTermCaregory = models.CharField(max_length=250)
 
@@ -144,7 +146,7 @@ class MasterDataIncotTermTypesModel(models.Model):
         return f"{self.version.version} - {self.IncoTerm}"
     
 class MasterdataIncoTermsModel(models.Model):
-    version = models.ForeignKey(scenarios, to_field='version', max_length=250, on_delete=models.CASCADE)
+    version = models.ForeignKey(scenarios , max_length=250, on_delete=models.CASCADE)
     CustomerCode = models.CharField(max_length=250)
     Incoterm = models.ForeignKey(MasterDataIncotTermTypesModel, on_delete=models.CASCADE)  # Reference the primary key
 
@@ -164,8 +166,8 @@ class MasterDataLeadTimesModel(models.Model):
 from django.db import models
 
 class MasterDataPlan(models.Model):
-    Version = models.ForeignKey(scenarios, to_field='version', on_delete=models.CASCADE)
-    Foundry = models.ForeignKey(MasterDataPlantModel, to_field='SiteName', on_delete=models.CASCADE)
+    version = models.ForeignKey(scenarios , on_delete=models.CASCADE)
+    Foundry = models.ForeignKey(MasterDataPlantModel, on_delete=models.CASCADE)
     Month = models.DateField(null=True, blank=True)
     Yield = models.FloatField(null=True, blank=True)
     WasterPercentage = models.FloatField(null=True, blank=True)
@@ -212,7 +214,7 @@ class MasterDataPlan(models.Model):
 
     class Meta:
         constraints = [
-            models.UniqueConstraint(fields=['Foundry', 'Month', 'Version'], name='unique_foundry_month_version')
+            models.UniqueConstraint(fields=['Foundry', 'Month', 'version'], name='unique_foundry_month_version')
         ]
 
     def __str__(self):
@@ -242,7 +244,7 @@ class MasterDataProductModel(models.Model):
         return self.Product
     
 class MasterDataProductPictures(models.Model):
-    product = models.ForeignKey(MasterDataProductModel, to_field='Product', on_delete=models.CASCADE)
+    product = models.ForeignKey(MasterDataProductModel, on_delete=models.CASCADE)
     Image = models.ImageField(null=True)
 
 class MasterDataProductAttributesModel(models.Model):
@@ -260,25 +262,25 @@ class MasterDataProductAttributesModel(models.Model):
 class MasterDataSalesAllocationToPlantModel(models.Model):
     # this class is used to store the data related to revenue based demand where data is not in SKU level
     # fixed plant data is not stored in this class
-    Version = models.CharField(max_length=250)
+    version = models.CharField(max_length=250)
     Plant = models.CharField(max_length=250)
     SalesClass = models.CharField(max_length=250)
     Allocation = models.FloatField()
     
     def __str__(self):
-        return f"{self.Version} - {self.Plant} - {self.SalesClass}"
+        return f"{self.version} - {self.Plant} - {self.SalesClass}"
 
 class MasterDataSalesModel(models.Model):
     # this class is used to store the data related to revenue based demand where data is not in SKU level
     # fixed plant data is not stored in this class
-    Version = models.CharField(max_length=250)
+    version = models.CharField(max_length=250)
     SalesClass = models.CharField(max_length=250)
     GrossMargin = models.FloatField()
     InHouseProduction = models.FloatField()
     CostAUDPerKg = models.FloatField()
     
     def __str__(self):
-        return f"{self.Version} - {self.SalesClass}"
+        return f"{self.version} - {self.SalesClass}"
 
 class MasterDataSKUTransferModel(models.Model):
     version = models.CharField(max_length=250)
@@ -288,26 +290,25 @@ class MasterDataSKUTransferModel(models.Model):
 
     def __str__(self):
         return f"{self.version} - {self.Product} - {self.Date}"
-
+    
 class MasterDataScheduleModel(models.Model):
-    Scenario_Foreign_Key = models.ForeignKey(scenarios, to_field='version', on_delete=models.CASCADE, default=None)
-    Version_id = models.CharField(max_length=250, blank=True, null=True)
-    Plant = models.CharField(max_length=250,blank=True,null=True )
-    SalesClass = models.CharField(max_length=250, blank=True,null=True)
-    ProductGroup = models.CharField(max_length=250, blank=True,null=True)
-    Date = models.DateField(blank=True,null=True)
-    ScheduleQty = models.FloatField(blank=True,null=True)
-    UnitOfMeasure = models.CharField(max_length=250, blank=True,null=True)
+    version = models.ForeignKey(scenarios, on_delete=models.CASCADE, default=None)  # Removed `to_field='version'`
+    Plant = models.CharField(max_length=250, blank=True, null=True)
+    SalesClass = models.CharField(max_length=250, blank=True, null=True)
+    ProductGroup = models.CharField(max_length=250, blank=True, null=True)
+    Date = models.DateField(blank=True, null=True)
+    ScheduleQty = models.FloatField(blank=True, null=True)
+    UnitOfMeasure = models.CharField(max_length=250, blank=True, null=True)
 
     def __str__(self):
-        return f"{self.Version_id} - {self.Plant}"
-    
+        return f"{self.version} - {self.Plant}"
+
 class AggregatedForecast(models.Model):
-    version = models.ForeignKey(scenarios, to_field='version', on_delete=models.CASCADE)
+    version = models.ForeignKey(scenarios , on_delete=models.CASCADE)
     tonnes = models.FloatField(default=0, null=True, blank=True)
     customer_code = models.CharField(max_length=100, blank=True, null=True)
     period = models.DateField(null=True, blank=True)
-    product = models.ForeignKey(MasterDataProductModel, to_field='Product', on_delete=models.CASCADE)
+    product = models.ForeignKey(MasterDataProductModel, on_delete=models.CASCADE)
     product_group_description = models.TextField(null=True, blank=True)
     parent_product_group_description = models.TextField(null=True, blank=True)
     forecast_region = models.CharField(max_length=100, null=True, blank=True)  # New field
@@ -316,10 +317,10 @@ class AggregatedForecast(models.Model):
         return f"{self.product.Product} - {self.version.version}"
 
 class MasterDataInventory(models.Model):
-    version = models.ForeignKey(scenarios, to_field='version', on_delete=models.CASCADE)  # Foreign key from scenarios
+    version = models.ForeignKey(scenarios , on_delete=models.CASCADE)  # Foreign key from scenarios
     date_of_snapshot = models.DateField()  # Date of the inventory snapshot
     product = models.CharField(max_length=250)  # Product identifier
-    site = models.ForeignKey(MasterDataPlantModel, to_field='SiteName', on_delete=models.CASCADE)  # Foreign key to MasterDataPlantModel
+    site = models.ForeignKey(MasterDataPlantModel, on_delete=models.CASCADE)  # Foreign key to MasterDataPlantModel
     site_region = models.CharField(max_length=250)  # Region of the site
     onhandstock_qty = models.FloatField(default=0)  # Quantity of on-hand stock
     intransitstock_qty = models.FloatField(default=0)  # Quantity of in-transit stock
@@ -332,9 +333,9 @@ class MasterDataForecastRegionModel(models.Model):
     Forecast_region = models.CharField(primary_key=True,max_length=250)
 
 class MasterDataFreightModel(models.Model):
-    version = models.ForeignKey(scenarios, to_field='version', on_delete=models.CASCADE)  # Foreign key from scenarios
-    ForecastRegion = models.ForeignKey(MasterDataForecastRegionModel, to_field='Forecast_region', on_delete=models.CASCADE)  # Foreign key from MasterDataForecastRegionModel
-    ManufacturingSite = models.ForeignKey(MasterDataPlantModel, to_field='SiteName', on_delete=models.CASCADE)  # Foreign key from MasterDataPlantModel
+    version = models.ForeignKey(scenarios , on_delete=models.CASCADE)  # Foreign key from scenarios
+    ForecastRegion = models.ForeignKey(MasterDataForecastRegionModel,  on_delete=models.CASCADE)  # Foreign key from MasterDataForecastRegionModel
+    ManufacturingSite = models.ForeignKey(MasterDataPlantModel, on_delete=models.CASCADE)  # Foreign key from MasterDataPlantModel
     PlantToDomesticPortDays = models.IntegerField()
     OceanFreightDays = models.IntegerField()
     PortToCustomerDays = models.IntegerField()
@@ -343,28 +344,28 @@ class MasterDataFreightModel(models.Model):
         return f"{self.version.version} - {self.ForecastRegion.Forecast_region} - {self.ManufacturingSite.SiteName}"
 
 class MasterDataCastToDespatchModel(models.Model):
-    version = models.ForeignKey(scenarios, to_field='version', on_delete=models.CASCADE)  # Foreign key from scenarios
-    Foundry = models.ForeignKey(MasterDataPlantModel, to_field='SiteName', on_delete=models.CASCADE)  # Foreign key from MasterDataPlantModel
+    version = models.ForeignKey(scenarios , on_delete=models.CASCADE)  # Foreign key from scenarios
+    Foundry = models.ForeignKey(MasterDataPlantModel, on_delete=models.CASCADE)  # Foreign key from MasterDataPlantModel
     CastToDespatchDays = models.IntegerField()
 
     def __str__(self):
         return self.version.version
 
 class CalcualtedReplenishmentModel(models.Model):
-    version = models.ForeignKey(scenarios, to_field='version', on_delete=models.CASCADE)
-    Product = models.ForeignKey(MasterDataProductModel, to_field='Product', on_delete=models.CASCADE)
-    Location = models.CharField(max_length=100, null=True, blank=True)  # Allow NULL values
-    Site = models.ForeignKey(MasterDataPlantModel, to_field='SiteName', on_delete=models.CASCADE, null=True, blank=True)  # Allow NULL values
+    version = models.ForeignKey(scenarios , on_delete=models.CASCADE)
+    Product = models.ForeignKey(MasterDataProductModel, on_delete=models.CASCADE)
+    Location = models.CharField( max_length=100, null=True, blank=True)  # Allow NULL values
+    Site = models.ForeignKey(MasterDataPlantModel, max_length=250, null=True, blank=True, on_delete=models.CASCADE)  # Allow NULL values
     ShippingDate = models.DateField()
     ReplenishmentQty = models.FloatField(default=0)
 
     def __str__(self):
-        return f"{self.version.version} - {self.Product} - {self.Site.SiteName if self.Site else 'No Site'}"
+        return f"{self.version.version} - {self.Product} - {self.Site}"
     
 class CalculatedProductionModel(models.Model):
-    version = models.ForeignKey(scenarios, to_field='version', on_delete=models.CASCADE)
-    product = models.ForeignKey(MasterDataProductModel, to_field='Product', on_delete=models.CASCADE)
-    site = models.ForeignKey(MasterDataPlantModel, to_field='SiteName', on_delete=models.CASCADE)
+    version = models.ForeignKey(scenarios , on_delete=models.CASCADE)  # Foreign key from scenarios
+    product = models.ForeignKey(MasterDataProductModel, on_delete=models.CASCADE)
+    site = models.ForeignKey(MasterDataPlantModel, max_length=250, null=True, blank=True, on_delete=models.CASCADE)  # Allow NULL values
     pouring_date = models.DateField()
     production_quantity = models.FloatField(default=0)
     tonnes = models.FloatField(default=0)
@@ -390,18 +391,18 @@ class MasterDataCustomersModel(models.Model):
         return self.CustomerId or "Unknown Customer"
     
 class MasterDataSupplyOptionsModel(models.Model):
-    Product = models.ForeignKey(MasterDataProductModel, to_field='Product', on_delete=models.CASCADE)  # Foreign key from MasterDataProductModel
+    Product = models.ForeignKey(MasterDataProductModel, on_delete=models.CASCADE)  # Foreign key from MasterDataProductModel
     InhouseOrOutsource = models.CharField(max_length=250, default='Inhouse')  # Default value set to 'Inhouse'
     Supplier = models.ForeignKey(
         MasterDataSuppliersModel,
-        to_field='VendorID',
+       
         on_delete=models.CASCADE,
         null=True,  # Allow NULL values
         blank=True  # Allow blank values in forms
     )
     Site = models.ForeignKey(
         MasterDataPlantModel,
-        to_field='SiteName',
+        
         on_delete=models.CASCADE,
         null=True,  # Allow NULL values
         blank=True  # Allow blank values in forms
@@ -422,3 +423,29 @@ class MasterDataSupplyOptionsModel(models.Model):
 
     def __str__(self):
         return f"{self.Product.Product} - {self.Source}"
+    
+class MasterDataEpicorSupplierMasterDataModel(models.Model):
+    version = models.ForeignKey(scenarios, on_delete=models.CASCADE, null=True, blank=True)  # Add foreign key to scenarios
+    Company = models.CharField(max_length=100, null=True, blank=True)
+    Plant = models.CharField(max_length=100, null=True, blank=True)
+    PartNum = models.CharField(max_length=100, null=True, blank=True)
+    VendorID = models.CharField(max_length=100, null=True, blank=True)
+    SourceType = models.CharField(max_length=50, null=True, blank=True)  # New field for SourceType
+
+    def __str__(self):
+        return f"{self.Company} - {self.Plant} - {self.PartNum} - {self.VendorID} - {self.SourceType}"
+    
+class MasterDataEpicorBillOfMaterialModel(models.Model):    
+    Company = models.CharField(max_length=100, null=True, blank=True)
+    Plant = models.CharField(max_length=100, null=True, blank=True)
+    Parent = models.CharField(max_length=100, null=True, blank=True)
+    ComponentSeq = models.IntegerField(max_length=100, null=True, blank=True)
+    Component = models.CharField(max_length=100, null=True, blank=True)
+    ComponentUOM = models.CharField(max_length=100, null=True, blank=True)
+    QtyPer = models.CharField(max_length=100, null=True, blank=True)
+    EstimatedScrap = models.FloatField(max_length=100, null=True, blank=True)
+    SalvageQtyPer = models.FloatField(max_length=100, null=True, blank=True)
+
+
+    def __str__(self):
+        return f"{self.Company} - {self.Plant} - {self.Parent}"

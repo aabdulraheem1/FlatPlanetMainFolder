@@ -1,0 +1,21 @@
+{% extends 'website/base.html' %}
+
+<!DOCTYPE html>
+<html>
+
+{% block content %}
+<div class="container mt-5">
+    <h1>Update Epicor Supplier Master Data</h1>
+    <form method="POST" action="">
+        {% csrf_token %}
+        <div class="mb-3">
+            <label for="VendorID" class="form-label">Vendor ID</label>
+            <input type="text" class="form-control" id="VendorID" name="VendorID" value="{{ record.VendorID }}">
+        </div>
+        <button type="submit" class="btn btn-primary">Update</button>
+        <a href="{% url 'suppliers_list' %}" class="btn btn-secondary">Cancel</a>
+    </form>
+</div>
+{% endblock %}
+
+</html>

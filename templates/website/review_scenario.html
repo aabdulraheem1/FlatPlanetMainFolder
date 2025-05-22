@@ -143,6 +143,7 @@
                 <canvas id="mtJoliChart" width="400" height="200"></canvas>
                 <script>
                     const mtJoliData = {{ mt_joli_chart_data| safe }};
+                    const mtJoliTopProducts = {{ mt_joli_top_products| safe }};
                     const ctxMtJoli = document.getElementById('mtJoliChart').getContext('2d');
 
                     new Chart(ctxMtJoli, {
@@ -171,6 +172,20 @@
                         },
                         options: {
                             responsive: true,
+                            plugins: {
+                                tooltip: {
+                                    callbacks: {
+                                        afterBody: function (context) {
+                                            const month = context[0].label;
+                                            const top = mtJoliTopProducts[month];
+                                            if (!top) return '';
+                                            return 'Top 10 Products:\n' + top.map(
+                                                (p, i) => `${i + 1}. ${p[0]}: ${p[1]}`
+                                            ).join('\n');
+                                        }
+                                    }
+                                }
+                            },
                             scales: {
                                 x: {
                                     title: {
@@ -190,7 +205,6 @@
                     });
                 </script>
             </div>
-
             <!-- Coimbatore Chart -->
             <div class="tab-pane fade" id="coimbatore" role="tabpanel" aria-labelledby="coimbatore-tab">
                 <canvas id="coimbatoreChart" width="400" height="200"></canvas>

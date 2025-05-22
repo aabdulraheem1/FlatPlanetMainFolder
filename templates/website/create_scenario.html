@@ -36,10 +36,33 @@
             {{ form.approval3 }}
         </div>
 
+        <!-- Checkbox to copy from another scenario -->
+        <div class="form-check mb-3">
+            <input type="checkbox" class="form-check-input" id="copyFromCheckbox" name="copy_from_checkbox">
+            <label class="form-check-label" for="copyFromCheckbox">Copy from another scenario</label>
+        </div>
+
+        <!-- Dropdown menu to select a scenario -->
+        <div class="form-group mb-3">
+            <label for="copyFromScenario">Select a scenario to copy from:</label>
+            <select class="form-control" id="copyFromScenario" name="copy_from_scenario" disabled>
+                <option value="">-- Select a scenario --</option>
+                {% for scenario in scenarios %}
+                <option value="{{ scenario.version }}">{{ scenario.version }} - {{ scenario.scenario_description }}
+                </option>
+                {% endfor %}
+            </select>
+        </div>
+
         <button type="submit" class="btn btn-primary">Save</button>
     </form>
 </div>
 
-
-
+<script>
+    // Enable/disable the dropdown menu based on the checkbox
+    document.getElementById('copyFromCheckbox').addEventListener('change', function () {
+        const dropdown = document.getElementById('copyFromScenario');
+        dropdown.disabled = !this.checked;
+    });
+</script>
 {% endblock %}

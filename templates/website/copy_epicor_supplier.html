@@ -1,0 +1,20 @@
+{% extends 'website/base.html' %}
+
+<!DOCTYPE html>
+<html>
+
+{% block content %}
+<div class="container mt-5">
+    <h1>Copy Epicor Supplier Master Data</h1>
+    <p>The following record has been copied successfully:</p>
+    <ul>
+        <li><strong>Company:</strong> {{ new_record.Company }}</li>
+        <li><strong>Plant:</strong> {{ new_record.Plant }}</li>
+        <li><strong>Part Number:</strong> {{ new_record.PartNum }}</li>
+        <li><strong>Vendor ID:</strong> {{ new_record.VendorID }}</li>
+    </ul>
+    <a href="{% url 'suppliers_list' %}" class="btn btn-primary">Back to List</a>
+</div>
+{% endblock %}
+
+</html>

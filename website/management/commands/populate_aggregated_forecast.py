@@ -4,50 +4,61 @@ from website.models import SMART_Forecast_Model, MasterDataProductModel, Aggrega
 class Command(BaseCommand):
     help = 'Populate the AggregatedForecast model with aggregated data from related models'
 
+    def add_arguments(self, parser):
+        parser.add_argument(
+            'version',
+            type=str,
+            help="The version of the scenario to populate data for.",
+        )
+
     def handle(self, *args, **kwargs):
-        self.stdout.write('Starting to populate AggregatedForecast model...')
+        version = kwargs['version']
 
-        # Clear existing data to avoid duplicates
-        AggregatedForecast.objects.all().delete()
+        AggregatedForecast.objects.filter(version=version).delete()
 
-        # Prepare a list to hold AggregatedForecast instances
+        # Prefetch only needed fields for products
+        product_data_map = {
+            product['Product']: product
+            for product in MasterDataProductModel.objects.values(
+                 'Product', 'DressMass', 'ProductGroupDescription', 'ParentProductGroupDescription'
+            )
+        }
+        product_instance_map = {
+            product.Product: product
+            for product in MasterDataProductModel.objects.all()
+        }
+
         aggregated_forecasts = []
+        batch_size = 1000
 
-        # Aggregate data and prepare instances for bulk creation
-        forecasts = SMART_Forecast_Model.objects.all()
-        for forecast in forecasts:
-            try:
-                # Fetch the related product data
-                product_data = MasterDataProductModel.objects.get(Product=forecast.Product)
+        for forecast in SMART_Forecast_Model.objects.filter(version=version).iterator(chunk_size=batch_size):
+            product_data = product_data_map.get(forecast.Product)
+            product_instance = product_instance_map.get(forecast.Product)
+            if not product_data or not product_instance:
+                continue
 
-                # Calculate Tonnes
-                dress_mass = product_data.DressMass
-                if forecast.Qty is not None and dress_mass not in [None, 0]:
-                    # Primary calculation: Qty * DressMass / 1000
-                    tonnes = forecast.Qty * dress_mass / 1000
-                elif forecast.Qty is not None and forecast.PriceAUD is not None:
-                    # Fallback calculation: (Qty * Price * 0.65) / 5000
-                    tonnes = (forecast.Qty * forecast.PriceAUD * 0.65) / 5000
-                else:
-                    # Default to 0 if neither calculation is possible
-                    tonnes = 0
+            dress_mass = product_data['DressMass']
+            if forecast.Qty is not None and dress_mass not in [None, 0]:
+                tonnes = forecast.Qty * dress_mass / 1000
+            elif forecast.Qty is not None and forecast.PriceAUD is not None:
+                tonnes = (forecast.Qty * forecast.PriceAUD * 0.65) / 5000
+            else:
+                tonnes = 0
 
-                # Create an AggregatedForecast instance
-                aggregated_forecast = AggregatedForecast(
-                    version=forecast.version,
-                    tonnes=tonnes,  # Use the calculated tonnes
-                    forecast_region=forecast.Forecast_Region,
-                    customer_code=forecast.Customer_code,
-                    period=forecast.Period_AU,
-                    product=product_data,
-                    product_group_description=product_data.ProductGroupDescription,
-                    parent_product_group_description=product_data.ParentProductGroupDescription
-                )
-                aggregated_forecasts.append(aggregated_forecast)
-            except MasterDataProductModel.DoesNotExist:
-                self.stdout.write(self.style.ERROR(f'Product {forecast.Product} does not exist in MasterDataProductModel'))
+            aggregated_forecasts.append(AggregatedForecast(
+                version=forecast.version,
+                tonnes=tonnes,
+                forecast_region=forecast.Forecast_Region,
+                customer_code=forecast.Customer_code,
+                period=forecast.Period_AU,
+                product=product_instance,
+                product_group_description=product_data['ProductGroupDescription'],
+                parent_product_group_description=product_data['ParentProductGroupDescription']
+            ))
 
-        # Bulk create AggregatedForecast instances
-        AggregatedForecast.objects.bulk_create(aggregated_forecasts)
+            if len(aggregated_forecasts) >= batch_size:
+                AggregatedForecast.objects.bulk_create(aggregated_forecasts, batch_size=batch_size)
+                aggregated_forecasts = []
 
-        self.stdout.write(self.style.SUCCESS('Finished populating AggregatedForecast model.'))
+        if aggregated_forecasts:
+            AggregatedForecast.objects.bulk_create(aggregated_forecasts, batch_size=batch_size)

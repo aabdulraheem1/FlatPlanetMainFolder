@@ -1,0 +1,19 @@
+{% extends 'website/base.html' %}
+
+{% block content %}
+<h2>Copy {{ data_source }} Forecast to {{ target_scenario.version }}</h2>
+
+<form method="post">
+    {% csrf_token %}
+    <div class="form-group">
+        <label for="source_version">Select Source Scenario:</label>
+        <select name="source_version" id="source_version" class="form-control">
+            {% for scenario in all_scenarios %}
+            <option value="{{ scenario.version }}">{{ scenario.version }}</option>
+            {% endfor %}
+        </select>
+    </div>
+    <button type="submit" class="btn btn-primary">Copy</button>
+    <a href="{% url 'edit_scenario' target_scenario.version %}" class="btn btn-secondary">Cancel</a>
+</form>
+{% endblock %}

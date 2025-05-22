@@ -4,7 +4,7 @@
 
 
 {% block content %}
-{% block title %}Scenario Warning List{% endblock %}
+
 <div class="container mt-4">
     <h2 class="mb-4">Scenario Warning List</h2>
     <p><strong>Scenario Version:</strong> {{ scenario.version }}</p>
@@ -32,28 +32,48 @@
         </div>
     </div>
 
-    <!-- Section 2: Products without Dress Mass -->
+    <!-- Section 2: Products Without Dress Mass -->
     <div class="card mb-4">
         <div class="card-header">
             Products Without Dress Mass
         </div>
         <div class="card-body">
-            <table class="table table-striped">
-                <thead>
-                    <tr>
-                        <th>Product</th>
-                        <th>Description</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for product in products_without_dress_mass %}
-                    <tr>
-                        <td>{{ product.Product }}</td>
-                        <td>{{ product.ProductDescription }}</td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
+            <div id="accordion-dress-mass">
+                {% for parent_group, products in grouped_products_without_dress_mass.items %}
+                <div class="card">
+                    <div class="card-header" id="heading-dress-{{ forloop.counter }}">
+                        <h5 class="mb-0">
+                            <button class="btn btn-link d-flex align-items-center" data-toggle="collapse"
+                                data-target="#collapse-dress-{{ forloop.counter }}" aria-expanded="false"
+                                aria-controls="collapse-dress-{{ forloop.counter }}">
+                                <span class="toggle-icon mr-2">+</span> {{ parent_group }}
+                            </button>
+                        </h5>
+                    </div>
+                    <div id="collapse-dress-{{ forloop.counter }}" class="collapse"
+                        aria-labelledby="heading-dress-{{ forloop.counter }}" data-parent="#accordion-dress-mass">
+                        <div class="card-body">
+                            <table class="table table-striped">
+                                <thead>
+                                    <tr>
+                                        <th>Product</th>
+                                        <th>Description</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for product in products %}
+                                    <tr>
+                                        <td>{{ product.Product }}</td>
+                                        <td>{{ product.ProductDescription }}</td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
         </div>
     </div>
 
@@ -63,25 +83,46 @@
             Products Not Allocated to Foundries
         </div>
         <div class="card-body">
-            <table class="table table-striped">
-                <thead>
-                    <tr>
-                        <th>Product</th>
-                        <th>Description</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for product in products_not_allocated_to_foundries %}
-                    <tr>
-                        <td>{{ product.Product }}</td>
-                        <td>{{ product.ProductDescription }}</td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
+            <div id="accordion">
+                {% for parent_group, products in grouped_products.items %}
+                <div class="card">
+                    <div class="card-header" id="heading-{{ forloop.counter }}">
+                        <h5 class="mb-0">
+                            <button class="btn btn-link d-flex align-items-center" data-toggle="collapse"
+                                data-target="#collapse-{{ forloop.counter }}" aria-expanded="false"
+                                aria-controls="collapse-{{ forloop.counter }}">
+                                <span class="toggle-icon mr-2">+</span> {{ parent_group }}
+                            </button>
+                        </h5>
+                    </div>
+                    <div id="collapse-{{ forloop.counter }}" class="collapse"
+                        aria-labelledby="heading-{{ forloop.counter }}" data-parent="#accordion">
+                        <div class="card-body">
+                            <table class="table table-striped">
+                                <thead>
+                                    <tr>
+                                        <th>Product</th>
+                                        <th>Description</th>
+                                        <th>Total Replenishment Qty</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for product in products %}
+                                    <tr>
+                                        <td>{{ product.Product__Product }}</td>
+                                        <td>{{ product.Product__ProductDescription }}</td>
+                                        <td>{{ product.total_replenishment_qty }}</td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
         </div>
     </div>
-
     <!-- Section 4: Customers Without Incoterms -->
     <div class="card mb-4">
         <div class="card-header">
@@ -154,4 +195,41 @@
         </div>
     </div>
 </div>
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+        const accordion = document.getElementById('accordion');
+        accordion.addEventListener('click', function (event) {
+            if (event.target && event.target.matches('button[data-toggle="collapse"]')) {
+                const button = event.target;
+                const icon = button.querySelector('.toggle-icon');
+                const targetId = button.getAttribute('data-target');
+                const targetElement = document.querySelector(targetId);
+
+                // Toggle the "+" and "-" signs
+                if (targetElement.classList.contains('show')) {
+                    icon.textContent = "+";
+                } else {
+                    icon.textContent = "-";
+                }
+            }
+        });
+
+        // Initialize icons for already expanded sections
+        document.querySelectorAll('.collapse.show').forEach(function (element) {
+            const button = document.querySelector(`button[data-target="#${element.id}"]`);
+            if (button) {
+                const icon = button.querySelector('.toggle-icon');
+                icon.textContent = "-";
+            }
+        });
+    });
+</script>
+<!-- Include Bootstrap CSS -->
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@4.6.2/dist/css/bootstrap.min.css" rel="stylesheet">
+
+<!-- Include jQuery -->
+<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+
+<!-- Include Bootstrap JS -->
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@4.6.2/dist/js/bootstrap.bundle.min.js"></script>
 {% endblock %}

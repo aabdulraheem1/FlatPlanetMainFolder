@@ -1,0 +1,24 @@
+{% extends 'website/base.html' %}
+
+<!DOCTYPE html>
+<html>
+
+{% block content %}
+<div class="container mt-5">
+    <h1>Delete Epicor Supplier Master Data</h1>
+    <p>Are you sure you want to delete the following record?</p>
+    <ul>
+        <li><strong>Company:</strong> {{ record.Company }}</li>
+        <li><strong>Plant:</strong> {{ record.Plant }}</li>
+        <li><strong>Part Number:</strong> {{ record.PartNum }}</li>
+        <li><strong>Vendor ID:</strong> {{ record.VendorID }}</li>
+    </ul>
+    <form method="POST" action="">
+        {% csrf_token %}
+        <button type="submit" class="btn btn-danger">Delete</button>
+        <a href="{% url 'suppliers_list' %}" class="btn btn-secondary">Cancel</a>
+    </form>
+</div>
+{% endblock %}
+
+</html>

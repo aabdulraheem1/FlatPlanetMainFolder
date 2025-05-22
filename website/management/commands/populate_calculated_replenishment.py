@@ -9,6 +9,7 @@ from website.models import (
     MasterDataHistoryOfProductionModel,
     MasterDataPlantModel,
     CalcualtedReplenishmentModel,
+    MasterDataEpicorSupplierMasterDataModel,
 )
 
 
@@ -25,32 +26,43 @@ class Command(BaseCommand):
     def handle(self, *args, **kwargs):
         version = kwargs['version']
 
-        # Fetch the scenario instance
         try:
             scenario = scenarios.objects.get(version=version)
         except scenarios.DoesNotExist:
-            self.stdout.write(self.style.ERROR(f"Scenario with version '{version}' does not exist."))
             return
 
-        # Delete existing records for the same version
-        CalcualtedReplenishmentModel.objects.filter(version=scenario).delete()
+        CalcualtedReplenishmentModel.objects.filter(version=scenario.version).delete()
 
-        # Fetch SMART_Forecast_Model data grouped by Product, Location, and Period_AU
-        forecast_data = SMART_Forecast_Model.objects.filter(version=scenario).values(
-            'Product', 'Location', 'Period_AU'
-        ).annotate(
-            total_qty=Sum('Qty')  # Consolidate total quantity for each group
-        ).order_by('Period_AU')
+        # Prefetch and cache all related data
+        product_data_map = {p.Product: p for p in MasterDataProductModel.objects.all()}
+        plant_data_map = {p.SiteName: p for p in MasterDataPlantModel.objects.all()}
 
-        # Fetch on-hand and in-transit stock data grouped by Product and Location
-        inventory_data = MasterDataInventory.objects.filter(version=scenario).values(
+        # ...existing code...
+
+        order_book_map = {
+            (ob.version.version, ob.productkey): ob.site
+            for ob in MasterDataOrderBook.objects.filter(version=scenario).exclude(site__isnull=True).exclude(site__exact='')
+        }
+        production_map = {
+            (prod.version.version, prod.Product): prod.Foundry
+            for prod in MasterDataHistoryOfProductionModel.objects.filter(version=scenario).exclude(Foundry__isnull=True).exclude(Foundry__exact='')
+        }
+        supplier_map = {
+            (sup.version.version, sup.PartNum): sup.VendorID
+            for sup in MasterDataEpicorSupplierMasterDataModel.objects.filter(version=scenario).exclude(VendorID__isnull=True).exclude(VendorID__exact='')
+        }
+
+        # ...existing code...
+
+
+
+        # Inventory lookup as before
+        inventory_data = MasterDataInventory.objects.filter(version=scenario.version).values(
             'product', 'site_id'
         ).annotate(
             total_onhand=Sum('onhandstock_qty'),
             total_intransit=Sum('intransitstock_qty')
         )
-
-        # Create a dictionary for quick lookup of inventory data
         inventory_lookup = {
             (item['product'], self._transform_location(item['site_id'])): {
                 'onhand': item['total_onhand'],
@@ -59,31 +71,35 @@ class Command(BaseCommand):
             for item in inventory_data
         }
 
-        # Iterate through forecast data and populate CalcualtedReplenishmentModel
+        forecast_data = SMART_Forecast_Model.objects.filter(version=scenario.version).values(
+            'Product', 'Location', 'Period_AU'
+        ).annotate(
+            total_qty=Sum('Qty')
+        ).order_by('Period_AU')
+
+        replenishment_records = []
+
         for forecast in forecast_data:
             product = forecast['Product']
             location = self._transform_location(forecast['Location'])
             period = forecast['Period_AU']
-            total_qty = forecast['total_qty']  # Consolidated total quantity
+            total_qty = forecast['total_qty'] or 0
 
-            # Determine the site
-            site = self._get_site(scenario, product)
+            # Use cached site lookup
+            site = self._get_site_cached(
+            scenario.version, product, plant_data_map,
+            order_book_map, production_map, supplier_map
+            )
+            if not site:
+                print(f"SKIP: No site for product={product}, version={scenario.version}")
+                continue
 
-            # Log the forecast details
-            self.stdout.write(self.style.SUCCESS(
-                f"Processing forecast for Product '{product}', Location '{location}', Period '{period}': "
-                f"Total Qty: {total_qty}, Site: {site}"
-            ))
-
-            # Initialize on-hand and in-transit stock
             inventory = inventory_lookup.get((product, location), {})
             onhand_stock = inventory.get('onhand', 0)
             intransit_stock = inventory.get('intransit', 0)
 
-            # Deduct stock for the current period
-            remaining_qty = total_qty if total_qty is not None else 0  # Ensure remaining_qty is initialized as an integer
+            remaining_qty = total_qty
             while remaining_qty > 0:
-                # Deduct on-hand stock first
                 if onhand_stock > 0:
                     if remaining_qty <= onhand_stock:
                         onhand_stock -= remaining_qty
@@ -91,8 +107,6 @@ class Command(BaseCommand):
                     else:
                         remaining_qty -= onhand_stock
                         onhand_stock = 0
-
-                # Deduct in-transit stock next
                 if remaining_qty > 0 and intransit_stock > 0:
                     if remaining_qty <= intransit_stock:
                         intransit_stock -= remaining_qty
@@ -100,32 +114,27 @@ class Command(BaseCommand):
                     else:
                         remaining_qty -= intransit_stock
                         intransit_stock = 0
-
-                # If there's still remaining quantity, create a replenishment record
                 if remaining_qty > 0:
-                    try:
-                        product_instance = MasterDataProductModel.objects.get(Product=product)
-                    except MasterDataProductModel.DoesNotExist:
-                        self.stdout.write(self.style.ERROR(f"Product '{product}' does not exist in MasterDataProductModel. Skipping."))
-                        break  # Skip this product and move to the next forecast
-
-                    CalcualtedReplenishmentModel.objects.create(
+                    product_instance = product_data_map.get(product)
+                    if not product_instance:
+                        break
+                    replenishment_records.append(CalcualtedReplenishmentModel(
                         version=scenario,
                         Product=product_instance,
                         Location=location,
                         Site=site,
                         ShippingDate=period,
                         ReplenishmentQty=remaining_qty
-                    )
-                    remaining_qty = 0  # Reset remaining_qty after creating the record
+                    ))
+                    remaining_qty = 0
 
-            # Update the inventory lookup for the next period
             inventory_lookup[(product, location)] = {
                 'onhand': onhand_stock,
                 'intransit': intransit_stock
             }
 
-        self.stdout.write(self.style.SUCCESS(f"Finished processing for version '{version}'."))
+        if replenishment_records:
+            CalcualtedReplenishmentModel.objects.bulk_create(replenishment_records, batch_size=1000)
 
     def _transform_location(self, location):
         """
@@ -138,25 +147,30 @@ class Command(BaseCommand):
                 return location.split("-", 1)[1][:4]
         return location
 
-    def _get_site(self, scenario, product):
-        """
-        Determine the site for the given scenario and product.
-        """
-        # Check MasterDataOrderBook for the site
-        order_book_entry = MasterDataOrderBook.objects.filter(version=scenario, productkey=product).first()
-        if order_book_entry:
-            # Retrieve the MasterDataPlantModel instance for the site
-            site = MasterDataPlantModel.objects.filter(SiteName=order_book_entry.site).first()
-            if site:
-                return site
-
-        # Fallback to MasterDataHistoryOfProductionModel for the foundry
-        production_entry = MasterDataHistoryOfProductionModel.objects.filter(version=scenario, Product=product).first()
-        if production_entry:
-            # Retrieve the MasterDataPlantModel instance for the foundry
-            foundry = MasterDataPlantModel.objects.filter(SiteName=production_entry.Foundry).first()
-            if foundry:
-                return foundry
-
-        # If no site is found, return None
+    def _get_site_cached(self, version, product, plant_data_map, order_book_map, production_map, supplier_map):
+        # OrderBook
+        site_name = order_book_map.get((version, product))
+        if site_name:
+            return plant_data_map.get(site_name)
+        # Production
+        foundry = production_map.get((version, product))
+        if foundry:
+            return plant_data_map.get(foundry)
+        # Supplier
+        vendor_id = supplier_map.get((version, product))
+        if vendor_id:
+            vendor_to_site_mapping = {
+                "MTJ1": "MTJ1", "COI2": "COI2", "XUZ1": "XUZ1",
+                "MER1": "MER1", "WOD1": "WOD1", "CHI1": "CHI1",
+            }
+            if vendor_id in vendor_to_site_mapping:
+                return plant_data_map.get(vendor_id)
+            excluded_vendor_ids = {
+                "000000", "BKAU03", "BKCA01", "BKCL01", "BKCN01", "BKCN02",
+                "BKID02", "BKIN01", "BKMY01", "BKPE01", "BKUS01", "BKZA01"
+            }
+            if vendor_id not in excluded_vendor_ids:
+                return plant_data_map.get(vendor_id)
         return None
+
+# ...existing code...

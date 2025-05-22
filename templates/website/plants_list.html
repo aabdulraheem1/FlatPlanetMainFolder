@@ -20,20 +20,24 @@
                         <th>Location
                             <input type="text" class="form-control" name="Location" value="{{ Location_filter }}">
                         </th>
-                        <th>Site Type
-                            <input type="text" class="form-control" name="SiteType" value="{{ SiteType_filter }}">
+                        <th>Tradning Name
+                            <input type="text" class="form-control" name="TradingName" value="{{ TradingName_filter }}">
                         </th>
-
                     </tr>
                 </thead>
                 <tbody>
                     {% for site in page_obj %}
                     <tr>
-                        <td><a href="{% url 'edit_plant' site.SiteName %}">{{ site.SiteName }}</a></td>
+                        <td>
+                            {% if site.SiteName %}
+                            <a href="{% url 'edit_plant' site.SiteName %}">{{ site.SiteName }}</a>
+                            {% else %}
+                            (No SiteName)
+                            {% endif %}
+                        </td>
                         <td>{{ site.Company }}</td>
                         <td>{{ site.Location }}</td>
-                        <td>{{ site.SiteType }}</td>
-
+                        <td>{{ site.TradingName }}</td>
                     </tr>
                     {% endfor %}
                 </tbody>
@@ -41,6 +45,8 @@
         </div>
         <div class="d-flex justify-content-between">
             <button type="submit" class="btn btn-primary">Filter</button>
+            <!-- Button to navigate to create_plant URL -->
+            <a href="{% url 'create_plant' %}" class="btn btn-primary mt-3">Add Site</a>
             <button type="button" class="btn btn-danger" data-bs-toggle="modal"
                 data-bs-target="#refreshModal">Refresh</button>
         </div>
@@ -51,11 +57,11 @@
             {% if page_obj.has_previous %}
             <li class="page-item">
                 <a class="page-link"
-                    href="?page=1{% if Site_Filter %}&SiteName={{ Site_Filter }}{% endif %}{% if Company_Filter %}&Company={{ Company_Filter }}{% endif %}{% if Location_Filter %}&Location={{ Location_Filter }}{% endif %}{% if SiteType_Filter %}&SiteType={{ SiteType_Filter }}{% endif %}">First</a>
+                    href="?page=1{% if Site_Filter %}&SiteName={{ Site_Filter }}{% endif %}{% if Company_Filter %}&Company={{ Company_Filter }}{% endif %}{% if Location_Filter %}&Location={{ Location_Filter }}{% endif %}{% if TradingName_Filter %}&TradingName={{ TradingName_Filter }}{% endif %}">First</a>
             </li>
             <li class="page-item">
                 <a class="page-link"
-                    href="?page={{ page_obj.previous_page_number }}{% if Site_Filter %}&SiteName={{ Site_Filter }}{% endif %}{% if Company_Filter %}&Company={{ Company_Filter }}{% endif %}{% if Location_Filter %}&Location={{ Location_Filter }}{% endif %}{% if SiteType_Filter %}&SiteType={{ SiteType_Filter }}{% endif %}">Previous</a>
+                    href="?page={{ page_obj.previous_page_number }}{% if Site_Filter %}&SiteName={{ Site_Filter }}{% endif %}{% if Company_Filter %}&Company={{ Company_Filter }}{% endif %}{% if Location_Filter %}&Location={{ Location_Filter }}{% endif %}{% if TradingName_Filter %}&TradingName={{ TradingName_Filter }}{% endif %}">Previous</a>
             </li>
             {% endif %}
 
@@ -66,15 +72,13 @@
             {% if page_obj.has_next %}
             <li class="page-item">
                 <a class="page-link"
-                    href="?page={{ page_obj.next_page_number }}{% if Site_Filter %}&SiteName={{ Site_Filter }}{% endif %}{% if Company_Filter %}&Company={{ Company_Filter }}{% endif %}{% if Location_Filter %}&Location={{ Location_Filter }}{% endif %}{% if SiteType_Filter %}&SiteType={{ SiteType_Filter }}{% endif %}">Next</a>
+                    href="?page={{ page_obj.next_page_number }}{% if Site_Filter %}&SiteName={{ Site_Filter }}{% endif %}{% if Company_Filter %}&Company={{ Company_Filter }}{% endif %}{% if Location_Filter %}&Location={{ Location_Filter }}{% endif %}{% if TradingName_Filter %}&TradingName={{ TradingName_Filter }}{% endif %}">Next</a>
             </li>
             <li class="page-item">
                 <a class="page-link"
-                    href="?page={{ page_obj.paginator.num_pages }}{% if Site_Filter %}&SiteName={{ Site_Filter }}{% endif %}{% if Company_Filter %}&Company={{ Company_Filter }}{% endif %}{% if Location_Filter %}&Location={{ Location_Filter }}{% endif %}{% if SiteType_Filter %}&SiteType={{ SiteType_Filter }}{% endif %}">Last</a>
+                    href="?page={{ page_obj.paginator.num_pages }}{% if Site_Filter %}&SiteName={{ Site_Filter }}{% endif %}{% if Company_Filter %}&Company={{ Company_Filter }}{% endif %}{% if Location_Filter %}&Location={{ Location_Filter }}{% endif %}{% if TradingName_Filter %}&TradingName={{ TradingName_Filter }}{% endif %}">Last</a>
             </li>
             {% endif %}
-
-
         </ul>
     </nav>
 </div>

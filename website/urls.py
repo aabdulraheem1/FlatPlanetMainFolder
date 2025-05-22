@@ -17,7 +17,10 @@ urlpatterns = [
     path('plants/edit/<path:pk>/', views.edit_plant, name='edit_plant'),    
     path('success/', lambda request: render(request, 'success.html'), name='success'),
     path('edit-scenario/<int:scenario_id>/', views.edit_scenario, name='edit_scenario'),    
-    path('delete-forecast/<int:id>/', views.delete_forecast, name='delete_forecast'),
+    
+    path('delete-forecast/<str:version>/<str:data_source>/', views.delete_forecast, name='delete_forecast'),
+    path('copy-forecast/<str:version>/<str:data_source>/', views.copy_forecast, name='copy_forecast'),
+
     path('list-scenarios/', views.list_scenarios, name='list_scenarios'),
     path('edit-scenario/<str:version>/', views.edit_scenario, name='edit_scenario'),
     path('delete-scenario/<str:version>/', views.delete_scenario, name='delete_scenario'),
@@ -96,6 +99,23 @@ urlpatterns = [
     path('customers/fetch/', views.customers_fetch_data_from_mssql, name='customers_fetch_data'),
 
     path('supplyoptions', views.SupplyOptions, name='supplyoptions'),
+
+
+
+
+    # Updated URLs for Epicor Supplier Master Data
+    path('update-epicor-supplier/<str:version>/', views.update_epicor_supplier_master_data, name='update_production_epicor_master_data'),
+    path('delete-epicor-supplier/<str:version>/', views.delete_epicor_supplier_master_data, name='delete_production_epicor_master_data'),
+    path('copy-epicor-supplier/<str:version>/', views.copy_epicor_supplier_master_data, name='copy_production_epicor_master_data'),
+    path('upload-epicor-supplier/<str:version>/', views.upload_epicor_supplier_master_data, name='upload_production_epicor_master_data'),
+
+    # ... existing URL patterns ...
+    path('calculate-model/<str:version>/', views.calculate_model, name='calculate_model'),
+    
+    # Other URL patterns...
+    path('create-plant/', views.create_plant, name='create_plant'),
+
+
 
 
     # Add other URL patterns as needed

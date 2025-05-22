@@ -12,7 +12,6 @@
         <tr>
             <td>Forecast from SMART</td>
             <td>
-                <!-- Visible checkbox dynamically checked based on smart_forecast_data -->
                 <input type="checkbox" {% if smart_forecast_data %}checked{% endif %} disabled>
             </td>
             <td>
@@ -20,14 +19,17 @@
                     onclick="window.location.href='{% url 'edit_forecasts' scenario.version 'SMART' %}'">
                     <img src="/static/icons/update.png" alt="Update">
                 </button>
-                <button type="button" class="btn btn-danger btn-sm">
+                <button type="button" class="btn btn-danger btn-sm"
+                    onclick="if(confirm('Are you sure you want to delete all SMART forecast data?')) { window.location.href='{% url 'delete_forecast' scenario.version 'SMART' %}'; }">
                     <img src="/static/icons/delete.png" alt="Delete">
                 </button>
                 <button type="button" class="btn btn-info btn-sm" data-bs-toggle="modal"
                     data-bs-target="#uploadModalSMART">
                     <img src="/static/icons/upload.png" alt="Upload">
                 </button>
-                <button type="button" class="btn btn-info btn-sm">
+                <!-- Copy Button -->
+                <button type="button" class="btn btn-info btn-sm"
+                    onclick="window.location.href='{% url 'copy_forecast' scenario.version 'SMART' %}'">
                     <img src="/static/icons/copy.png" alt="Copy">
                 </button>
             </td>
@@ -35,7 +37,6 @@
         <tr>
             <td>Forecast not in SMART</td>
             <td>
-                <!-- Visible checkbox dynamically checked based on not_in_smart_forecast_data -->
                 <input type="checkbox" {% if not_in_smart_forecast_data %}checked{% endif %} disabled>
             </td>
             <td>
@@ -43,18 +44,74 @@
                     onclick="window.location.href='{% url 'edit_forecasts' scenario.version 'Not in SMART' %}'">
                     <img src="/static/icons/update.png" alt="Update">
                 </button>
-                <button type="button" class="btn btn-danger btn-sm">
+                <button type="button" class="btn btn-danger btn-sm"
+                    onclick="if(confirm('Are you sure you want to delete all Not in SMART forecast data?')) { window.location.href='{% url 'delete_forecast' scenario.version 'Not in SMART' %}'; }">
                     <img src="/static/icons/delete.png" alt="Delete">
                 </button>
                 <button type="button" class="btn btn-info btn-sm" data-bs-toggle="modal"
                     data-bs-target="#uploadModalNotInSMART">
                     <img src="/static/icons/upload.png" alt="Upload">
                 </button>
-                <button type="button" class="btn btn-info btn-sm">
+                <!-- Copy Button -->
+                <button type="button" class="btn btn-info btn-sm"
+                    onclick="window.location.href='{% url 'copy_forecast' scenario.version 'Not in SMART' %}'">
                     <img src="/static/icons/copy.png" alt="Copy">
                 </button>
             </td>
         </tr>
+        <!-- Forecast Fixed Plant -->
+        <tr>
+            <td>Forecast Fixed Plant</td>
+            <td>
+                <input type="checkbox" {% if fixed_plant_forecast_data %}checked{% endif %} disabled>
+            </td>
+            <td>
+                <button type="button" class="btn btn-warning btn-sm"
+                    onclick="window.location.href='{% url 'edit_forecasts' scenario.version 'Fixed Plant' %}'">
+                    <img src="/static/icons/update.png" alt="Update">
+                </button>
+                <button type="button" class="btn btn-danger btn-sm"
+                    onclick="if(confirm('Are you sure you want to delete all Fixed Plant forecast data?')) { window.location.href='{% url 'delete_forecast' scenario.version 'Fixed Plant' %}'; }">
+                    <img src="/static/icons/delete.png" alt="Delete">
+                </button>
+                <button type="button" class="btn btn-info btn-sm" data-bs-toggle="modal"
+                    data-bs-target="#uploadModalFixedPlant">
+                    <img src="/static/icons/upload.png" alt="Upload">
+                </button>
+                <!-- Copy Button -->
+                <button type="button" class="btn btn-info btn-sm"
+                    onclick="window.location.href='{% url 'copy_forecast' scenario.version 'Fixed Plant' %}'">
+                    <img src="/static/icons/copy.png" alt="Copy">
+                </button>
+            </td>
+        </tr>
+        <!-- Forecast Revenue -->
+        <tr>
+            <td>Forecast Revenue</td>
+            <td>
+                <input type="checkbox" {% if revenue_forecast_data %}checked{% endif %} disabled>
+            </td>
+            <td>
+                <button type="button" class="btn btn-warning btn-sm"
+                    onclick="window.location.href='{% url 'edit_forecasts' scenario.version 'Revenue' %}'">
+                    <img src="/static/icons/update.png" alt="Update">
+                </button>
+                <button type="button" class="btn btn-danger btn-sm"
+                    onclick="if(confirm('Are you sure you want to delete all Revenue forecast data?')) { window.location.href='{% url 'delete_forecast' scenario.version 'Revenue' %}'; }">
+                    <img src="/static/icons/delete.png" alt="Delete">
+                </button>
+                <button type="button" class="btn btn-info btn-sm" data-bs-toggle="modal"
+                    data-bs-target="#uploadModalRevenue">
+                    <img src="/static/icons/upload.png" alt="Upload">
+                </button>
+                <!-- Copy Button -->
+                <button type="button" class="btn btn-info btn-sm"
+                    onclick="window.location.href='{% url 'copy_forecast' scenario.version 'Revenue' %}'">
+                    <img src="/static/icons/copy.png" alt="Copy">
+                </button>
+            </td>
+        </tr>
+
     </tbody>
 </table>
 
@@ -124,6 +181,84 @@
                     <div class="mb-3">
                         <label for="fileNotInSMART" class="form-label">Select Excel File</label>
                         <input type="file" class="form-control" id="fileNotInSMART" name="file" accept=".xlsx, .xls">
+                    </div>
+                    <button type="submit" class="btn btn-primary">Upload</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal for Forecast Fixed Plant -->
+<div class="modal fade" id="uploadModalFixedPlant" tabindex="-1" aria-labelledby="uploadModalFixedPlantLabel"
+    aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="uploadModalFixedPlantLabel">Upload Forecast Fixed Plant</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p>
+                <ul>
+                    <li><strong>Product</strong>: The product name or code.</li>
+                    <li><strong>Location</strong>: The location.</li>
+                    <li><strong>Customer_code</strong>: The customer code.</li>
+                    <li><strong>ProductFamilyDescription</strong>: The product family description.</li>
+                    <li><strong>Forecast_Region</strong>: The forecast region.</li>
+                    <li><strong>Forecasted_Weight_Curr</strong>: The forecasted weight in the current currency.</li>
+                    <li><strong>PriceAUD</strong>: The price in AUD.</li>
+                    <li><strong>Period_AU</strong>: The period in AU format.</li>
+                    <li><strong>Qty</strong>: The quantity.</li>
+                    <li><strong>Product_Group</strong>: The product group.</li>
+                    <li><strong>DP_Cycle</strong>: The demand planning cycle.</li>
+                </ul>
+                </p>
+                <form method="post" enctype="multipart/form-data" action="{% url 'upload_forecast' 'Fixed Plant' %}">
+                    {% csrf_token %}
+                    <input type="hidden" name="version" value="{{ scenario.version }}">
+                    <div class="mb-3">
+                        <label for="fileFixedPlant" class="form-label">Select Excel File</label>
+                        <input type="file" class="form-control" id="fileFixedPlant" name="file" accept=".xlsx, .xls">
+                    </div>
+                    <button type="submit" class="btn btn-primary">Upload</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal for Forecast Revenue -->
+<div class="modal fade" id="uploadModalRevenue" tabindex="-1" aria-labelledby="uploadModalRevenueLabel"
+    aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="uploadModalRevenueLabel">Upload Forecast Revenue</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p>
+                <ul>
+                    <li><strong>Product</strong>: The product name or code.</li>
+                    <li><strong>Location</strong>: The location.</li>
+                    <li><strong>Customer_code</strong>: The customer code.</li>
+                    <li><strong>ProductFamilyDescription</strong>: The product family description.</li>
+                    <li><strong>Forecast_Region</strong>: The forecast region.</li>
+                    <li><strong>Forecasted_Weight_Curr</strong>: The forecasted weight in the current currency.</li>
+                    <li><strong>PriceAUD</strong>: The price in AUD.</li>
+                    <li><strong>Period_AU</strong>: The period in AU format.</li>
+                    <li><strong>Qty</strong>: The quantity.</li>
+                    <li><strong>Product_Group</strong>: The product group.</li>
+                    <li><strong>DP_Cycle</strong>: The demand planning cycle.</li>
+                </ul>
+                </p>
+                <form method="post" enctype="multipart/form-data" action="{% url 'upload_forecast' 'Revenue' %}">
+                    {% csrf_token %}
+                    <input type="hidden" name="version" value="{{ scenario.version }}">
+                    <div class="mb-3">
+                        <label for="fileRevenue" class="form-label">Select Excel File</label>
+                        <input type="file" class="form-control" id="fileRevenue" name="file" accept=".xlsx, .xls">
                     </div>
                     <button type="submit" class="btn btn-primary">Upload</button>
                 </form>

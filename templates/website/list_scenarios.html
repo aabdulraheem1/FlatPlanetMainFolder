@@ -21,6 +21,9 @@
                 <a href="{% url 'delete_scenario' scenario.version %}" class="btn btn-danger btn-sm"
                     onclick="return confirmDelete()">Delete</a>
                 <a href="{% url 'warningList' scenario.version %}" class="btn btn-warning btn-sm">Warning!</a>
+                <a href="{% url 'calculate_model' scenario.version %}" class="btn btn-success btn-sm"
+                    onclick="return confirm('Are you sure you want to calculate the model for this scenario?');">Calculate
+                    the Model</a>
             </td>
         </tr>
         {% endfor %}
