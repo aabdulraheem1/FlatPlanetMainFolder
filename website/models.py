@@ -449,3 +449,13 @@ class MasterDataEpicorBillOfMaterialModel(models.Model):
 
     def __str__(self):
         return f"{self.Company} - {self.Plant} - {self.Parent}"
+    
+class MasterDataManuallyAssignProductionRequirement(models.Model):
+    version = models.ForeignKey(scenarios, on_delete=models.CASCADE, null=True, blank=True)  # Add foreign key to scenarios
+    Product = models.ForeignKey(MasterDataProductModel, on_delete=models.CASCADE, null=True, blank=True)  # Foreign key from MasterDataProductModel
+    Site = models.ForeignKey(MasterDataPlantModel, on_delete=models.CASCADE, null=True, blank=True)  # Foreign key from MasterDataPlantModel
+    ShippingDate = models.DateField(null=True, blank=True)
+    Percentage = models.FloatField(default=0, null=True, blank=True)  # Percentage of the production requirement
+
+    def __str__(self):
+        return f"{self.Product.Product} - {self.Site.SiteName} - {self.ShippingDate}"

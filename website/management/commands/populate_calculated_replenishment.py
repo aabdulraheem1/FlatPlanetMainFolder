@@ -1,5 +1,6 @@
 from django.core.management.base import BaseCommand
 from django.db.models import Sum
+from datetime import date, timedelta
 from website.models import (
     scenarios,
     SMART_Forecast_Model,
@@ -10,8 +11,9 @@ from website.models import (
     MasterDataPlantModel,
     CalcualtedReplenishmentModel,
     MasterDataEpicorSupplierMasterDataModel,
+    MasterDataFreightModel,
+    MasterdataIncoTermsModel,
 )
-
 
 class Command(BaseCommand):
     help = "Populate data in CalcualtedReplenishmentModel from SMART_Forecast_Model"
@@ -37,8 +39,6 @@ class Command(BaseCommand):
         product_data_map = {p.Product: p for p in MasterDataProductModel.objects.all()}
         plant_data_map = {p.SiteName: p for p in MasterDataPlantModel.objects.all()}
 
-        # ...existing code...
-
         order_book_map = {
             (ob.version.version, ob.productkey): ob.site
             for ob in MasterDataOrderBook.objects.filter(version=scenario).exclude(site__isnull=True).exclude(site__exact='')
@@ -51,10 +51,6 @@ class Command(BaseCommand):
             (sup.version.version, sup.PartNum): sup.VendorID
             for sup in MasterDataEpicorSupplierMasterDataModel.objects.filter(version=scenario).exclude(VendorID__isnull=True).exclude(VendorID__exact='')
         }
-
-        # ...existing code...
-
-
 
         # Inventory lookup as before
         inventory_data = MasterDataInventory.objects.filter(version=scenario.version).values(
@@ -72,7 +68,7 @@ class Command(BaseCommand):
         }
 
         forecast_data = SMART_Forecast_Model.objects.filter(version=scenario.version).values(
-            'Product', 'Location', 'Period_AU'
+            'Product', 'Location', 'Period_AU', 'Forecast_Region', 'Customer_code'
         ).annotate(
             total_qty=Sum('Qty')
         ).order_by('Period_AU')
@@ -87,12 +83,49 @@ class Command(BaseCommand):
 
             # Use cached site lookup
             site = self._get_site_cached(
-            scenario.version, product, plant_data_map,
-            order_book_map, production_map, supplier_map
+                scenario.version, product, plant_data_map,
+                order_book_map, production_map, supplier_map
             )
             if not site:
                 print(f"SKIP: No site for product={product}, version={scenario.version}")
                 continue
+
+            # --- Shipping Date Calculation Logic ---
+            forecast_region = forecast.get('Forecast_Region')
+            customer_code = forecast.get('Customer_code')
+
+            # Filter freight by version, region, and site
+            freight = None
+            if forecast_region and site:
+                freight = MasterDataFreightModel.objects.filter(
+                    version=scenario,
+                    ForecastRegion=forecast_region,
+                    ManufacturingSite_id=site.pk
+                ).first()
+
+            # Filter incoterm by version and customer code
+            incoterm = None
+            if customer_code:
+                incoterm_obj = MasterdataIncoTermsModel.objects.filter(
+                    version=scenario,
+                    CustomerCode=customer_code
+                ).first()
+                if incoterm_obj and incoterm_obj.Incoterm:
+                    incoterm = getattr(incoterm_obj.Incoterm, 'IncoTerm', None)
+
+            shipping_date = period
+            if incoterm and freight:
+                if incoterm in ['CPT', 'CIF']:
+                    shipping_date = period - timedelta(days=(freight.PlantToDomesticPortDays or 0) + (freight.OceanFreightDays or 0))
+                elif incoterm in ['DDP', 'DAP', 'CIP']:
+                    shipping_date = period - timedelta(days=(freight.PlantToDomesticPortDays or 0) + (freight.OceanFreightDays or 0) + (freight.PortToCustomerDays or 0))
+                elif incoterm in ['CFR', 'FSA', 'FOB', 'FCA']:
+                    shipping_date = period - timedelta(days=(freight.PlantToDomesticPortDays or 0))
+                elif incoterm == 'EXW':
+                    shipping_date = period
+                else:
+                    shipping_date = period
+            # --- End Shipping Date Calculation Logic ---
 
             inventory = inventory_lookup.get((product, location), {})
             onhand_stock = inventory.get('onhand', 0)
@@ -123,7 +156,7 @@ class Command(BaseCommand):
                         Product=product_instance,
                         Location=location,
                         Site=site,
-                        ShippingDate=period,
+                        ShippingDate=shipping_date,
                         ReplenishmentQty=remaining_qty
                     ))
                     remaining_qty = 0
@@ -172,5 +205,3 @@ class Command(BaseCommand):
             if vendor_id not in excluded_vendor_ids:
                 return plant_data_map.get(vendor_id)
         return None
-
-# ...existing code...

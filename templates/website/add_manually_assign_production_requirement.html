@@ -1,0 +1,45 @@
+{% extends 'website/base.html' %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="alert alert-info" role="alert">
+        <strong>Scenario Version:</strong> {{ version }}
+    </div>
+    <h2>Add Manually Assign Production Requirement</h2>
+    {% if errors %}
+    <div class="alert alert-danger">
+        <ul>
+            {% for error in errors %}
+            <li>{{ error }}</li>
+            {% endfor %}
+        </ul>
+    </div>
+    {% endif %}
+    <form method="post">
+        {% csrf_token %}
+        {{ formset.management_form }}
+        <table class="table table-bordered">
+            <thead>
+                <tr>
+                    <th>Product</th>
+                    <th>Site</th>
+                    <th>Shipping Date</th>
+                    <th>Percentage</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for form in formset %}
+                <tr>
+                    <td>{{ form.Product }}</td>
+                    <td>{{ form.Site }}</td>
+                    <td>{{ form.ShippingDate }}</td>
+                    <td>{{ form.Percentage }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        <button type="submit" class="btn btn-success">Add</button>
+        <a href="{% url 'update_manually_assign_production_requirement' version %}" class="btn btn-secondary">Cancel</a>
+    </form>
+</div>
+{% endblock %}

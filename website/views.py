@@ -1516,36 +1516,63 @@ from django.forms import modelformset_factory
 
 
 
+from django.core.paginator import Paginator
+
 @login_required
 def update_master_data_freight(request, version):
+    user_name = request.user.username
     """
     View to update and add new Master Data Freight records.
     """
-    # Fetch the scenario instance
     scenario = get_object_or_404(scenarios, version=version)
 
-    # Get the records for the given version
-    freight_records = MasterDataFreightModel.objects.filter(version=scenario)
+    # Get filter values from GET
+    region_filter = request.GET.get('region', '').strip()
+    site_filter = request.GET.get('site', '').strip()
 
-    # Create a formset for the records, allowing extra empty forms for new entries
+    # Filter the records for the given version and filters
+    freight_records = MasterDataFreightModel.objects.filter(version=scenario)
+    if region_filter:
+        freight_records = freight_records.filter(ForecastRegion__Forecast_region__icontains=region_filter)
+    if site_filter:
+        freight_records = freight_records.filter(ManufacturingSite__SiteName__icontains=site_filter)
+
+    # Always order before paginating!
+    freight_records = freight_records.order_by('ForecastRegion__Forecast_region', 'ManufacturingSite__SiteName')
+
+    paginator = Paginator(freight_records, 10)
+    page_number = request.GET.get('page')
+    page_obj = paginator.get_page(page_number)
+
     FreightFormSet = modelformset_factory(
         MasterDataFreightModel,
         fields=['ForecastRegion', 'ManufacturingSite', 'PlantToDomesticPortDays', 'OceanFreightDays', 'PortToCustomerDays'],
-        extra=1  # Allow one extra form for adding new records
+        extra=1
     )
 
     if request.method == 'POST':
-        formset = FreightFormSet(request.POST, queryset=freight_records)
+        formset = FreightFormSet(request.POST, queryset=page_obj.object_list)
         if formset.is_valid():
             instances = formset.save(commit=False)
             for instance in instances:
-                instance.version = scenario  # Assign the scenario instance to the version field
+                instance.version = scenario
                 instance.save()
             return redirect('edit_scenario', version=version)
     else:
-        formset = FreightFormSet(queryset=freight_records)
+        formset = FreightFormSet(queryset=page_obj.object_list)
 
-    return render(request, 'website/update_master_data_freight.html', {'formset': formset, 'version': version})
+    return render(
+        request,
+        'website/update_master_data_freight.html',
+        {
+            'formset': formset,
+            'version': version,
+            'region_filter': region_filter,
+            'site_filter': site_filter,
+            'page_obj': page_obj,
+            'user_name': user_name,
+        }
+    )
 
 
 @login_required
@@ -1564,15 +1591,21 @@ def copy_master_data_freight(request, version):
     """
     View to copy Master Data Freight records from one version to another.
     """
+    target_scenario = get_object_or_404(scenarios, version=version)
     if request.method == 'POST':
         source_version = request.POST.get('source_version')
         if source_version:
-            source_records = MasterDataFreightModel.objects.filter(version=source_version)
-            for record in source_records:
-                record.pk = None  # Create a new record
-                record.version = version
-                record.save()
-            return redirect('edit_scenario', version=version)
+            source_scenario = get_object_or_404(scenarios, version=source_version)
+            source_records = MasterDataFreightModel.objects.filter(version=source_scenario)
+            if not source_records.exists():
+                messages.warning(request, "No freight records available to copy from the selected scenario.")
+                return redirect('edit_scenario', version=version)
+            else:
+                for record in source_records:
+                    record.pk = None  # Create a new record
+                    record.version = target_scenario  # Assign the scenario object, not just the version string
+                    record.save()
+                return redirect('edit_scenario', version=version)
     return render(request, 'website/copy_master_data_freight.html', {'version': version})
 
 
@@ -1712,16 +1745,20 @@ def incoterm_list(request):
     incoterms = MasterDataIncotTermTypesModel.objects.all()
     return render(request, 'website/incoterm_list.html', {'incoterms': incoterms})
 
-def incoterm_create(request):
-    """Create a new Master Incot Term."""
+# views.py
+@login_required
+def incoterm_create(request, version):
+    scenario = get_object_or_404(scenarios, version=version)
     if request.method == 'POST':
         form = MasterDataIncotTermTypesForm(request.POST)
         if form.is_valid():
-            form.save()
-            return redirect('incoterm_list')
+            incoterm = form.save(commit=False)
+            incoterm.version = scenario
+            incoterm.save()
+            return redirect('incoterm_update_formset', version=version)
     else:
         form = MasterDataIncotTermTypesForm()
-    return render(request, 'website/incoterm_form.html', {'form': form})
+    return render(request, 'website/incoterm_create.html', {'form': form, 'version': version})
 
 from django.shortcuts import render, redirect, get_object_or_404
 from django.forms import modelformset_factory
@@ -1729,6 +1766,7 @@ from .models import MasterDataIncotTermTypesModel
 from .forms import MasterDataIncotTermTypesForm
 
 def incoterm_update_formset(request, version):
+    user_name = request.user.username
     scenario = get_object_or_404(scenarios, version=version)
     IncotermFormSet = modelformset_factory(MasterDataIncotTermTypesModel, form=MasterDataIncotTermTypesForm, extra=0)
 
@@ -1740,7 +1778,8 @@ def incoterm_update_formset(request, version):
     else:
         formset = IncotermFormSet(queryset=MasterDataIncotTermTypesModel.objects.filter(version=scenario))
 
-    return render(request, 'website/incoterm_formset.html', {'formset': formset, 'scenario': scenario})
+    return render(request, 'website/incoterm_formset.html', {'formset': formset, 'scenario': scenario,
+                                                             'user_name': user_name, 'version': version})
 
 from django.shortcuts import redirect, get_object_or_404
 from .models import MasterDataIncotTermTypesModel
@@ -1781,6 +1820,7 @@ from .models import MasterdataIncoTermsModel, scenarios
 from .forms import MasterdataIncoTermsForm
 
 def master_data_inco_terms_update_formset(request, version):
+    user_name = request.user.username
     scenario = get_object_or_404(scenarios, version=version)
     IncoTermsFormSet = modelformset_factory(MasterdataIncoTermsModel, form=MasterdataIncoTermsForm, extra=0)
 
@@ -1792,12 +1832,17 @@ def master_data_inco_terms_update_formset(request, version):
     else:
         formset = IncoTermsFormSet(queryset=MasterdataIncoTermsModel.objects.filter(version=scenario))
 
-    return render(request, 'website/master_data_inco_terms_formset.html', {'formset': formset, 'scenario': scenario})
+    return render(request, 'website/master_data_inco_terms_formset.html', {'formset': formset, 'scenario': scenario,
+                                                                           'user_name': user_name, 'version': version})
 
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib import messages
 from .models import MasterdataIncoTermsModel
 import csv
+
+import pandas as pd
+from . models import MasterdataIncoTermsModel
+import pandas as pd
 
 @login_required
 def master_data_inco_terms_upload(request, version):
@@ -1806,23 +1851,26 @@ def master_data_inco_terms_upload(request, version):
     if request.method == 'POST' and request.FILES['file']:
         file = request.FILES['file']
         try:
-            # Process the uploaded file (example: CSV file)
-            decoded_file = file.read().decode('utf-8').splitlines()
-            reader = csv.DictReader(decoded_file)
-
-            for row in reader:
-                # Example: Save each row to the database
-                MasterDataIncoTermsModel.objects.create(
+            df = pd.read_excel(file)
+            for _, row in df.iterrows():
+                incoterm_value = row.get('IncoTerm')
+                # If incoterm is missing, blank, or NaN, use 'EXW'
+                if pd.isna(incoterm_value) or str(incoterm_value).strip() == '':
+                    incoterm_value = 'EXW'
+                try:
+                    incoterm_obj = MasterDataIncotTermTypesModel.objects.get(IncoTerm=incoterm_value)
+                except MasterDataIncotTermTypesModel.DoesNotExist:
+                    messages.error(request, f"Incoterm '{incoterm_value}' does not exist in Incoterm Types.")
+                    continue  # Skip this row
+                MasterdataIncoTermsModel.objects.create(
                     version=scenario,
-                    inco_term=row['IncoTerm'],
-                    description=row['Description'],
+                    Incoterm=incoterm_obj,
+                    CustomerCode=row['CustomerCode'],
                 )
-
             messages.success(request, 'Master Data Inco Terms uploaded successfully.')
         except Exception as e:
             messages.error(request, f'Error uploading file: {e}')
-
-        return redirect('other_master_data_section', version=version)
+        return redirect('edit_scenario', version=version)
 
     return render(request, 'website/other_master_data_section.html', {'scenario': scenario})
 
@@ -1831,18 +1879,36 @@ def master_data_inco_terms_delete_all(request, version):
     MasterdataIncoTermsModel.objects.filter(version=scenario).delete()
     return redirect('edit_scenario', version=version)
 
-def master_data_inco_terms_copy(request, version):
-    scenario = get_object_or_404(scenarios, version=version)
-    new_version = request.POST.get('new_version')
-    new_scenario = get_object_or_404(scenarios, version=new_version)
+from django.contrib import messages
 
-    for record in MasterdataIncoTermsModel.objects.filter(version=scenario):
-        MasterdataIncoTermsModel.objects.create(
-            version=new_scenario,
-            CustomerCode=record.CustomerCode,
-            Incoterm=record.Incoterm
-        )
-    return redirect('edit_scenario', version=new_version)
+from django.contrib import messages
+
+@login_required
+def master_data_inco_terms_copy(request, version):
+    target_scenario = get_object_or_404(scenarios, version=version)
+    if request.method == 'POST':
+        source_version = request.POST.get('source_version')
+        if source_version:
+            source_scenario = get_object_or_404(scenarios, version=source_version)
+            source_records = MasterdataIncoTermsModel.objects.filter(version=source_scenario)
+            if not source_records.exists():
+                messages.warning(request, "No Incoterm records available to copy from the selected scenario.")
+                return redirect('edit_scenario', version=version)
+            else:
+                for record in source_records:
+                    MasterdataIncoTermsModel.objects.create(
+                        version=target_scenario,
+                        CustomerCode=record.CustomerCode,
+                        Incoterm=record.Incoterm
+                    )
+                messages.success(request, "Incoterm records copied successfully.")
+                return redirect('edit_scenario', version=version)
+    # For GET or if no source_version, render the copy form
+    all_scenarios = scenarios.objects.exclude(version=version)
+    return render(request, 'website/copy_master_data_inco_terms.html', {
+        'target_scenario': target_scenario,
+        'all_scenarios': all_scenarios,
+    })
 
 from django.shortcuts import render, get_object_or_404, redirect
 from django.forms import modelformset_factory
@@ -1954,6 +2020,7 @@ from django.contrib import messages
 from .models import MasterDataCapacityModel
 from .forms import MasterDataCapacityForm
 
+@login_required
 def update_master_data_capacity(request, version):
     # Filter records by version
     capacities = MasterDataCapacityModel.objects.filter(version=version)
@@ -1975,6 +2042,7 @@ def update_master_data_capacity(request, version):
         'version': version,
     })
 
+@login_required
 def delete_master_data_capacity(request, version):
     MasterDataCapacityModel.objects.filter(version=version).delete()
     messages.success(request, "All Master Data Capacity records deleted successfully!")
@@ -1982,6 +2050,7 @@ def delete_master_data_capacity(request, version):
 
 import csv
 
+@login_required
 def upload_master_data_capacity(request, version):
     if request.method == 'POST' and request.FILES['file']:
         csv_file = request.FILES['file']
@@ -2020,6 +2089,7 @@ def upload_master_data_capacity(request, version):
 
     return render(request, 'website/upload_master_data_capacity.html', {'version': version})
 
+@login_required
 def copy_master_data_capacity(request, version):
     capacities = MasterDataCapacityModel.objects.filter(version=version)
     for capacity in capacities:
@@ -2028,14 +2098,15 @@ def copy_master_data_capacity(request, version):
     messages.success(request, "Master Data Capacity copied successfully!")
     return redirect('edit_scenario', version=version)
 
+@login_required
 def update_pour_plan_data(request, version):
-    # Get the scenario object for the given version
+    user_name = request.user.username
     scenario = scenarios.objects.get(version=version)
 
-    # Filter records by version
-    plans = MasterDataPlan.objects.filter( version=scenario)
+    foundry_options = ['COI2', 'MTJ1', 'XUZ1', 'WOD1', 'WUN1', 'MER1']
 
-    # Apply filters from GET parameters
+    plans = MasterDataPlan.objects.filter(version=scenario)
+
     foundry_filter = request.GET.get('foundry', '').strip()
     month_filter = request.GET.get('month', '').strip()
 
@@ -2044,36 +2115,28 @@ def update_pour_plan_data(request, version):
     if month_filter:
         plans = plans.filter(Month__icontains=month_filter)
 
-    # Create a formset for editing multiple records with 5 extra rows
     MasterDataPlanFormSet = modelformset_factory(MasterDataPlan, form=MasterDataPlanForm, extra=5, can_delete=True)
 
     if request.method == 'POST':
         formset = MasterDataPlanFormSet(request.POST, queryset=plans)
-
-        # Allow empty extra forms by setting `empty_permitted=True`
-        for form in formset.forms:
-            if not form.has_changed():  # Ignore empty forms
-                form.empty_permitted = True
+        # Allow empty extra forms
+        for form in formset.extra_forms:
+            form.empty_permitted = True
 
         if formset.is_valid():
-            # Save each form instance and set the  version field
             instances = formset.save(commit=False)
             for instance in instances:
-                # Skip saving if only one of Foundry or Month is entered
+                # Only save if both Foundry and Month are filled
                 if not instance.Foundry or not instance.Month:
                     continue
-                if instance.pk or form.has_changed():  # Only process forms with changes or existing records
-                    instance. version = scenario  # Set the foreign key
-                    instance.save()
-            # Delete any records marked for deletion
+                instance.version = scenario
+                instance.save()
             for instance in formset.deleted_objects:
                 instance.delete()
             messages.success(request, "Pour Plan Data updated successfully!")
-            # Refresh the queryset to include updated data
-            plans = MasterDataPlan.objects.filter( version=scenario)
-            formset = MasterDataPlanFormSet(queryset=plans)  # Reinitialize the formset with updated data
+            plans = MasterDataPlan.objects.filter(version=scenario)
+            formset = MasterDataPlanFormSet(queryset=plans)
         else:
-            # Log validation errors
             print("Formset errors:", formset.errors)
             messages.error(request, "There were errors in the form. Please correct them.")
     else:
@@ -2082,6 +2145,10 @@ def update_pour_plan_data(request, version):
     return render(request, 'website/update_pour_plan_data.html', {
         'formset': formset,
         'version': version,
+        'user_name': user_name,
+        'foundry_options': foundry_options,
+        'foundry_filter': foundry_filter,
+        'month_filter': month_filter,
     })
 
 from . models import MasterDataSuppliersModel, MasterDataCustomersModel
@@ -2515,55 +2582,276 @@ def create_plant(request):
     return render(request, 'website/create_plant.html', {'form': form})
 
 
+from .models import MasterDataEpicorBillOfMaterialModel
+from sqlalchemy import create_engine, text
+from django.contrib.auth.decorators import login_required
+from django.shortcuts import redirect
+
 @login_required
 def BOM_fetch_data_from_mssql(request):
-    # Connect to the database
-    Server = 'bknew-sql02'
-    Database = 'Bradken_Epicor_ODS'
-    Driver = 'ODBC Driver 17 for SQL Server'
-    Database_Con = f'mssql+pyodbc://@{Server}/{Database}?driver={Driver}'
-    engine = create_engine(Database_Con)
-    connection = engine.connect()
+    if request.method == 'POST':  # Only run on POST (refresh)
+        Server = 'bknew-sql02'
+        Database = 'Bradken_Epicor_ODS'
+        Driver = 'ODBC Driver 17 for SQL Server'
+        Database_Con = f'mssql+pyodbc://@{Server}/{Database}?driver={Driver}'
+        engine = create_engine(Database_Con)
+        connection = engine.connect()
 
-    # Fetch and update Site data
-    query = text("SELECT * from [epicor].[PartMtl] where RowEndDate IS NULL")
-    result = connection.execute(query)
-    for row in result:
-        if not row.SiteName or str(row.SiteName).strip() == "":
-            continue
-        MasterDataPlantModel.objects.update_or_create(
-            SiteName=row.SiteName,
-            defaults={
-                'Company': row.Company,
-                'Country': row.Country,
-                'Location': row.Location,
-                'PlantRegion': row.PlantRegion,
-                'SiteType': row.SiteType,
-            }
+        # Fetch BOM data
+        query = text("SELECT * FROM epicor.PartMtl WHERE RowEndDate IS NULL")
+        result = connection.execute(query)
+        rows = list(result)
+
+        # Fetch all existing (Parent, Plant, ComponentSeq) combinations to skip duplicates
+        existing_keys = set(
+            MasterDataEpicorBillOfMaterialModel.objects.values_list('Parent', 'Plant', 'ComponentSeq')
         )
 
-    # Fetch and update Supplier data as Plant records
-    query = text("SELECT * FROM PowerBI.Supplier")
-    result = connection.execute(query)
-    for row in result:
-        if not row.VendorID or str(row.VendorID).strip() == "":
-            continue
-        site_name = row.VendorID  # Use VendorID as SiteName
-        company = getattr(row, 'Company', None)
-        country = getattr(row, 'Country', None)
-        location = getattr(row, 'Location', None)
-        plant_region = getattr(row, 'PlantRegion', None)
-        site_type = getattr(row, 'SiteType', None)
-        trading_name = row.TradingName
-        address1 = row.Address1
+        new_records = []
+        for row in rows:
+            parent = row.PartNum
+            plant = row.RevisionNum  # <-- Map Plant to RevisionNum
+            component_seq = row.MtlSeq
+            if (parent, plant, component_seq) in existing_keys:
+                continue
+            new_records.append(
+                MasterDataEpicorBillOfMaterialModel(
+                    Company=row.Company,
+                    Plant=plant,
+                    Parent=parent,
+                    ComponentSeq=component_seq,
+                    Component=row.MtlPartNum,
+                    ComponentUOM=row.UOMCode,
+                    QtyPer=row.QtyPer,
+                    EstimatedScrap=row.EstScrap,
+                    SalvageQtyPer=row.SalvageQtyPer,
+                )
+            )
+            existing_keys.add((parent, plant, component_seq))
 
-        # Determine TradingName field value
-        if trading_name and not is_english(trading_name):
-            trading_name_to_store = address1
-        else:
-            trading_name_to_store = trading_name
+        if new_records:
+            MasterDataEpicorBillOfMaterialModel.objects.bulk_create(new_records, batch_size=1000)
 
-    
+        connection.close()
+    return redirect('bom_list')
 
-    connection.close()
-    return redirect('PlantsList')
+from django.core.paginator import Paginator
+from django.contrib.auth.decorators import login_required
+from django.shortcuts import render
+
+@login_required
+def bom_list(request):
+    user_name = request.user.username
+    boms = MasterDataEpicorBillOfMaterialModel.objects.all().order_by('Plant', 'Parent', 'ComponentSeq')
+
+    # Filtering logic
+    def filter_field(qs, field, value):
+        if value:
+            if value.startswith('*') or value.endswith('*'):
+                # Remove * and use icontains
+                qs = qs.filter(**{f"{field}__icontains": value.replace('*', '')})
+            else:
+                qs = qs.filter(**{f"{field}__exact": value})
+        return qs
+
+    Company_filter = request.GET.get('Company', '')
+    Plant_filter = request.GET.get('Plant', '')
+    Parent_filter = request.GET.get('Parent', '')
+    ComponentSeq_filter = request.GET.get('ComponentSeq', '')
+    Component_filter = request.GET.get('Component', '')
+    ComponentUOM_filter = request.GET.get('ComponentUOM', '')
+    QtyPer_filter = request.GET.get('QtyPer', '')
+    EstimatedScrap_filter = request.GET.get('EstimatedScrap', '')
+    SalvageQtyPer_filter = request.GET.get('SalvageQtyPer', '')
+
+    boms = filter_field(boms, 'Company', Company_filter)
+    boms = filter_field(boms, 'Plant', Plant_filter)
+    boms = filter_field(boms, 'Parent', Parent_filter)
+    boms = filter_field(boms, 'ComponentSeq', ComponentSeq_filter)
+    boms = filter_field(boms, 'Component', Component_filter)
+    boms = filter_field(boms, 'ComponentUOM', ComponentUOM_filter)
+    boms = filter_field(boms, 'QtyPer', QtyPer_filter)
+    boms = filter_field(boms, 'EstimatedScrap', EstimatedScrap_filter)
+    boms = filter_field(boms, 'SalvageQtyPer', SalvageQtyPer_filter)
+
+    # Sort by Plant, then Parent, then ComponentSeq
+    boms = boms.order_by('Plant', 'Parent', 'ComponentSeq')
+
+    # Pagination logic
+    paginator = Paginator(boms, 50)
+    page_number = request.GET.get('page')
+    page_obj = paginator.get_page(page_number)
+
+    context = {
+        'page_obj': page_obj,
+        'Company_filter': Company_filter,
+        'Plant_filter': Plant_filter,
+        'Parent_filter': Parent_filter,
+        'ComponentSeq_filter': ComponentSeq_filter,
+        'Component_filter': Component_filter,
+        'ComponentUOM_filter': ComponentUOM_filter,
+        'QtyPer_filter': QtyPer_filter,
+        'EstimatedScrap_filter': EstimatedScrap_filter,
+        'SalvageQtyPer_filter': SalvageQtyPer_filter,
+        'user_name': user_name,
+    }
+    return render(request, 'website/bom_list.html', context)
+
+from django.forms import formset_factory
+from .forms import ManuallyAssignProductionRequirementForm
+
+@login_required
+def update_manually_assign_production_requirement(request, version):
+    scenario = get_object_or_404(scenarios, version=version)
+
+    # Filters from GET
+    product_filter = request.GET.get('product', '').strip()
+    site_filter = request.GET.get('site', '').strip()
+    shipping_date_filter = request.GET.get('shipping_date', '').strip()
+    percentage_filter = request.GET.get('percentage', '').strip()
+
+    # Filter queryset
+    records = MasterDataManuallyAssignProductionRequirement.objects.filter(version=scenario)
+    if product_filter:
+        records = records.filter(Product__Product__icontains=product_filter)
+    if site_filter:
+        records = records.filter(Site__SiteName__icontains=site_filter)
+    if shipping_date_filter:
+        records = records.filter(ShippingDate=shipping_date_filter)
+    if percentage_filter:
+        try:
+            records = records.filter(Percentage=float(percentage_filter))
+        except ValueError:
+            pass
+
+    # Always sort by ShippingDate ascending
+    records = records.order_by('ShippingDate')
+
+    # Prepare initial data for the formset
+    initial_data = [
+        {
+            'Product': rec.Product.Product if rec.Product else '',
+            'Site': rec.Site.SiteName if rec.Site else '',
+            'ShippingDate': rec.ShippingDate,
+            'Percentage': rec.Percentage,
+            'id': rec.id,
+        }
+        for rec in records
+    ]
+
+    ManualAssignFormSet = formset_factory(ManuallyAssignProductionRequirementForm, extra=0, can_delete=True)
+
+    errors = []
+    if request.method == 'POST':
+        formset = ManualAssignFormSet(request.POST)
+        if formset.is_valid():
+            # Delete all current records for this scenario and re-create from formset
+            MasterDataManuallyAssignProductionRequirement.objects.filter(version=scenario).delete()
+            for form in formset:
+                if form.cleaned_data and not form.cleaned_data.get('DELETE', False):
+                    product_code = form.cleaned_data['Product']
+                    site_code = form.cleaned_data['Site']
+                    shipping_date = form.cleaned_data['ShippingDate']
+                    percentage = form.cleaned_data['Percentage']
+
+                    product_obj = MasterDataProductModel.objects.filter(Product=product_code).first()
+                    site_obj = MasterDataPlantModel.objects.filter(SiteName=site_code).first()
+                    if not product_obj:
+                        errors.append(f"Product '{product_code}' does not exist.")
+                        continue
+                    if not site_obj:
+                        errors.append(f"Site '{site_code}' does not exist.")
+                        continue
+
+                    MasterDataManuallyAssignProductionRequirement.objects.create(
+                        version=scenario,
+                        Product=product_obj,
+                        Site=site_obj,
+                        ShippingDate=shipping_date,
+                        Percentage=percentage
+                    )
+            if not errors:
+                return redirect('update_manually_assign_production_requirement', version=version)
+    else:
+        formset = ManualAssignFormSet(initial=initial_data)
+
+    return render(
+        request,
+        'website/update_manually_assign_production_requirement.html',
+        {
+            'formset': formset,
+            'version': version,
+            'product_filter': product_filter,
+            'site_filter': site_filter,
+            'shipping_date_filter': shipping_date_filter,
+            'percentage_filter': percentage_filter,
+            'errors': errors,
+        }
+    )
+
+@login_required
+def delete_manually_assign_production_requirement(request, version):
+    # Placeholder view for deleting manually assigned production requirement
+    return HttpResponse("Delete Manually Assign Production Requirement - version: {}".format(version))
+
+@login_required
+def upload_manually_assign_production_requirement(request, version):
+    # Placeholder view for uploading manually assigned production requirement
+    return HttpResponse("Upload Manually Assign Production Requirement - version: {}".format(version))
+
+@login_required
+def copy_manually_assign_production_requirement(request, version):
+    # Placeholder view for copying manually assigned production requirement
+    return HttpResponse("Copy Manually Assign Production Requirement - version: {}".format(version))
+
+from django.forms import modelform_factory
+
+from django.forms import formset_factory
+from .forms import ManuallyAssignProductionRequirementForm
+from .models import MasterDataManuallyAssignProductionRequirement, MasterDataProductModel, MasterDataPlantModel
+
+@login_required
+def add_manually_assign_production_requirement(request, version):
+    user_name = request.user.username
+    scenario = get_object_or_404(scenarios, version=version)
+    ManualAssignFormSet = formset_factory(ManuallyAssignProductionRequirementForm, extra=5)
+
+    errors = []
+    if request.method == 'POST':
+        formset = ManualAssignFormSet(request.POST)
+        if formset.is_valid():
+            for form in formset:
+                if form.cleaned_data:
+                    product_code = form.cleaned_data['Product']
+                    site_code = form.cleaned_data['Site']
+                    shipping_date = form.cleaned_data['ShippingDate']
+                    percentage = form.cleaned_data['Percentage']
+
+                    # Validate Product and Site exist
+                    product_obj = MasterDataProductModel.objects.filter(Product=product_code).first()
+                    site_obj = MasterDataPlantModel.objects.filter(SiteName=site_code).first()
+                    if not product_obj:
+                        errors.append(f"Product '{product_code}' does not exist.")
+                        continue
+                    if not site_obj:
+                        errors.append(f"Site '{site_code}' does not exist.")
+                        continue
+
+                    MasterDataManuallyAssignProductionRequirement.objects.create(
+                        version=scenario,
+                        Product=product_obj,
+                        Site=site_obj,
+                        ShippingDate=shipping_date,
+                        Percentage=percentage
+                    )
+            if not errors:
+                return redirect('update_manually_assign_production_requirement', version=version)
+    else:
+        formset = ManualAssignFormSet()
+
+    return render(request, 'website/add_manually_assign_production_requirement.html', {
+        'formset': formset,
+        'version': version,
+        'errors': errors,
+        'user_name': user_name,
+    })

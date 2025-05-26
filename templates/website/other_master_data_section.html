@@ -190,5 +190,36 @@
                 </a>
             </td>
         </tr>
+        <!-- New Item: Manually assign production requirement -->
+        <tr>
+            <td>Manually assign production requirement</td>
+            <td>
+                <input type="checkbox" {% if manually_assign_production_requirement_has_data %}checked{% endif %}
+                    disabled>
+            </td>
+            <td>
+                <!-- Update Button -->
+                <a href="{% url 'update_manually_assign_production_requirement' scenario.version %}"
+                    class="btn btn-warning btn-sm">
+                    <img src="/static/icons/update.png" alt="Update">
+                </a>
+                <!-- Delete Button -->
+                <a href="{% url 'delete_manually_assign_production_requirement' scenario.version %}"
+                    class="btn btn-danger btn-sm"
+                    onclick="return confirm('Are you sure you want to delete all manually assigned production requirements for this version?');">
+                    <img src="/static/icons/delete.png" alt="Delete">
+                </a>
+                <!-- Upload Button -->
+                <a href="{% url 'upload_manually_assign_production_requirement' scenario.version %}"
+                    class="btn btn-info btn-sm">
+                    <img src="/static/icons/upload.png" alt="Upload">
+                </a>
+                <!-- Copy Button -->
+                <a href="{% url 'copy_manually_assign_production_requirement' scenario.version %}"
+                    class="btn btn-info btn-sm">
+                    <img src="/static/icons/copy.png" alt="Copy">
+                </a>
+            </td>
+        </tr>
     </tbody>
 </table>

@@ -106,24 +106,33 @@ from django import forms
 from .models import MasterDataPlan
 from datetime import datetime, timedelta, date
 
-class MasterDataPlanForm(forms.ModelForm):
-    CalendarDays = forms.CharField(disabled=True, required=False)  # Readonly field
-    AvailableDays = forms.CharField(disabled=True, required=False)  # Readonly field
-    PlanDressMass = forms.CharField(disabled=True, required=False)  # Readonly field
+from .models import MasterDataPlantModel
 
-    Month = forms.ChoiceField(required=False)  # Define the field without static choices
+class MasterDataPlanForm(forms.ModelForm):
+    CalendarDays = forms.CharField(disabled=True, required=False)
+    AvailableDays = forms.CharField(disabled=True, required=False)
+    PlanDressMass = forms.CharField(disabled=True, required=False)
+
+    Month = forms.ChoiceField(required=False)
+
+    # Only allow these plant codes
+    FOUNDRY_CODES = ['COI2', 'MTJ1', 'XUZ1', 'WOD1', 'WUN1', 'MER1']
+
+    Foundry = forms.ModelChoiceField(
+        queryset=MasterDataPlantModel.objects.filter(SiteName__in=FOUNDRY_CODES),
+        required=False
+    )
 
     class Meta:
         model = MasterDataPlan
         fields = [
-            'id',  # Include the id field
-            'Foundry', 'Month', 'CalendarDays', 'Yield', 'WasterPercentage',
+            'id', 'Foundry', 'Month', 'CalendarDays', 'Yield', 'WasterPercentage',
             'PlannedMaintenanceDays', 'PublicHolidays', 'Weekends',
             'OtherNonPouringDays', 'AvailableDays', 'heatsperdays',
             'TonsPerHeat', 'PlanDressMass'
         ]
         widgets = {
-            'id': forms.HiddenInput(),  # Render the id field as a hidden input
+            'id': forms.HiddenInput(),
         }
 
     def __init__(self, *args, **kwargs):
@@ -133,22 +142,31 @@ class MasterDataPlanForm(forms.ModelForm):
         # Generate the list of months starting from 3 months ago
         month_choices = [
             (
-                (three_months_ago.replace(day=1) + timedelta(days=30 * i)).strftime('%Y-%m-%d'),  # Format as YYYY-MM-DD
+                (three_months_ago.replace(day=1) + timedelta(days=30 * i)).strftime('%Y-%m-%d'),
                 (three_months_ago.replace(day=1) + timedelta(days=30 * i)).strftime('%B %Y')
             )
-            for i in range(0, 120)  # Generate up to 10 years of future months
+            for i in range(0, 120)
         ]
 
-        if self.instance and self.instance.pk:
-            # Existing record: Include the current value in the dropdown
-            current_month = self.instance.Month.strftime('%Y-%m-%d')  # Format as YYYY-MM-DD
-            if (current_month, self.instance.Month.strftime('%B %Y')) not in month_choices:
-                month_choices.insert(0, (current_month, self.instance.Month.strftime('%B %Y')))
+        # Always include the current value if it's not in the list
+        if self.instance and self.instance.pk and self.instance.Month:
+            current_month = self.instance.Month
+            # Try to handle both date and string types
+            try:
+                current_month_str = current_month.strftime('%Y-%m-%d')
+                current_month_label = current_month.strftime('%B %Y')
+            except AttributeError:
+                current_month_str = str(current_month)
+                try:
+                    current_month_label = date.fromisoformat(current_month_str).strftime('%B %Y')
+                except Exception:
+                    current_month_label = current_month_str
+            # Insert at the top if not present
+            if (current_month_str, current_month_label) not in month_choices:
+                month_choices.insert(0, (current_month_str, current_month_label))
         else:
-            # Extra form: Set the default value for Month to blank
             self.fields['Month'].initial = None  # Explicitly set to None for blank
 
-        # Set the choices for the Month field
         self.fields['Month'].choices = [('', '---------')] + month_choices  # Add a blank option
 
         # Populate readonly fields with calculated values
@@ -174,3 +192,16 @@ class PlantForm(forms.ModelForm):
     class Meta:
         model = MasterDataPlantModel
         fields = ['SiteName', 'Company', 'Location', 'SiteType']
+
+# forms.py
+
+from django import forms
+from .models import MasterDataManuallyAssignProductionRequirement
+
+from django import forms
+
+class ManuallyAssignProductionRequirementForm(forms.Form):
+    Product = forms.CharField(label='Product', widget=forms.TextInput())
+    Site = forms.CharField(label='Site', widget=forms.TextInput())
+    ShippingDate = forms.DateField(label='Shipping Date', widget=forms.DateInput(attrs={'type': 'date'}))
+    Percentage = forms.FloatField(label='Percentage')

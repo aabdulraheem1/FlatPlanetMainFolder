@@ -63,7 +63,7 @@ urlpatterns = [
     path('copy_master_data_casto_to_despatch_days/<str:version>/', views.copy_master_data_casto_to_despatch_days, name='copy_master_data_casto_to_despatch_days'),
 
     path('incoterms/', views.incoterm_list, name='incoterm_list'),
-    path('incoterms/create/', views.incoterm_create, name='incoterm_create'),
+    path('incoterms/create/<str:version>/', views.incoterm_create, name='incoterm_create'),
     path('incoterms/<str:version>/update/', views.incoterm_update_formset, name='incoterm_update_formset'),
     path('incoterms/<str:version>/delete/', views.incoterm_delete_all, name='incoterm_delete_all'),
     path('incoterms/upload/', views.incoterm_upload, name='incoterm_upload'),
@@ -114,6 +114,16 @@ urlpatterns = [
     
     # Other URL patterns...
     path('create-plant/', views.create_plant, name='create_plant'),
+
+    path('bom/', views.bom_list, name='bom_list'),
+    path('bom/fetch/', views.BOM_fetch_data_from_mssql, name='BOM_fetch_data_from_mssql'),
+
+    path('update_manually_assign_production_requirement/<str:version>/', views.update_manually_assign_production_requirement, name='update_manually_assign_production_requirement'),
+    path('delete_manually_assign_production_requirement/<str:version>/', views.delete_manually_assign_production_requirement, name='delete_manually_assign_production_requirement'),
+    path('upload_manually_assign_production_requirement/<str:version>/', views.upload_manually_assign_production_requirement, name='upload_manually_assign_production_requirement'),
+    path('copy_manually_assign_production_requirement/<str:version>/', views.copy_manually_assign_production_requirement, name='copy_manually_assign_production_requirement'),
+
+    path('add_manually_assign_production_requirement/<str:version>/', views.add_manually_assign_production_requirement, name='add_manually_assign_production_requirement'),
 
 
 

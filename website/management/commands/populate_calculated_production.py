@@ -53,6 +53,11 @@ class Command(BaseCommand):
             (item['product'], item['site_id']): item['total_wip']
             for item in MasterDataInventory.objects.filter(version=scenario).values('product', 'site_id').annotate(total_wip=Sum('wip_stock_qty'))
         }
+        # For onhand_lookup
+        onhand_lookup = {
+            (item['product'], item['site_id']): item['total_onhand']
+            for item in MasterDataInventory.objects.filter(version=scenario).values('product', 'site_id').annotate(total_onhand=Sum('onhandstock_qty'))
+        }
 
         # Use iterator for memory efficiency
         batch_size = 1000
@@ -79,16 +84,36 @@ class Command(BaseCommand):
             if not product_instance or not site_instance:
                 continue
 
+            # Remove from onhand stock first
+            onhand_stock = onhand_lookup.get((product, site), 0)
+            if onhand_stock > 0:
+                if total_qty <= onhand_stock:
+                    production_quantity = 0
+                    onhand_stock -= total_qty
+                    total_qty = 0
+                else:
+                    total_qty -= onhand_stock
+                    onhand_stock = 0
+            else:
+                # No onhand stock, proceed to WIP
+                pass
+
+            # Remove from WIP stock next
             wip_stock = wip_lookup.get((product, site), 0)
-            if wip_stock > 0:
+            if total_qty > 0 and wip_stock > 0:
                 if total_qty <= wip_stock:
                     production_quantity = 0
                     wip_stock -= total_qty
+                    total_qty = 0
                 else:
-                    production_quantity = total_qty - wip_stock
+                    total_qty -= wip_stock
                     wip_stock = 0
-            else:
+
+            # If still remaining, that's the production quantity
+            if total_qty > 0:
                 production_quantity = total_qty
+            else:
+                production_quantity = 0
 
             dress_mass = product_instance.DressMass or 0
             tonnes = (production_quantity * dress_mass) / 1000
@@ -102,7 +127,9 @@ class Command(BaseCommand):
                 tonnes=tonnes
             ))
 
+            # Update the lookups
             wip_lookup[(product, site)] = wip_stock
+            onhand_lookup[(product, site)] = onhand_stock
 
             if len(calculated_productions) >= batch_size:
                 CalculatedProductionModel.objects.bulk_create(calculated_productions, batch_size=batch_size)

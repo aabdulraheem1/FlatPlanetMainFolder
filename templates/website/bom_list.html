@@ -1,0 +1,119 @@
+{% extends 'website/base.html' %}
+{% block content %}
+
+<div class="container mt-5">
+    <h1>Bill of Materials List</h1>
+    <form method="GET" action="">
+        <div class="table-responsive">
+            <table class="table table-bordered">
+                <thead class="thead-light">
+                    <tr>
+                        <th>Company
+                            <input type="text" class="form-control" name="Company" value="{{ Company_filter }}">
+                        </th>
+                        <th>Plant
+                            <input type="text" class="form-control" name="Plant" value="{{ Plant_filter }}">
+                        </th>
+                        <th>Parent
+                            <input type="text" class="form-control" name="Parent" value="{{ Parent_filter }}">
+                        </th>
+                        <th>Component Seq
+                            <input type="text" class="form-control" name="ComponentSeq"
+                                value="{{ ComponentSeq_filter }}">
+                        </th>
+                        <th>Component
+                            <input type="text" class="form-control" name="Component" value="{{ Component_filter }}">
+                        </th>
+                        <th>Component UOM
+                            <input type="text" class="form-control" name="ComponentUOM"
+                                value="{{ ComponentUOM_filter }}">
+                        </th>
+                        <th>Qty Per
+                            <input type="text" class="form-control" name="QtyPer" value="{{ QtyPer_filter }}">
+                        </th>
+                        <th>Estimated Scrap
+                            <input type="text" class="form-control" name="EstimatedScrap"
+                                value="{{ EstimatedScrap_filter }}">
+                        </th>
+                        <th>Salvage Qty Per
+                            <input type="text" class="form-control" name="SalvageQtyPer"
+                                value="{{ SalvageQtyPer_filter }}">
+                        </th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for bom in page_obj %}
+                    <tr>
+                        <td>{{ bom.Company }}</td>
+                        <td>{{ bom.Plant }}</td>
+                        <td>{{ bom.Parent }}</td>
+                        <td>{{ bom.ComponentSeq }}</td>
+                        <td>{{ bom.Component }}</td>
+                        <td>{{ bom.ComponentUOM }}</td>
+                        <td>{{ bom.QtyPer }}</td>
+                        <td>{{ bom.EstimatedScrap }}</td>
+                        <td>{{ bom.SalvageQtyPer }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        <div class="d-flex justify-content-between">
+            <button type="submit" class="btn btn-primary">Filter</button>
+            <!-- Add BOM button if needed -->
+            <a href="{% url 'bom_list' %}" class="btn btn-primary mt-3">Add BOM</a>
+            <button type="button" class="btn btn-danger" data-bs-toggle="modal"
+                data-bs-target="#refreshModal">Refresh</button>
+        </div>
+    </form>
+
+    <!-- Refresh Confirmation Modal (OUTSIDE the GET form) -->
+    <div class="modal fade" id="refreshModal" tabindex="-1" aria-labelledby="refreshModalLabel" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="refreshModalLabel">Refresh BOM List from Epicor</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    Refreshing the BOM list from Epicor may take a few minutes. Are you sure you want to proceed?
+                </div>
+                <div class="modal-footer">
+                    <form method="post" action="{% url 'BOM_fetch_data_from_mssql' %}">
+                        {% csrf_token %}
+                        <button type="submit" class="btn btn-warning">Refresh</button>
+                    </form>
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <nav aria-label="Page navigation">
+        <ul class="pagination justify-content-center mt-4">
+            {% if page_obj.has_previous %}
+            <li class="page-item">
+                <a class="page-link" href="?page=1">First</a>
+            </li>
+            <li class="page-item">
+                <a class="page-link" href="?page={{ page_obj.previous_page_number }}">Previous</a>
+            </li>
+            {% endif %}
+
+            <li class="page-item disabled">
+                <span class="page-link">Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }}</span>
+            </li>
+
+            {% if page_obj.has_next %}
+            <li class="page-item">
+                <a class="page-link" href="?page={{ page_obj.next_page_number }}">Next</a>
+            </li>
+            <li class="page-item">
+                <a class="page-link" href="?page={{ page_obj.paginator.num_pages }}">Last</a>
+            </li>
+            {% endif %}
+        </ul>
+    </nav>
+</div>
+
+{% endblock %}

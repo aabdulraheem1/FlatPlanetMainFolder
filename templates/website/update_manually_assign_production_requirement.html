@@ -1,0 +1,74 @@
+{% extends 'website/base.html' %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="alert alert-info" role="alert">
+        <strong>Scenario Version:</strong> {{ version }}
+    </div>
+    <h2>Update Manually Assign Production Requirement</h2>
+
+    <!-- Filter Form -->
+    <form method="get" class="mb-3">
+        <div class="form-row">
+            <div class="form-group col-md-3">
+                <label for="product_filter">Product:</label>
+                <input type="text" id="product_filter" name="product" class="form-control"
+                    value="{{ product_filter|default:'' }}">
+            </div>
+            <div class="form-group col-md-3">
+                <label for="site_filter">Site:</label>
+                <input type="text" id="site_filter" name="site" class="form-control"
+                    value="{{ site_filter|default:'' }}">
+            </div>
+            <div class="form-group col-md-3">
+                <label for="shipping_date_filter">Shipping Date:</label>
+                <input type="date" id="shipping_date_filter" name="shipping_date" class="form-control"
+                    value="{{ shipping_date_filter|default:'' }}">
+            </div>
+            <div class="form-group col-md-2">
+                <label for="percentage_filter">Percentage:</label>
+                <input type="text" id="percentage_filter" name="percentage" class="form-control"
+                    value="{{ percentage_filter|default:'' }}">
+            </div>
+            <div class="form-group col-md-1 align-self-end">
+                <button type="submit" class="btn btn-secondary">Filter</button>
+            </div>
+        </div>
+    </form>
+
+    <form method="post">
+        {% csrf_token %}
+        {{ formset.management_form }}
+        <table class="table table-bordered">
+            <thead>
+                <tr>
+                    <th>Product</th>
+                    <th>Site</th>
+                    <th>Shipping Date</th>
+                    <th>Percentage</th>
+                    <th>Delete</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for form in formset %}
+                <tr>
+                    <td>{{ form.Product }}</td>
+                    <td>{{ form.Site }}</td>
+                    <td>{{ form.ShippingDate }}</td>
+                    <td>{{ form.Percentage }}</td>
+                    <td>{{ form.DELETE }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        <button type="submit" class="btn btn-primary">Save Changes</button>
+        <a href="{% url 'edit_scenario' version %}" class="btn btn-secondary">Cancel</a>
+    </form>
+
+    <!-- Add New Record Button -->
+    <div class="mt-3">
+        <a href="{% url 'add_manually_assign_production_requirement' version %}" class="btn btn-success">Add New
+            Record</a>
+    </div>
+</div>
+{% endblock %}

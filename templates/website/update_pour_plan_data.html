@@ -50,19 +50,84 @@
             {% for form in formset %}
             <tr>
                 {{ form.id }} <!-- Render the hidden id field -->
-                <td>{{ form.Foundry }}</td>
-                <td>{{ form.Month }}</td>
-                <td>{{ form.CalendarDays }}</td>
-                <td>{{ form.Yield }}</td>
-                <td>{{ form.WasterPercentage }}</td>
-                <td>{{ form.PlannedMaintenanceDays }}</td>
-                <td>{{ form.PublicHolidays }}</td>
-                <td>{{ form.Weekends }}</td>
-                <td>{{ form.OtherNonPouringDays }}</td>
-                <td>{{ form.AvailableDays }}</td>
-                <td>{{ form.heatsperdays }}</td>
-                <td>{{ form.TonsPerHeat }}</td>
-                <td>{{ form.PlanDressMass }}</td>
+                <td>
+                    {{ form.Foundry }}
+                    {% if form.Foundry.errors %}
+                    <div class="text-danger small">{{ form.Foundry.errors.0 }}</div>
+                    {% endif %}
+                </td>
+                <td>
+                    {{ form.Month }}
+                    {% if form.Month.errors %}
+                    <div class="text-danger small">{{ form.Month.errors.0 }}</div>
+                    {% endif %}
+                </td>
+                <td>
+                    {{ form.CalendarDays }}
+                    {% if form.CalendarDays.errors %}
+                    <div class="text-danger small">{{ form.CalendarDays.errors.0 }}</div>
+                    {% endif %}
+                </td>
+                <td>
+                    {{ form.Yield }}
+                    {% if form.Yield.errors %}
+                    <div class="text-danger small">{{ form.Yield.errors.0 }}</div>
+                    {% endif %}
+                </td>
+                <td>
+                    {{ form.WasterPercentage }}
+                    {% if form.WasterPercentage.errors %}
+                    <div class="text-danger small">{{ form.WasterPercentage.errors.0 }}</div>
+                    {% endif %}
+                </td>
+                <td>
+                    {{ form.PlannedMaintenanceDays }}
+                    {% if form.PlannedMaintenanceDays.errors %}
+                    <div class="text-danger small">{{ form.PlannedMaintenanceDays.errors.0 }}</div>
+                    {% endif %}
+                </td>
+                <td>
+                    {{ form.PublicHolidays }}
+                    {% if form.PublicHolidays.errors %}
+                    <div class="text-danger small">{{ form.PublicHolidays.errors.0 }}</div>
+                    {% endif %}
+                </td>
+                <td>
+                    {{ form.Weekends }}
+                    {% if form.Weekends.errors %}
+                    <div class="text-danger small">{{ form.Weekends.errors.0 }}</div>
+                    {% endif %}
+                </td>
+                <td>
+                    {{ form.OtherNonPouringDays }}
+                    {% if form.OtherNonPouringDays.errors %}
+                    <div class="text-danger small">{{ form.OtherNonPouringDays.errors.0 }}</div>
+                    {% endif %}
+                </td>
+                <td>
+                    {{ form.AvailableDays }}
+                    {% if form.AvailableDays.errors %}
+                    <div class="text-danger small">{{ form.AvailableDays.errors.0 }}</div>
+                    {% endif %}
+                </td>
+                <td>
+                    {{ form.heatsperdays }}
+                    {% if form.heatsperdays.errors %}
+                    <div class="text-danger small">{{ form.heatsperdays.errors.0 }}</div>
+                    {% endif %}
+                </td>
+                <td>
+                    {{ form.TonsPerHeat }}
+                    {% if form.TonsPerHeat.errors %}
+                    <div class="text-danger small">{{ form.TonsPerHeat.errors.0 }}</div>
+                    {% endif %}
+                </td>
+                <td>
+                    {{ form.PlanDressMass }}
+                    {% if form.PlanDressMass.errors %}
+                    <div class="text-danger small">{{ form.PlanDressMass.errors.0 }}</div>
+                    {% endif %}
+                </td>
             </tr>
             {% endfor %}
         </tbody>
