@@ -188,15 +188,21 @@ def edit_product(request, pk):
         product_form = ProductForm(request.POST, instance=product)
         picture_form = ProductPictureForm(request.POST, request.FILES, instance=product_picture)
 
-        if product_form.is_valid() and picture_form.is_valid():
+        if product_form.is_valid() and (not request.FILES or picture_form.is_valid()):
             product_instance = product_form.save()
-            
-            # Delete old picture if a new one is uploaded
-            
 
-            picture_instance = picture_form.save(commit=False)
-            picture_instance.product = product_instance
-            picture_instance.save()
+            # Only save the picture if a new file is uploaded
+            if request.FILES.get('Image'):  # Replace 'picture_field_name' with your actual field name
+                picture_instance = picture_form.save(commit=False)
+                picture_instance.product = product_instance
+                picture_instance.save()
+            elif product_picture:
+                # No new file uploaded, keep the existing picture
+                pass
+
+            next_url = request.GET.get('next') or request.POST.get('next')
+            if next_url:
+                return redirect(next_url)
             return redirect('ProductsList')
     else:
         product_form = ProductForm(instance=product)
@@ -208,7 +214,6 @@ def edit_product(request, pk):
         'product_picture': product_picture,
         'pk': pk,
         'user_name': user_name,
-
     })
 
 @login_required
@@ -2700,6 +2705,8 @@ def bom_list(request):
 from django.forms import formset_factory
 from .forms import ManuallyAssignProductionRequirementForm
 
+from collections import defaultdict
+
 @login_required
 def update_manually_assign_production_requirement(request, version):
     scenario = get_object_or_404(scenarios, version=version)
@@ -2745,33 +2752,54 @@ def update_manually_assign_production_requirement(request, version):
     if request.method == 'POST':
         formset = ManualAssignFormSet(request.POST)
         if formset.is_valid():
-            # Delete all current records for this scenario and re-create from formset
-            MasterDataManuallyAssignProductionRequirement.objects.filter(version=scenario).delete()
+            # Validate sum of percentages for each (Product, ShippingDate)
+            percent_sum = defaultdict(float)
+            entries = []
             for form in formset:
                 if form.cleaned_data and not form.cleaned_data.get('DELETE', False):
                     product_code = form.cleaned_data['Product']
-                    site_code = form.cleaned_data['Site']
                     shipping_date = form.cleaned_data['ShippingDate']
                     percentage = form.cleaned_data['Percentage']
+                    key = (product_code, shipping_date)
+                    percent_sum[key] += percentage
+                    entries.append(form)
 
-                    product_obj = MasterDataProductModel.objects.filter(Product=product_code).first()
-                    site_obj = MasterDataPlantModel.objects.filter(SiteName=site_code).first()
-                    if not product_obj:
-                        errors.append(f"Product '{product_code}' does not exist.")
-                        continue
-                    if not site_obj:
-                        errors.append(f"Site '{site_code}' does not exist.")
-                        continue
-
-                    MasterDataManuallyAssignProductionRequirement.objects.create(
-                        version=scenario,
-                        Product=product_obj,
-                        Site=site_obj,
-                        ShippingDate=shipping_date,
-                        Percentage=percentage
+            for key, total in percent_sum.items():
+                if abs(total - 1.0) > 0.0001:
+                    errors.append(
+                        f"Total percentage for Product '{key[0]}' and Shipping Date '{key[1]}' must be 1.0 (currently {total})."
                     )
+
             if not errors:
-                return redirect('update_manually_assign_production_requirement', version=version)
+                # Delete all current records for this scenario and re-create from formset
+                MasterDataManuallyAssignProductionRequirement.objects.filter(version=scenario).delete()
+                for form in formset:
+                    if form.cleaned_data and not form.cleaned_data.get('DELETE', False):
+                        product_code = form.cleaned_data['Product']
+                        site_code = form.cleaned_data['Site']
+                        shipping_date = form.cleaned_data['ShippingDate']
+                        percentage = form.cleaned_data['Percentage']
+
+                        product_obj = MasterDataProductModel.objects.filter(Product=product_code).first()
+                        site_obj = MasterDataPlantModel.objects.filter(SiteName=site_code).first()
+                        if not product_obj:
+                            errors.append(f"Product '{product_code}' does not exist.")
+                            continue
+                        if not site_obj:
+                            errors.append(f"Site '{site_code}' does not exist.")
+                            continue
+
+                        MasterDataManuallyAssignProductionRequirement.objects.create(
+                            version=scenario,
+                            Product=product_obj,
+                            Site=site_obj,
+                            ShippingDate=shipping_date,
+                            Percentage=percentage
+                        )
+                if not errors:
+                    return redirect('update_manually_assign_production_requirement', version=version)
+        else:
+            errors.append("Please correct the errors in the form.")
     else:
         formset = ManualAssignFormSet(initial=initial_data)
 

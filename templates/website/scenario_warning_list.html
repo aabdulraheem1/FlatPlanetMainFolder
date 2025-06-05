@@ -63,7 +63,10 @@
                                 <tbody>
                                     {% for product in products %}
                                     <tr>
-                                        <td>{{ product.Product }}</td>
+                                        <td>
+                                            <a
+                                                href="{% url 'edit_product' product.Product %}?next={{ request.get_full_path|urlencode }}">{{product.Product}}</a>
+                                        </td>
                                         <td>{{ product.ProductDescription }}</td>
                                     </tr>
                                     {% endfor %}

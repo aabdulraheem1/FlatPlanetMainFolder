@@ -1,0 +1,250 @@
+<!-- Section 2: Foundry Tabs -->
+<div class="container mt-5">
+    <h2>Foundry Review</h2>
+    <ul class="nav nav-tabs" id="foundryTabs" role="tablist">
+        <li class="nav-item">
+            <a class="nav-link active" id="mt-joli-tab" data-toggle="tab" href="#mt-joli" role="tab"
+                aria-controls="mt-joli" aria-selected="true">Mt Joli</a>
+        </li>
+        <li class="nav-item">
+            <a class="nav-link" id="coimbatore-tab" data-toggle="tab" href="#coimbatore" role="tab"
+                aria-controls="coimbatore" aria-selected="false">Coimbatore</a>
+        </li>
+        <li class="nav-item">
+            <a class="nav-link" id="xuzhou-tab" data-toggle="tab" href="#xuzhou" role="tab" aria-controls="xuzhou"
+                aria-selected="false">Xuzhou</a>
+        </li>
+        <li class="nav-item">
+            <a class="nav-link" id="merlimau-tab" data-toggle="tab" href="#merlimau" role="tab" aria-controls="merlimau"
+                aria-selected="false">Merlimau</a>
+        </li>
+    </ul>
+
+    <div class="tab-content" id="foundryTabsContent">
+        <!-- Mt Joli Chart -->
+        <div class="tab-pane fade show active" id="mt-joli" role="tabpanel" aria-labelledby="mt-joli-tab">
+            <canvas id="mtJoliChart" width="400" height="200"></canvas>
+            <script>
+                const mtJoliData = {{ mt_joli_chart_data| safe }};
+                const mtJoliTopProducts = {{ mt_joli_top_products| safe }};
+                const ctxMtJoli = document.getElementById('mtJoliChart').getContext('2d');
+
+                new Chart(ctxMtJoli, {
+                    type: 'bar',
+                    data: {
+                        labels: mtJoliData.labels,
+                        datasets: [
+                            {
+                                label: 'Tonnes',
+                                data: mtJoliData.tons,
+                                backgroundColor: 'rgba(75, 192, 192, 0.2)',
+                                borderColor: 'rgba(75, 192, 192, 1)',
+                                borderWidth: 1
+                            },
+                            {
+                                label: 'Dress Mass',
+                                data: mtJoliData.dress_mass,
+                                type: 'line',
+                                borderColor: 'rgba(255, 99, 132, 1)',
+                                backgroundColor: 'rgba(255, 99, 132, 0.2)',
+                                borderWidth: 2,
+                                fill: false,
+                                tension: 0.4
+                            }
+                        ]
+                    },
+                    options: {
+                        responsive: true,
+                        plugins: {
+                            tooltip: {
+                                callbacks: {
+                                    afterBody: function (context) {
+                                        const month = context[0].label;
+                                        const top = mtJoliTopProducts[month];
+                                        if (!top) return '';
+                                        return 'Top 10 Products:\n' + top.map(
+                                            (p, i) => `${i + 1}. ${p[0]}: ${p[1]}`
+                                        ).join('\n');
+                                    }
+                                }
+                            }
+                        },
+                        scales: {
+                            x: {
+                                title: {
+                                    display: true,
+                                    text: 'Month'
+                                }
+                            },
+                            y: {
+                                title: {
+                                    display: true,
+                                    text: 'Tonnes / Dress Mass'
+                                },
+                                beginAtZero: true
+                            }
+                        }
+                    }
+                });
+            </script>
+        </div>
+        <!-- Coimbatore Chart -->
+        <div class="tab-pane fade" id="coimbatore" role="tabpanel" aria-labelledby="coimbatore-tab">
+            <canvas id="coimbatoreChart" width="400" height="200"></canvas>
+            <script>
+                const coimbatoreData = {{ coimbatore_chart_data| safe }};
+                const ctxCoimbatore = document.getElementById('coimbatoreChart').getContext('2d');
+
+                new Chart(ctxCoimbatore, {
+                    type: 'bar',
+                    data: {
+                        labels: coimbatoreData.labels,
+                        datasets: [
+                            {
+                                label: 'Tonnes',
+                                data: coimbatoreData.tons,
+                                backgroundColor: 'rgba(75, 192, 192, 0.2)',
+                                borderColor: 'rgba(75, 192, 192, 1)',
+                                borderWidth: 1
+                            },
+                            {
+                                label: 'Dress Mass',
+                                data: coimbatoreData.dress_mass,
+                                type: 'line',
+                                borderColor: 'rgba(255, 99, 132, 1)',
+                                backgroundColor: 'rgba(255, 99, 132, 0.2)',
+                                borderWidth: 2,
+                                fill: false,
+                                tension: 0.4
+                            }
+                        ]
+                    },
+                    options: {
+                        responsive: true,
+                        scales: {
+                            x: {
+                                title: {
+                                    display: true,
+                                    text: 'Month'
+                                }
+                            },
+                            y: {
+                                title: {
+                                    display: true,
+                                    text: 'Tonnes / Dress Mass'
+                                },
+                                beginAtZero: true
+                            }
+                        }
+                    }
+                });
+            </script>
+        </div>
+
+        <!-- Xuzhou Chart -->
+        <div class="tab-pane fade" id="xuzhou" role="tabpanel" aria-labelledby="xuzhou-tab">
+            <canvas id="xuzhouChart" width="400" height="200"></canvas>
+            <script>
+                const xuzhouData = {{ xuzhou_chart_data| safe }};
+                const ctxXuzhou = document.getElementById('xuzhouChart').getContext('2d');
+
+                new Chart(ctxXuzhou, {
+                    type: 'bar',
+                    data: {
+                        labels: xuzhouData.labels,
+                        datasets: [
+                            {
+                                label: 'Tonnes',
+                                data: xuzhouData.tons,
+                                backgroundColor: 'rgba(75, 192, 192, 0.2)',
+                                borderColor: 'rgba(75, 192, 192, 1)',
+                                borderWidth: 1
+                            },
+                            {
+                                label: 'Dress Mass',
+                                data: xuzhouData.dress_mass,
+                                type: 'line',
+                                borderColor: 'rgba(255, 99, 132, 1)',
+                                backgroundColor: 'rgba(255, 99, 132, 0.2)',
+                                borderWidth: 2,
+                                fill: false,
+                                tension: 0.4
+                            }
+                        ]
+                    },
+                    options: {
+                        responsive: true,
+                        scales: {
+                            x: {
+                                title: {
+                                    display: true,
+                                    text: 'Month'
+                                }
+                            },
+                            y: {
+                                title: {
+                                    display: true,
+                                    text: 'Tonnes / Dress Mass'
+                                },
+                                beginAtZero: true
+                            }
+                        }
+                    }
+                });
+            </script>
+        </div>
+
+        <!-- Merlimau Chart -->
+        <div class="tab-pane fade" id="merlimau" role="tabpanel" aria-labelledby="merlimau-tab">
+            <canvas id="merlimauChart" width="400" height="200"></canvas>
+            <script>
+                const merlimauData = {{ merlimau_chart_data| safe }};
+                const ctxMerlimau = document.getElementById('merlimauChart').getContext('2d');
+
+                new Chart(ctxMerlimau, {
+                    type: 'bar',
+                    data: {
+                        labels: merlimauData.labels,
+                        datasets: [
+                            {
+                                label: 'Tonnes',
+                                data: merlimauData.tons,
+                                backgroundColor: 'rgba(75, 192, 192, 0.2)',
+                                borderColor: 'rgba(75, 192, 192, 1)',
+                                borderWidth: 1
+                            },
+                            {
+                                label: 'Dress Mass',
+                                data: merlimauData.dress_mass,
+                                type: 'line',
+                                borderColor: 'rgba(255, 99, 132, 1)',
+                                backgroundColor: 'rgba(255, 99, 132, 0.2)',
+                                borderWidth: 2,
+                                fill: false,
+                                tension: 0.4
+                            }
+                        ]
+                    },
+                    options: {
+                        responsive: true,
+                        scales: {
+                            x: {
+                                title: {
+                                    display: true,
+                                    text: 'Month'
+                                }
+                            },
+                            y: {
+                                title: {
+                                    display: true,
+                                    text: 'Tonnes / Dress Mass'
+                                },
+                                beginAtZero: true
+                            }
+                        }
+                    }
+                });
+            </script>
+        </div>
+    </div>
+</div>
