@@ -83,18 +83,17 @@ WSGI_APPLICATION = 'SPR.wsgi.application'
 
 DATABASES = {
     'default': {
-        'ENGINE': 'django.db.backends.mysql',
-        'NAME': 'spr2',
-        'USER': 'root',
-        'PASSWORD': 'pass123', 
-        'HOST': '127.0.0.1',
-        'PORT': '3306'
-        
+        'ENGINE': 'mssql',
+        'NAME': 'SPR',           # Replace with your database name
+        'USER': '',           # Replace with your SQL Server username
+        'PASSWORD': '',   # Replace with your SQL Server password
+        'HOST': 'localhost',              # Or your SQL Server host
+        'PORT': '',                       # Default is 1433, leave blank unless using a different port
+        'OPTIONS': {
+            'driver': 'ODBC Driver 17 for SQL Server',  # Or 'ODBC Driver 18 for SQL Server' if installed
+            'trusted_connection': 'yes',   
+        },
     }
-    #   'default': {
-    #     'ENGINE': 'django.db.backends.sqlite3',
-    #     'NAME': BASE_DIR / "db.sqlite3",
-    # }
 }
 
 

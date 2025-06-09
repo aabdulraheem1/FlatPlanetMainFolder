@@ -23,6 +23,17 @@ from django.core.files.storage import FileSystemStorage
 
 from django.shortcuts import render, get_object_or_404, redirect
 
+import sys
+import subprocess
+from django.conf import settings
+
+def run_management_command(command, *args):
+    import os
+    manage_py = os.path.join(settings.BASE_DIR, 'manage.py')
+    cmd = [sys.executable, manage_py, command] + [str(arg) for arg in args]
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    return result
+
 @login_required
 def welcomepage(request):
     user_name = request.user.username
@@ -99,34 +110,34 @@ def fetch_data_from_mssql(request):
     Driver = 'ODBC Driver 17 for SQL Server'
     Database_Con = f'mssql+pyodbc://@{Server}/{Database}?driver={Driver}'
     engine = create_engine(Database_Con)
-    connection = engine.connect()
+    with engine.connect() as connection:
 
-    # Fetch new data from the database
-    query = text("SELECT * from PowerBI.Products where RowEndDate IS NULL")
-    result = connection.execute(query)
+        # Fetch new data from the database
+        query = text("SELECT * from PowerBI.Products where RowEndDate IS NULL")
+        result = connection.execute(query)
 
-    product_dict = {}
+        product_dict = {}
 
-    for row in result:  
-        product_dict[row.ProductKey] = {
-            'ProductDescription': row.ProductDescription,
-            'SalesClass': row.SalesClassKey,
-            'SalesClassDescription': row.SalesClassDescription,
-            'ProductGroup': row.ProductGroup,
-            'ProductGroupDescription': row.ProductGroupDescription,
-            'InventoryClass': row.InventoryClass,
-            'InventoryClassDescription': row.InventoryClassDescription,
-            'ParentProductGroup': row.ParentProductGroup,
-            'ParentProductGroupDescription': row.ParentProductGroupDescription,
-            'ProductFamily': row.ProductFamily,
-            'ProductFamilyDescription': row.ProductFamilyDescription,
-            'DressMass': row.DressMass,
-            'CastMass': row.CastMass,
-            'Grade': row.ProductGrade,
-            'PartClassID': row.PartClassID,
-            'PartClassDescription': row.PartClass,
-            'ExistsInEpicor': True,
-        }
+        for row in result:  
+            product_dict[row.ProductKey] = {
+                'ProductDescription': row.ProductDescription,
+                'SalesClass': row.SalesClassKey,
+                'SalesClassDescription': row.SalesClassDescription,
+                'ProductGroup': row.ProductGroup,
+                'ProductGroupDescription': row.ProductGroupDescription,
+                'InventoryClass': row.InventoryClass,
+                'InventoryClassDescription': row.InventoryClassDescription,
+                'ParentProductGroup': row.ParentProductGroup,
+                'ParentProductGroupDescription': row.ParentProductGroupDescription,
+                'ProductFamily': row.ProductFamily,
+                'ProductFamilyDescription': row.ProductFamilyDescription,
+                'DressMass': row.DressMass,
+                'CastMass': row.CastMass,
+                'Grade': row.ProductGrade,
+                'PartClassID': row.PartClassID,
+                'PartClassDescription': row.PartClass,
+                'ExistsInEpicor': True,
+            }
 
     # Update or create records in the model
     for product, data in product_dict.items():
@@ -135,7 +146,6 @@ def fetch_data_from_mssql(request):
             defaults=data
         )
 
-    connection.close()
     return redirect('ProductsList')
 
 @login_required
@@ -244,11 +254,11 @@ def plants_fetch_data_from_mssql(request):
     Driver = 'ODBC Driver 17 for SQL Server'
     Database_Con = f'mssql+pyodbc://@{Server}/{Database}?driver={Driver}'
     engine = create_engine(Database_Con)
-    connection = engine.connect()
+    with engine.connect() as connection:
 
-    # Fetch and update Site data
-    query = text("SELECT * from PowerBI.Site where RowEndDate IS NULL")
-    result = connection.execute(query)
+        # Fetch and update Site data
+        query = text("SELECT * from PowerBI.Site where RowEndDate IS NULL")
+        result = connection.execute(query)
     for row in result:
         if not row.SiteName or str(row.SiteName).strip() == "":
             continue
@@ -297,55 +307,10 @@ def plants_fetch_data_from_mssql(request):
             }
         )
 
-    connection.close()
+    
     return redirect('PlantsList')
 
-@login_required
-def fetch_data_from_mssql(request):
-    # Connect to the database
-    Server = 'bknew-sql02'
-    Database = 'Bradken_Data_Warehouse'
-    Driver = 'ODBC Driver 17 for SQL Server'
-    Database_Con = f'mssql+pyodbc://@{Server}/{Database}?driver={Driver}'
-    engine = create_engine(Database_Con)
-    connection = engine.connect()
 
-    # Fetch new data from the database
-    query = text("SELECT * from PowerBI.Products where RowEndDate IS NULL")
-    result = connection.execute(query)
-
-    product_dict = {}
-
-    for row in result:  
-        product_dict[row.ProductKey] = {
-            'ProductDescription': row.ProductDescription,
-            'SalesClass': row.SalesClassKey,
-            'SalesClassDescription': row.SalesClassDescription,
-            'ProductGroup': row.ProductGroup,
-            'ProductGroupDescription': row.ProductGroupDescription,
-            'InventoryClass': row.InventoryClass,
-            'InventoryClassDescription': row.InventoryClassDescription,
-            'ParentProductGroup': row.ParentProductGroup,
-            'ParentProductGroupDescription': row.ParentProductGroupDescription,
-            'ProductFamily': row.ProductFamily,
-            'ProductFamilyDescription': row.ProductFamilyDescription,
-            'DressMass': row.DressMass,
-            'CastMass': row.CastMass,
-            'Grade': row.ProductGrade,
-            'PartClassID': row.PartClassID,
-            'PartClassDescription': row.PartClass,
-            'ExistsInEpicor': True,
-        }
-
-    # Update or create records in the model
-    for product, data in product_dict.items():
-        MasterDataProductModel.objects.update_or_create(
-            Product=product,
-            defaults=data
-        )
-
-    connection.close()
-    return redirect('ProductsList')
 
 @login_required
 def plants_list(request):
@@ -885,56 +850,64 @@ from .models import (
     CalcualtedReplenishmentModel,
 )
 
+from collections import defaultdict
+from django.db.models import Q
+
 @login_required
 def ScenarioWarningList(request, version):
     user_name = request.user.username
     scenario = get_object_or_404(scenarios, version=version)
-    
+
     # Products in forecast but not in master data
-    forecast_products = SMART_Forecast_Model.objects.values_list('Product', flat=True).distinct()
-    products_not_in_master_data = forecast_products.exclude(Product__in=MasterDataProductModel.objects.values_list('Product', flat=True))
-    
-    # Products without dress mass
-    products_without_dress_mass_queryset = MasterDataProductModel.objects.filter(Product__in=forecast_products).filter(DressMass__isnull=True) | MasterDataProductModel.objects.filter(Product__in=forecast_products).filter(DressMass=0)
-    
+    forecast_products_set = set(SMART_Forecast_Model.objects.values_list('Product', flat=True).distinct())
+    master_products_set = set(MasterDataProductModel.objects.values_list('Product', flat=True))
+    products_not_in_master_data = forecast_products_set - master_products_set
+
+    # Products without dress mass (fetch only needed fields)
+    products_without_dress_mass = (
+        MasterDataProductModel.objects
+        .filter(Product__in=forecast_products_set)
+        .filter(Q(DressMass__isnull=True) | Q(DressMass=0))
+        .only('Product', 'ParentProductGroup')
+    )
+
     # Group products without dress mass by parent product group
-    grouped_products_without_dress_mass = {}
-    for product in products_without_dress_mass_queryset:
-        parent_group = product.ParentProductGroup
-        if parent_group not in grouped_products_without_dress_mass:
-            grouped_products_without_dress_mass[parent_group] = []
-        grouped_products_without_dress_mass[parent_group].append(product)
+    grouped_products_without_dress_mass = defaultdict(list)
+    for product in products_without_dress_mass:
+        grouped_products_without_dress_mass[product.ParentProductGroup].append(product)
 
     # Regions in forecast but not defined in the freight model
-    forecast_regions = SMART_Forecast_Model.objects.filter(version=scenario).values_list('Forecast_Region', flat=True).distinct()
-    defined_regions = MasterDataFreightModel.objects.filter(version=scenario).values_list('ForecastRegion__Forecast_region', flat=True).distinct()
-    missing_regions = set(forecast_regions) - set(defined_regions)
+    forecast_regions = set(
+        SMART_Forecast_Model.objects.filter(version=scenario).values_list('Forecast_Region', flat=True).distinct()
+    )
+    defined_regions = set(
+        MasterDataFreightModel.objects.filter(version=scenario).values_list('ForecastRegion__Forecast_region', flat=True).distinct()
+    )
+    missing_regions = forecast_regions - defined_regions
 
     # Products not allocated to foundries (Site is NULL) with summed ReplenishmentQty, grouped by parent product group
     products_not_allocated_to_foundries = (
-        CalcualtedReplenishmentModel.objects.filter(version=scenario, Site__isnull=True)
+        CalcualtedReplenishmentModel.objects
+        .filter(version=scenario, Site__isnull=True)
         .values('Product__ParentProductGroup', 'Product__Product', 'Product__ProductDescription')
         .annotate(total_replenishment_qty=Sum('ReplenishmentQty'))
-        .order_by('Product__ParentProductGroup', '-total_replenishment_qty')  # Group by parent product group and sort by qty
+        .order_by('Product__ParentProductGroup', '-total_replenishment_qty')
     )
 
     # Group products not allocated to foundries by parent product group
-    grouped_products = {}
+    grouped_products = defaultdict(list)
     for product in products_not_allocated_to_foundries:
-        parent_group = product['Product__ParentProductGroup']
-        if parent_group not in grouped_products:
-            grouped_products[parent_group] = []
-        grouped_products[parent_group].append(product)
+        grouped_products[product['Product__ParentProductGroup']].append(product)
 
     context = {
         'scenario': scenario,
         'products_not_in_master_data': products_not_in_master_data,
-        'grouped_products_without_dress_mass': grouped_products_without_dress_mass,  # Pass grouped products without dress mass
-        'grouped_products': grouped_products,  # Pass grouped products not allocated to foundries
+        'grouped_products_without_dress_mass': dict(grouped_products_without_dress_mass),
+        'grouped_products': dict(grouped_products),
         'missing_regions': missing_regions,
         'user_name': user_name,
     }
-    
+
     return render(request, "website/scenario_warning_list.html", context)
 
 def create_product(request):
@@ -962,9 +935,7 @@ def upload_product_allocation(request, version):
     Driver = 'ODBC Driver 17 for SQL Server'
     Database_Con = f'mssql+pyodbc://@{Server}/{Database}?driver={Driver}'
     engine = create_engine(Database_Con)
-    connection = engine.connect()
-
-    try:
+    with engine.connect() as connection:
         # SQL query to fetch data
         query = text("""
             SELECT DISTINCT
@@ -974,7 +945,7 @@ def upload_product_allocation(request, version):
             INNER JOIN PowerBI.Products AS Product ON SalesOrders.skProductId = Product.skProductId
             INNER JOIN PowerBI.Site AS Site ON SalesOrders.skSiteId = Site.skSiteId
             WHERE Site.SiteName IN ('MTJ1', 'COI2', 'XUZ1', 'MER1', 'WOD1', 'WUN1')
-              AND (SalesOrders.OnOrderQty IS NOT NULL AND SalesOrders.OnOrderQty > 0)
+            AND (SalesOrders.OnOrderQty IS NOT NULL AND SalesOrders.OnOrderQty > 0)
         """)
 
         # Execute the query
@@ -987,9 +958,6 @@ def upload_product_allocation(request, version):
                 site=row.site,
                 productkey=row.productkey
             )
-    finally:
-        # Close the database connection
-        connection.close()
 
     return redirect('edit_scenario', version=version)
 
@@ -1079,62 +1047,101 @@ from sqlalchemy import func
 
 @login_required
 def upload_production_history(request, version):
-    # Get the current scenario
+    import pandas as pd
+
     scenario = get_object_or_404(scenarios, version=version)
 
-    # Database connection details
-    Server = 'bknew-sql02'
-    Database = 'Bradken_Data_Warehouse'
+    # --- First server: Site-based ---
+    Server1 = 'bknew-sql02'
+    Database1 = 'Bradken_Data_Warehouse'
     Driver = 'ODBC Driver 17 for SQL Server'
-    Database_Con = f'mssql+pyodbc://@{Server}/{Database}?driver={Driver}'
-    engine = create_engine(Database_Con)
-    connection = engine.connect()
+    Database_Con1 = f'mssql+pyodbc://@{Server1}/{Database1}?driver={Driver}'
+    engine1 = create_engine(Database_Con1)
 
-    try:
-        # SQL query to fetch data
-        query = text("""
-            WITH LatestProduction AS (
-                SELECT DISTINCT
-                    Site.SiteName AS Foundry,
-                    Product.ProductKey AS Product,
-                    TRY_CONVERT(DATE, Dates.DateValue) AS ProductionMonth,
-                    HeatProducts.CastQty AS ProductionQty,
-                    ROW_NUMBER() OVER (
-                        PARTITION BY Product.ProductKey
-                        ORDER BY TRY_CONVERT(DATE, Dates.DateValue) DESC
-                    ) AS RowNum
-                FROM PowerBI.Products AS Product
-                INNER JOIN PowerBI.HeatProducts AS HeatProducts
-                    ON Product.skProductId = HeatProducts.skProductId
-                INNER JOIN PowerBI.Site AS Site
-                    ON HeatProducts.SkSiteId = Site.skSiteId
-                INNER JOIN PowerBI.Dates AS Dates
-                    ON HeatProducts.TapTime = Dates.DateValue
-                WHERE Site.SiteName IN ('MTJ1', 'COI2', 'XUZ1', 'WOD1', 'MER1', 'WUN1')
+    # --- Second server: Warehouse-based ---
+    Server2 = 'bkgcc-sql'
+    Database2 = 'Bradken_Data_Warehouse'
+    Database_Con2 = f'mssql+pyodbc://@{Server2}/{Database2}?driver={Driver}'
+    engine2 = create_engine(Database_Con2)
+
+    # WarehouseCode mapping
+    warehouse_map = {
+        "H53": "MTJ1",
+        "I92": "COI2",
+        "12A": "XUZ1",
+        "M61": "MER1",
+        "235": "WOD1",
+        "261": "WUN1",
+    }
+
+    # Use context managers to ensure connections are closed
+    with engine1.connect() as connection1, engine2.connect() as connection2:
+        # --- Query for Site-based (LEFT JOINs, start from HeatProducts) ---
+        sql_site = """
+            SELECT DISTINCT
+                Site.SiteName AS Foundry,
+                Product.ProductKey AS Product,
+                TRY_CONVERT(DATE, CAST(HeatProducts.TapTime AS DATE)) AS ProductionMonth,
+                HeatProducts.CastQty AS ProductionQty
+            FROM PowerBI.HeatProducts AS HeatProducts
+            LEFT JOIN PowerBI.Products AS Product
+                ON HeatProducts.skProductId = Product.skProductId
+            LEFT JOIN PowerBI.Site AS Site
+                ON HeatProducts.SkSiteId = Site.skSiteId
+            WHERE Site.SiteName IN ('MTJ1', 'COI2', 'XUZ1', 'WOD1', 'MER1', 'WUN1')
+        """
+        df_site = pd.read_sql(sql_site, connection1)
+
+        # --- Query for Warehouse-based (LEFT JOINs, start from HeatProducts) ---
+        sql_wh = """
+            SELECT DISTINCT
+                Warehouse.WarehouseCode AS WarehouseCode,
+                Product.ProductKey AS Product,
+                TRY_CONVERT(DATE, CAST(HeatProducts.TapTime AS DATE)) AS ProductionMonth,
+                HeatProducts.CastQty AS ProductionQty
+            FROM PowerBI.HeatProducts AS HeatProducts
+            LEFT JOIN PowerBI.Products AS Product
+                ON HeatProducts.skProductId = Product.skProductId
+            LEFT JOIN PowerBI.Warehouse AS Warehouse
+                ON HeatProducts.SkWarehouseId = Warehouse.skWarehouseId
+            WHERE Warehouse.WarehouseCode IN ('H53', 'I92', '12A', 'M61', '235', '261')
+        """
+        df_wh = pd.read_sql(sql_wh, connection2)
+        # Map WarehouseCode to Foundry
+        df_wh['Foundry'] = df_wh['WarehouseCode'].map(warehouse_map)
+        df_wh = df_wh.drop(columns=['WarehouseCode'])
+
+        # Combine both dataframes
+        combined_df = pd.concat([df_site, df_wh], ignore_index=True)
+
+        # Ensure ProductionMonth is datetime
+        combined_df['ProductionMonth'] = pd.to_datetime(combined_df['ProductionMonth'])
+
+        # Sort by Product and ProductionMonth descending
+        combined_df = combined_df.sort_values(['Product', 'ProductionMonth'], ascending=[True, False])
+
+        # Drop duplicates: keep only the latest ProductionMonth per Product
+        latest_df = combined_df.drop_duplicates(subset=['Product'], keep='first')
+
+        # Bulk upload for faster processing
+        MasterDataHistoryOfProductionModel.objects.filter(version=scenario).delete()
+        bulk_objs = []
+        for _, row in latest_df.iterrows():
+            if pd.isna(row['ProductionMonth']):
+                continue
+            bulk_objs.append(
+                MasterDataHistoryOfProductionModel(
+                    version=scenario,
+                    Product=row['Product'],
+                    ProductionMonth=row['ProductionMonth'],
+                    Foundry=row['Foundry'],
+                    ProductionQty=row['ProductionQty'],
+                )
             )
-            SELECT Foundry, Product, ProductionMonth, ProductionQty
-            FROM LatestProduction
-            WHERE RowNum = 1
-        """)
+        if bulk_objs:
+            MasterDataHistoryOfProductionModel.objects.bulk_create(bulk_objs, batch_size=1000)
 
-        # Execute the query
-        result = connection.execute(query)
-
-        # Populate the MasterDataHistoryOfProductionModel
-        for row in result:
-            MasterDataHistoryOfProductionModel.objects.update_or_create(
-                version=scenario,
-                Product=row.Product,
-                defaults={
-                    'Foundry': row.Foundry,
-                    'ProductionMonth': row.ProductionMonth,
-                    'ProductionQty': row.ProductionQty,
-                }
-            )
-    finally:
-        # Close the database connection
-        connection.close()
-
+    # Connections are closed automatically here
     return redirect('edit_scenario', version=version)
 
 @login_required
@@ -1153,24 +1160,28 @@ from django.core.paginator import Paginator
 
 @login_required
 def update_production_history(request, version):
-    # Get the current scenario
     scenario = get_object_or_404(scenarios, version=version)
-
-    # Filter records
-    production_filter = request.GET.get('production', '')  # Get the filter value from the query string
     queryset = MasterDataHistoryOfProductionModel.objects.filter(version=scenario)
-    if production_filter:
-        queryset = queryset.filter(Product__icontains=production_filter)  # Filter by product name
 
-    # Apply ordering before slicing
-    queryset = queryset.order_by('id')  # Ensure the queryset is ordered before pagination
+    # Filtering logic
+    product = request.GET.get('product')
+    foundry = request.GET.get('foundry')
+    production_month = request.GET.get('production_month')
 
-    # Paginate the queryset
-    paginator = Paginator(queryset, 10)  # Show 10 records per page
+    if product:
+        queryset = queryset.filter(Product__icontains=product)
+    if foundry:
+        queryset = queryset.filter(Foundry__icontains=foundry)
+    if production_month:
+        queryset = queryset.filter(ProductionMonth__startswith=production_month)
+
+    # Always order before paginating or slicing!
+    queryset = queryset.order_by('Foundry', 'Product', '-ProductionMonth')
+
+    paginator = Paginator(queryset, 25)  # 25 per page
     page_number = request.GET.get('page')
     page_obj = paginator.get_page(page_number)
 
-    # Create a formset for the current page
     ProductionHistoryFormSet = modelformset_factory(
         MasterDataHistoryOfProductionModel,
         fields=('Foundry', 'Product', 'ProductionMonth', 'ProductionQty'),
@@ -1178,18 +1189,16 @@ def update_production_history(request, version):
     )
     formset = ProductionHistoryFormSet(queryset=page_obj.object_list)
 
-    if request.method == 'POST':
-        formset = ProductionHistoryFormSet(request.POST, queryset=page_obj.object_list)
-        if formset.is_valid():
-            formset.save()
-            return redirect('edit_scenario', version=version)
-
-    return render(request, 'website/update_production_history.html', {
-        'formset': formset,
-        'page_obj': page_obj,
-        'production_filter': production_filter,
-        'scenario': scenario,
-    })
+    return render(
+        request,
+        'website/update_production_history.html',
+        {
+            'scenario': scenario,
+            'formset': formset,
+            'page_obj': page_obj,
+            'request': request,
+        }
+    )
 
 @login_required
 def copy_production_history(request, version):
@@ -1296,7 +1305,6 @@ def upload_on_hand_stock(request, version):
     Driver = 'ODBC Driver 17 for SQL Server'
     Database_Con = f'mssql+pyodbc://@{Server}/{Database}?driver={Driver}'
     engine = create_engine(Database_Con)
-    connection = engine.connect()
 
     # Get the current scenario
     scenario = get_object_or_404(scenarios, version=version)
@@ -1317,79 +1325,79 @@ def upload_on_hand_stock(request, version):
         # Delete existing data for the given version
         MasterDataInventory.objects.filter(version=scenario).delete()
 
-        # Query to join tables and fetch inventory data
-        query = text(f"""
-            SELECT 
-                Products.ProductKey AS product,
-                Site.SiteName AS site,
-                Inventory.StockOnHand AS onhandstock_qty,
-                Inventory.StockInTransit AS intransitstock_qty
-            FROM PowerBI.[Inventory Daily History] AS Inventory
-            INNER JOIN PowerBI.Site AS Site
-                ON Inventory.skSiteId = Site.skSiteId
-            INNER JOIN PowerBI.Dates AS Dates
-                ON Inventory.skReportDateId = Dates.skDateId
-            INNER JOIN PowerBI.Products AS Products
-                ON Inventory.skProductId = Products.skProductId
-            WHERE Dates.DateValue = :snapshot_date
-        """)
+        with engine.connect() as connection:
+            # Query to join tables and fetch inventory data
+            query = text("""
+                SELECT 
+                    Products.ProductKey AS product,
+                    Site.SiteName AS site,
+                    Inventory.StockOnHand AS onhandstock_qty,
+                    Inventory.StockInTransit AS intransitstock_qty
+                FROM PowerBI.[Inventory Daily History] AS Inventory
+                INNER JOIN PowerBI.Site AS Site
+                    ON Inventory.skSiteId = Site.skSiteId
+                INNER JOIN PowerBI.Dates AS Dates
+                    ON Inventory.skReportDateId = Dates.skDateId
+                INNER JOIN PowerBI.Products AS Products
+                    ON Inventory.skProductId = Products.skProductId
+                WHERE Dates.DateValue = :snapshot_date
+            """)
 
-        # Execute the query
-        inventory_data = connection.execute(query, {'snapshot_date': snapshot_date}).fetchall()
+            # Execute the query
+            inventory_data = connection.execute(query, {'snapshot_date': snapshot_date}).fetchall()
 
-        # Query to join tables and fetch WIP data
-        wip_query = text(f"""
-            SELECT 
-                Products.ProductKey AS product,
-                Site.SiteName AS site,
-                SUM(WIP.WIPQty) AS wip_stock_qty
-            FROM PowerBI.[Work In Progress] AS WIP
-            INNER JOIN PowerBI.Site AS Site
-                ON WIP.skSiteId = Site.skSiteId
-            INNER JOIN PowerBI.Dates AS Dates
-                ON WIP.skReportDateId = Dates.skDateId
-            INNER JOIN PowerBI.Products AS Products
-                ON WIP.skProductId = Products.skProductId
-            WHERE Dates.DateValue = :snapshot_date
-            GROUP BY Products.ProductKey, Site.SiteName
-        """)
+            # Query to join tables and fetch WIP data
+            wip_query = text("""
+                SELECT 
+                    Products.ProductKey AS product,
+                    Site.SiteName AS site,
+                    SUM(WIP.WIPQty) AS wip_stock_qty
+                FROM PowerBI.[Work In Progress] AS WIP
+                INNER JOIN PowerBI.Site AS Site
+                    ON WIP.skSiteId = Site.skSiteId
+                INNER JOIN PowerBI.Dates AS Dates
+                    ON WIP.skReportDateId = Dates.skDateId
+                INNER JOIN PowerBI.Products AS Products
+                    ON WIP.skProductId = Products.skProductId
+                WHERE Dates.DateValue = :snapshot_date
+                GROUP BY Products.ProductKey, Site.SiteName
+            """)
 
-        # Execute the WIP query
-        wip_data = connection.execute(wip_query, {'snapshot_date': snapshot_date}).fetchall()
+            # Execute the WIP query
+            wip_data = connection.execute(wip_query, {'snapshot_date': snapshot_date}).fetchall()
 
-        # Create a dictionary for WIP data for quick lookup
-        wip_dict = {(row.product, row.site): row.wip_stock_qty for row in wip_data}
+            # Create a dictionary for WIP data for quick lookup
+            wip_dict = {(row.product, row.site): row.wip_stock_qty for row in wip_data}
 
-        # Store the data in the MasterDataInventory model
-        for row in inventory_data:
-            # Process only if the product is in SMART_Forecast_Model for the current scenario
-            if row.product not in smart_forecast_products:
-                continue
+            # Store the data in the MasterDataInventory model
+            for row in inventory_data:
+                # Process only if the product is in SMART_Forecast_Model for the current scenario
+                if row.product not in smart_forecast_products:
+                    continue
 
-            wip_stock_qty = wip_dict.get((row.product, row.site), 0)  # Default to 0 if no WIP data
+                wip_stock_qty = wip_dict.get((row.product, row.site), 0)  # Default to 0 if no WIP data
 
-            # Fetch the MasterDataPlantModel instance for the site
-            try:
-                plant = MasterDataPlantModel.objects.get(SiteName=row.site)
-            except MasterDataPlantModel.DoesNotExist:
-                # Skip this record if the site does not exist in MasterDataPlantModel
-                continue
+                # Fetch the MasterDataPlantModel instance for the site
+                try:
+                    plant = MasterDataPlantModel.objects.get(SiteName=row.site)
+                except MasterDataPlantModel.DoesNotExist:
+                    # Skip this record if the site does not exist in MasterDataPlantModel
+                    continue
 
-            MasterDataInventory.objects.create(
-                version=scenario,
-                date_of_snapshot=snapshot_date,
-                product=row.product,
-                site=plant,  # Use the MasterDataPlantModel instance
-                site_region=plant.PlantRegion,  # Populated from MasterDataPlantModel
-                onhandstock_qty=row.onhandstock_qty,
-                intransitstock_qty=row.intransitstock_qty,
-                wip_stock_qty=wip_stock_qty,
-            )
+                MasterDataInventory.objects.create(
+                    version=scenario,
+                    date_of_snapshot=snapshot_date,
+                    product=row.product,
+                    site=plant,  # Use the MasterDataPlantModel instance
+                    site_region=plant.PlantRegion,  # Populated from MasterDataPlantModel
+                    onhandstock_qty=row.onhandstock_qty,
+                    intransitstock_qty=row.intransitstock_qty,
+                    wip_stock_qty=wip_stock_qty,
+                )
 
         # Redirect to the scenario edit page after successful update
         return redirect('edit_scenario', version=version)
 
-    
     # Render the form to enter the snapshot date
     return render(request, 'website/upload_on_hand_stock.html', {
         'scenario': scenario
@@ -2165,21 +2173,21 @@ def suppliers_fetch_data_from_mssql(request):
     Driver = 'ODBC Driver 17 for SQL Server'
     Database_Con = f'mssql+pyodbc://@{Server}/{Database}?driver={Driver}'
     engine = create_engine(Database_Con)
-    connection = engine.connect()
 
     # Fetch new data from the database
-    query = text("SELECT * FROM PowerBI.Supplier")
-    result = connection.execute(query)
+    with engine.connect() as connection:
+        query = text("SELECT * FROM PowerBI.Supplier")
+        result = connection.execute(query)
 
-    Supplier_dict = {}
+        Supplier_dict = {}
 
-    for row in result:
-        if not row.VendorID or row.VendorID.strip() == "":  # Skip if VendorID is null or blank
-            continue
-        Supplier_dict[row.VendorID] = {
-            'TradingName': row.TradingName,
-            'Address1': row.Address1,
-        }
+        for row in result:
+            if not row.VendorID or row.VendorID.strip() == "":  # Skip if VendorID is null or blank
+                continue
+            Supplier_dict[row.VendorID] = {
+                'TradingName': row.TradingName,
+                'Address1': row.Address1,
+            }
 
     # Update or create records in the model
     for vendor_id, data in Supplier_dict.items():
@@ -2188,7 +2196,6 @@ def suppliers_fetch_data_from_mssql(request):
             defaults=data
         )
 
-    connection.close()
     return redirect('suppliers_list')  # Replace 'SuppliersList' with the actual view name for the suppliers list
 
 @login_required
@@ -2199,22 +2206,22 @@ def customers_fetch_data_from_mssql(request):
     Driver = 'ODBC Driver 17 for SQL Server'
     Database_Con = f'mssql+pyodbc://@{Server}/{Database}?driver={Driver}'
     engine = create_engine(Database_Con)
-    connection = engine.connect()
 
     # Fetch new data from the database
-    query = text("SELECT * FROM PowerBI.Customers WHERE RowEndDate IS NULL")
-    result = connection.execute(query)
+    with engine.connect() as connection:
+        query = text("SELECT * FROM PowerBI.Customers WHERE RowEndDate IS NULL")
+        result = connection.execute(query)
 
-    Customer_dict = {}
+        Customer_dict = {}
 
-    for row in result:
-        if not row.CustomerId or row.CustomerId.strip() == "":  # Skip if CustomerId is null or blank
-            continue
-        Customer_dict[row.CustomerId] = {
-            'CustomerName': row.CustomerName,
-            'CustomerRegion': row.CustomerRegion,
-            'ForecastRegion': row.ForecastRegion,
-        }
+        for row in result:
+            if not row.CustomerId or row.CustomerId.strip() == "":  # Skip if CustomerId is null or blank
+                continue
+            Customer_dict[row.CustomerId] = {
+                'CustomerName': row.CustomerName,
+                'CustomerRegion': row.CustomerRegion,
+                'ForecastRegion': row.ForecastRegion,
+            }
 
     # Update or create records in the model
     for customer_id, data in Customer_dict.items():
@@ -2223,7 +2230,6 @@ def customers_fetch_data_from_mssql(request):
             defaults=data
         )
 
-    connection.close()
     return redirect('CustomersList')  # Replace 'CustomersList' with the actual view name for the customers list
 
 @login_required
@@ -2522,6 +2528,15 @@ from website.models import AggregatedForecast, CalcualtedReplenishmentModel, Cal
 
 from django.db import transaction
 
+import subprocess
+from django.conf import settings
+
+def run_management_command(command, *args):
+    manage_py = settings.BASE_DIR / 'manage.py'
+    cmd = ['python', str(manage_py), command] + [str(arg) for arg in args]
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    return result
+
 @login_required
 @transaction.non_atomic_requests
 def calculate_model(request, version):
@@ -2530,13 +2545,11 @@ def calculate_model(request, version):
     """
     try:
         # Step 1: Run the first command: populate_aggregated_forecast
-        try:
-            print(f"Running populate_aggregated_forecast for version: {version}")
-            call_command('populate_aggregated_forecast', version)
-            messages.success(request, f"Aggregated forecast has been successfully populated for version '{version}'.")
-        except Exception as e:
-            messages.error(request, f"Error in populate_aggregated_forecast: {e}")
+        result = run_management_command('populate_aggregated_forecast', version)
+        if result.returncode != 0:
+            messages.error(request, f"Error in populate_aggregated_forecast: {result.stderr}")
             return redirect('list_scenarios')
+        messages.success(request, f"Aggregated forecast has been successfully populated for version '{version}'.")
 
         # Step 2: Conditionally delete related records in CalcualtedReplenishmentModel
         if CalcualtedReplenishmentModel.objects.filter(version=version).exists():
@@ -2546,12 +2559,11 @@ def calculate_model(request, version):
             messages.warning(request, f"No existing records found in CalcualtedReplenishmentModel for version '{version}'.")
 
         # Step 3: Run the second command: populate_calculated_replenishment
-        try:
-            call_command('populate_calculated_replenishment', version)
-            messages.success(request, f"Calculated replenishment has been successfully populated for version '{version}'.")
-        except Exception as e:
-            messages.error(request, f"Error in populate_calculated_replenishment: {e}")
+        result = run_management_command('populate_calculated_replenishment', version)
+        if result.returncode != 0:
+            messages.error(request, f"Error in populate_calculated_replenishment: {result.stderr}")
             return redirect('list_scenarios')
+        messages.success(request, f"Calculated replenishment has been successfully populated for version '{version}'.")
 
         # Step 4: Conditionally delete related records in CalculatedProductionModel
         if CalculatedProductionModel.objects.filter(version=version).exists():
@@ -2561,12 +2573,11 @@ def calculate_model(request, version):
             messages.warning(request, f"No existing records found in CalculatedProductionModel for version '{version}'.")
 
         # Step 5: Run the third command: populate_calculated_production
-        try:
-            call_command('populate_calculated_production', version)
-            messages.success(request, f"Calculated production has been successfully populated for version '{version}'.")
-        except Exception as e:
-            messages.error(request, f"Error in populate_calculated_production: {e}")
+        result = run_management_command('populate_calculated_production', version)
+        if result.returncode != 0:
+            messages.error(request, f"Error in populate_calculated_production: {result.stderr}")
             return redirect('list_scenarios')
+        messages.success(request, f"Calculated production has been successfully populated for version '{version}'.")
 
     except Exception as e:
         messages.error(request, f"An error occurred while calculating the model: {e}")
@@ -2600,44 +2611,44 @@ def BOM_fetch_data_from_mssql(request):
         Driver = 'ODBC Driver 17 for SQL Server'
         Database_Con = f'mssql+pyodbc://@{Server}/{Database}?driver={Driver}'
         engine = create_engine(Database_Con)
-        connection = engine.connect()
 
-        # Fetch BOM data
-        query = text("SELECT * FROM epicor.PartMtl WHERE RowEndDate IS NULL")
-        result = connection.execute(query)
-        rows = list(result)
+        # Use context manager to ensure connection is closed
+        with engine.connect() as connection:
+            # Fetch BOM data
+            query = text("SELECT * FROM epicor.PartMtl WHERE RowEndDate IS NULL")
+            result = connection.execute(query)
+            rows = list(result)
 
-        # Fetch all existing (Parent, Plant, ComponentSeq) combinations to skip duplicates
-        existing_keys = set(
-            MasterDataEpicorBillOfMaterialModel.objects.values_list('Parent', 'Plant', 'ComponentSeq')
-        )
-
-        new_records = []
-        for row in rows:
-            parent = row.PartNum
-            plant = row.RevisionNum  # <-- Map Plant to RevisionNum
-            component_seq = row.MtlSeq
-            if (parent, plant, component_seq) in existing_keys:
-                continue
-            new_records.append(
-                MasterDataEpicorBillOfMaterialModel(
-                    Company=row.Company,
-                    Plant=plant,
-                    Parent=parent,
-                    ComponentSeq=component_seq,
-                    Component=row.MtlPartNum,
-                    ComponentUOM=row.UOMCode,
-                    QtyPer=row.QtyPer,
-                    EstimatedScrap=row.EstScrap,
-                    SalvageQtyPer=row.SalvageQtyPer,
-                )
+            # Fetch all existing (Parent, Plant, ComponentSeq) combinations to skip duplicates
+            existing_keys = set(
+                MasterDataEpicorBillOfMaterialModel.objects.values_list('Parent', 'Plant', 'ComponentSeq')
             )
-            existing_keys.add((parent, plant, component_seq))
 
-        if new_records:
-            MasterDataEpicorBillOfMaterialModel.objects.bulk_create(new_records, batch_size=1000)
+            new_records = []
+            for row in rows:
+                parent = row.PartNum
+                plant = row.RevisionNum  # <-- Map Plant to RevisionNum
+                component_seq = row.MtlSeq
+                if (parent, plant, component_seq) in existing_keys:
+                    continue
+                new_records.append(
+                    MasterDataEpicorBillOfMaterialModel(
+                        Company=row.Company,
+                        Plant=plant,
+                        Parent=parent,
+                        ComponentSeq=component_seq,
+                        Component=row.MtlPartNum,
+                        ComponentUOM=row.UOMCode,
+                        QtyPer=row.QtyPer,
+                        EstimatedScrap=row.EstScrap,
+                        SalvageQtyPer=row.SalvageQtyPer,
+                    )
+                )
+                existing_keys.add((parent, plant, component_seq))
 
-        connection.close()
+            if new_records:
+                MasterDataEpicorBillOfMaterialModel.objects.bulk_create(new_records, batch_size=1000)
+
     return redirect('bom_list')
 
 from django.core.paginator import Paginator

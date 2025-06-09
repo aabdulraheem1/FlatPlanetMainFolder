@@ -111,7 +111,6 @@
                 </button>
             </td>
         </tr>
-
     </tbody>
 </table>
 
@@ -145,7 +144,10 @@
                         <label for="fileSMART" class="form-label">Select Excel File</label>
                         <input type="file" class="form-control" id="fileSMART" name="file" accept=".xlsx, .xls">
                     </div>
-                    <button type="submit" class="btn btn-primary">Upload</button>
+                    <div class="progress mb-3" style="height: 25px; display: none;" id="progressBarContainerSMART">
+                        <div id="progressBarSMART" class="progress-bar bg-success" role="progressbar" style="width: 0%">0%</div>
+                    </div>
+                    <button type="button" class="btn btn-primary" id="uploadBtnSMART">Upload</button>
                 </form>
             </div>
         </div>
@@ -153,8 +155,7 @@
 </div>
 
 <!-- Modal for Forecast not in SMART -->
-<div class="modal fade" id="uploadModalNotInSMART" tabindex="-1" aria-labelledby="uploadModalNotInSMARTLabel"
-    aria-hidden="true">
+<div class="modal fade" id="uploadModalNotInSMART" tabindex="-1" aria-labelledby="uploadModalNotInSMARTLabel" aria-hidden="true">
     <div class="modal-dialog">
         <div class="modal-content">
             <div class="modal-header">
@@ -182,7 +183,10 @@
                         <label for="fileNotInSMART" class="form-label">Select Excel File</label>
                         <input type="file" class="form-control" id="fileNotInSMART" name="file" accept=".xlsx, .xls">
                     </div>
-                    <button type="submit" class="btn btn-primary">Upload</button>
+                    <div class="progress mb-3" style="height: 25px; display: none;" id="progressBarContainerNotInSMART">
+                        <div id="progressBarNotInSMART" class="progress-bar bg-success" role="progressbar" style="width: 0%">0%</div>
+                    </div>
+                    <button type="button" class="btn btn-primary" id="uploadBtnNotInSMART">Upload</button>
                 </form>
             </div>
         </div>
@@ -190,8 +194,7 @@
 </div>
 
 <!-- Modal for Forecast Fixed Plant -->
-<div class="modal fade" id="uploadModalFixedPlant" tabindex="-1" aria-labelledby="uploadModalFixedPlantLabel"
-    aria-hidden="true">
+<div class="modal fade" id="uploadModalFixedPlant" tabindex="-1" aria-labelledby="uploadModalFixedPlantLabel" aria-hidden="true">
     <div class="modal-dialog">
         <div class="modal-content">
             <div class="modal-header">
@@ -199,7 +202,7 @@
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <div class="modal-body">
-                <p>
+                <p>Please ensure your Excel file contains the following fields in the header:</p>
                 <ul>
                     <li><strong>Product</strong>: The product name or code.</li>
                     <li><strong>Location</strong>: The location.</li>
@@ -213,7 +216,6 @@
                     <li><strong>Product_Group</strong>: The product group.</li>
                     <li><strong>DP_Cycle</strong>: The demand planning cycle.</li>
                 </ul>
-                </p>
                 <form method="post" enctype="multipart/form-data" action="{% url 'upload_forecast' 'Fixed Plant' %}">
                     {% csrf_token %}
                     <input type="hidden" name="version" value="{{ scenario.version }}">
@@ -221,7 +223,10 @@
                         <label for="fileFixedPlant" class="form-label">Select Excel File</label>
                         <input type="file" class="form-control" id="fileFixedPlant" name="file" accept=".xlsx, .xls">
                     </div>
-                    <button type="submit" class="btn btn-primary">Upload</button>
+                    <div class="progress mb-3" style="height: 25px; display: none;" id="progressBarContainerFixedPlant">
+                        <div id="progressBarFixedPlant" class="progress-bar bg-success" role="progressbar" style="width: 0%">0%</div>
+                    </div>
+                    <button type="button" class="btn btn-primary" id="uploadBtnFixedPlant">Upload</button>
                 </form>
             </div>
         </div>
@@ -229,8 +234,7 @@
 </div>
 
 <!-- Modal for Forecast Revenue -->
-<div class="modal fade" id="uploadModalRevenue" tabindex="-1" aria-labelledby="uploadModalRevenueLabel"
-    aria-hidden="true">
+<div class="modal fade" id="uploadModalRevenue" tabindex="-1" aria-labelledby="uploadModalRevenueLabel" aria-hidden="true">
     <div class="modal-dialog">
         <div class="modal-content">
             <div class="modal-header">
@@ -238,7 +242,7 @@
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <div class="modal-body">
-                <p>
+                <p>Please ensure your Excel file contains the following fields in the header:</p>
                 <ul>
                     <li><strong>Product</strong>: The product name or code.</li>
                     <li><strong>Location</strong>: The location.</li>
@@ -252,7 +256,6 @@
                     <li><strong>Product_Group</strong>: The product group.</li>
                     <li><strong>DP_Cycle</strong>: The demand planning cycle.</li>
                 </ul>
-                </p>
                 <form method="post" enctype="multipart/form-data" action="{% url 'upload_forecast' 'Revenue' %}">
                     {% csrf_token %}
                     <input type="hidden" name="version" value="{{ scenario.version }}">
@@ -260,9 +263,79 @@
                         <label for="fileRevenue" class="form-label">Select Excel File</label>
                         <input type="file" class="form-control" id="fileRevenue" name="file" accept=".xlsx, .xls">
                     </div>
-                    <button type="submit" class="btn btn-primary">Upload</button>
+                    <div class="progress mb-3" style="height: 25px; display: none;" id="progressBarContainerRevenue">
+                        <div id="progressBarRevenue" class="progress-bar bg-success" role="progressbar" style="width: 0%">0%</div>
+                    </div>
+                    <button type="button" class="btn btn-primary" id="uploadBtnRevenue">Upload</button>
                 </form>
             </div>
         </div>
     </div>
 </div>
+
+<script>
+function setupUploadProgress(modalId, formId, btnId, progressContainerId, progressBarId) {
+    const uploadBtn = document.getElementById(btnId);
+    const form = document.querySelector(formId);
+    const progressBarContainer = document.getElementById(progressContainerId);
+    const progressBar = document.getElementById(progressBarId);
+
+    if (uploadBtn && form) {
+        uploadBtn.addEventListener('click', function(e) {
+            e.preventDefault();
+            const formData = new FormData(form);
+
+            // Always show the progress bar
+            progressBarContainer.style.display = 'block';
+            progressBar.style.width = '0%';
+            progressBar.textContent = '0%';
+
+            const xhr = new XMLHttpRequest();
+            xhr.open('POST', form.action, true);
+
+            let progressUpdated = false;
+
+            xhr.upload.onprogress = function(event) {
+                if (event.lengthComputable) {
+                    progressUpdated = true;
+                    const percent = Math.round((event.loaded / event.total) * 100);
+                    progressBar.style.width = percent + '%';
+                    progressBar.textContent = percent + '%';
+                }
+            };
+
+            xhr.onload = function() {
+                // If progress never updated (small file), set to 100%
+                if (!progressUpdated) {
+                    progressBar.style.width = '100%';
+                    progressBar.textContent = '100% - Upload complete!';
+                } else if (xhr.status === 200) {
+                    progressBar.style.width = '100%';
+                    progressBar.textContent = '100% - Upload complete!';
+                } else {
+                    progressBar.textContent = 'Upload failed!';
+                }
+                setTimeout(() => window.location.reload(), 1000);
+            };
+
+            xhr.onerror = function() {
+                progressBar.textContent = 'Upload error!';
+            };
+
+            xhr.send(formData);
+        });
+    }
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+    setupUploadProgress('uploadModalSMART', '#uploadModalSMART form', 'uploadBtnSMART', 'progressBarContainerSMART', 'progressBarSMART');
+    setupUploadProgress('uploadModalNotInSMART', '#uploadModalNotInSMART form', 'uploadBtnNotInSMART', 'progressBarContainerNotInSMART', 'progressBarNotInSMART');
+    setupUploadProgress('uploadModalFixedPlant', '#uploadModalFixedPlant form', 'uploadBtnFixedPlant', 'progressBarContainerFixedPlant', 'progressBarFixedPlant');
+    setupUploadProgress('uploadModalRevenue', '#uploadModalRevenue form', 'uploadBtnRevenue', 'progressBarContainerRevenue', 'progressBarRevenue');
+});
+</script>
+<style>
+.progress-bar {
+    min-width: 40px;
+}
+</style>

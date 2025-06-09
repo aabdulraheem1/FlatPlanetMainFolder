@@ -439,12 +439,12 @@ class MasterDataEpicorBillOfMaterialModel(models.Model):
     Company = models.CharField(max_length=100, null=True, blank=True)
     Plant = models.CharField(max_length=100, null=True, blank=True)
     Parent = models.CharField(max_length=100, null=True, blank=True)
-    ComponentSeq = models.IntegerField(max_length=100, null=True, blank=True)
+    ComponentSeq = models.IntegerField(null=True, blank=True)
     Component = models.CharField(max_length=100, null=True, blank=True)
     ComponentUOM = models.CharField(max_length=100, null=True, blank=True)
     QtyPer = models.CharField(max_length=100, null=True, blank=True)
-    EstimatedScrap = models.FloatField(max_length=100, null=True, blank=True)
-    SalvageQtyPer = models.FloatField(max_length=100, null=True, blank=True)
+    EstimatedScrap = models.FloatField(null=True, blank=True)
+    SalvageQtyPer = models.FloatField(null=True, blank=True)
 
 
     def __str__(self):

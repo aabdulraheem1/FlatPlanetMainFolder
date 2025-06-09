@@ -41,25 +41,20 @@ class Command(BaseCommand):
             for site in MasterDataPlantModel.objects.all()
         }
 
-        # Prefetch cast-to-despatch days as a dict
-        # For cast_to_despatch_map
         cast_to_despatch_map = {
             (entry.Foundry.SiteName, entry.version.version): entry.CastToDespatchDays
             for entry in MasterDataCastToDespatchModel.objects.filter(version=scenario)
-}
+        }
 
-        # For wip_lookup
         wip_lookup = {
             (item['product'], item['site_id']): item['total_wip']
             for item in MasterDataInventory.objects.filter(version=scenario).values('product', 'site_id').annotate(total_wip=Sum('wip_stock_qty'))
         }
-        # For onhand_lookup
         onhand_lookup = {
             (item['product'], item['site_id']): item['total_onhand']
             for item in MasterDataInventory.objects.filter(version=scenario).values('product', 'site_id').annotate(total_onhand=Sum('onhandstock_qty'))
         }
 
-        # Use iterator for memory efficiency
         batch_size = 1000
         calculated_productions = []
 
@@ -95,7 +90,6 @@ class Command(BaseCommand):
                     total_qty -= onhand_stock
                     onhand_stock = 0
             else:
-                # No onhand stock, proceed to WIP
                 pass
 
             # Remove from WIP stock next
@@ -109,7 +103,6 @@ class Command(BaseCommand):
                     total_qty -= wip_stock
                     wip_stock = 0
 
-            # If still remaining, that's the production quantity
             if total_qty > 0:
                 production_quantity = total_qty
             else:
@@ -127,13 +120,24 @@ class Command(BaseCommand):
                 tonnes=tonnes
             ))
 
-            # Update the lookups
             wip_lookup[(product, site)] = wip_stock
             onhand_lookup[(product, site)] = onhand_stock
 
             if len(calculated_productions) >= batch_size:
-                CalculatedProductionModel.objects.bulk_create(calculated_productions, batch_size=batch_size)
+                try:
+                    CalculatedProductionModel.objects.bulk_create(
+                        calculated_productions, batch_size=batch_size, atomic=False
+                    )
+                except Exception:
+                    for obj in calculated_productions:
+                        obj.save()
                 calculated_productions = []
 
         if calculated_productions:
-            CalculatedProductionModel.objects.bulk_create(calculated_productions, batch_size=batch_size)
+            try:
+                CalculatedProductionModel.objects.bulk_create(
+                    calculated_productions, batch_size=batch_size, atomic=False
+                )
+            except Exception:
+                for obj in calculated_productions:
+                    obj.save()

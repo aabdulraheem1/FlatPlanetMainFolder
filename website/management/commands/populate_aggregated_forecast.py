@@ -29,7 +29,7 @@ class Command(BaseCommand):
         }
 
         aggregated_forecasts = []
-        batch_size = 1000
+        batch_size = 1000 # You can try increasing this if it works
 
         for forecast in SMART_Forecast_Model.objects.filter(version=version).iterator(chunk_size=batch_size):
             product_data = product_data_map.get(forecast.Product)
@@ -57,8 +57,21 @@ class Command(BaseCommand):
             ))
 
             if len(aggregated_forecasts) >= batch_size:
-                AggregatedForecast.objects.bulk_create(aggregated_forecasts, batch_size=batch_size)
+                try:
+                    AggregatedForecast.objects.bulk_create(
+                        aggregated_forecasts, batch_size=batch_size, atomic=False
+                    )
+                except Exception as e:
+                    # Fallback: insert one by one if bulk_create fails
+                    for obj in aggregated_forecasts:
+                        obj.save()
                 aggregated_forecasts = []
 
         if aggregated_forecasts:
-            AggregatedForecast.objects.bulk_create(aggregated_forecasts, batch_size=batch_size)
+            try:
+                AggregatedForecast.objects.bulk_create(
+                    aggregated_forecasts, batch_size=batch_size, atomic=False
+                )
+            except Exception as e:
+                for obj in aggregated_forecasts:
+                    obj.save()

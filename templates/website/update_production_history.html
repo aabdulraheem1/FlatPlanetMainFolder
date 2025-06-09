@@ -6,6 +6,27 @@
 </div>
 <h2>Update Production History for {{ scenario.version }}</h2>
 
+<!-- Filter Form (Bootstrap style) -->
+<form method="get" class="mb-3">
+    <div class="row">
+        <div class="col-md-3">
+            <input type="text" name="product" class="form-control" placeholder="Filter by Product"
+                value="{{ request.GET.product }}">
+        </div>
+        <div class="col-md-3">
+            <input type="text" name="foundry" class="form-control" placeholder="Filter by Foundry"
+                value="{{ request.GET.foundry }}">
+        </div>
+        <div class="col-md-3">
+            <input type="month" name="production_month" class="form-control" placeholder="Filter by Month"
+                value="{{ request.GET.production_month }}">
+        </div>
+        <div class="col-md-2">
+            <button type="submit" class="btn btn-primary">Filter</button>
+        </div>
+    </div>
+</form>
+
 <form method="post">
     {% csrf_token %}
     <table class="table table-bordered">
@@ -32,4 +53,25 @@
     <button type="submit" class="btn btn-primary">Save Changes</button>
     <a href="{% url 'edit_scenario' scenario.version %}" class="btn btn-secondary">Cancel</a>
 </form>
+
+<!-- Pagination Controls -->
+<nav aria-label="Page navigation">
+    <ul class="pagination">
+        {% if page_obj.has_previous %}
+            <li class="page-item">
+                <a class="page-link" href="?product={{ request.GET.product }}&foundry={{ request.GET.foundry }}&production_month={{ request.GET.production_month }}&page={{ page_obj.previous_page_number }}">Previous</a>
+            </li>
+        {% else %}
+            <li class="page-item disabled"><span class="page-link">Previous</span></li>
+        {% endif %}
+        <li class="page-item disabled"><span class="page-link">Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }}</span></li>
+        {% if page_obj.has_next %}
+            <li class="page-item">
+                <a class="page-link" href="?product={{ request.GET.product }}&foundry={{ request.GET.foundry }}&production_month={{ request.GET.production_month }}&page={{ page_obj.next_page_number }}">Next</a>
+            </li>
+        {% else %}
+            <li class="page-item disabled"><span class="page-link">Next</span></li>
+        {% endif %}
+    </ul>
+</nav>
 {% endblock %}
