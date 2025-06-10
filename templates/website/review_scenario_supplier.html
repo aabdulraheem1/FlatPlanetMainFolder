@@ -13,9 +13,67 @@
     </ul>
 
     <div class="tab-content" id="supplierTabsContent">
+        <!-- Supplier A Chart -->
         <div class="tab-pane fade show active" id="supplier-a" role="tabpanel" aria-labelledby="supplier-a-tab">
             <canvas id="supplierAChart" width="400" height="200"></canvas>
+            <script id="supplier-a-top-products-data" type="application/json">
+                {{ supplier_a_top_products_json|safe }}
+            </script>
+            <script>
+                const supplierAData = {{ supplier_a_chart_data|safe }};
+                const supplierATopProducts = JSON.parse(document.getElementById('supplier-a-top-products-data').textContent);
+                const ctxSupplierA = document.getElementById('supplierAChart').getContext('2d');
+
+                new Chart(ctxSupplierA, {
+                    type: 'bar',
+                    data: {
+                        labels: supplierAData.labels,
+                        datasets: [
+                            {
+                                label: 'Tonnes',
+                                data: supplierAData.tons.map(x => Math.round(x)),
+                                backgroundColor: 'rgba(75, 192, 192, 0.2)',
+                                borderColor: 'rgba(75, 192, 192, 1)',
+                                borderWidth: 1
+                            }
+                        ]
+                    },
+                    options: {
+                        responsive: true,
+                        plugins: {
+                            tooltip: {
+                                callbacks: {
+                                    afterBody: function (context) {
+                                        const month = context[0].label;
+                                        const top = supplierATopProducts[month];
+                                        if (!top) return '';
+                                        return 'Top 10 Products:\n' + top.map(
+                                            (p, i) => `${i + 1}. ${p[0]}: ${parseInt(p[1])}`
+                                        ).join('\n');
+                                    }
+                                }
+                            }
+                        },
+                        scales: {
+                            x: {
+                                title: {
+                                    display: true,
+                                    text: 'Month'
+                                }
+                            },
+                            y: {
+                                title: {
+                                    display: true,
+                                    text: 'Tonnes'
+                                },
+                                beginAtZero: true
+                            }
+                        }
+                    }
+                });
+            </script>
         </div>
+        <!-- Supplier B Chart (template, add logic as needed) -->
         <div class="tab-pane fade" id="supplier-b" role="tabpanel" aria-labelledby="supplier-b-tab">
             <canvas id="supplierBChart" width="400" height="200"></canvas>
         </div>

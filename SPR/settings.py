@@ -143,4 +143,5 @@ STATICFILES_DIRS = (
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
+DATA_UPLOAD_MAX_NUMBER_FIELDS = 5000  # or higher if needed
 
