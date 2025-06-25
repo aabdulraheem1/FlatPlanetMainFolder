@@ -1,4 +1,5 @@
 <!-- Section 2: Foundry Tabs -->
+<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation@4.1.0/dist/chartjs-plugin-annotation.min.js"></script>
 <div class="container mt-5">
     <h2>Foundry Review</h2>
     <ul class="nav nav-tabs" id="foundryTabs" role="tablist">
@@ -18,6 +19,15 @@
             <a class="nav-link" id="merlimau-tab" data-toggle="tab" href="#merlimau" role="tab" aria-controls="merlimau"
                 aria-selected="false">Merlimau</a>
         </li>
+        <!-- Add to nav-tabs -->
+<li class="nav-item">
+    <a class="nav-link" id="wod1-tab" data-toggle="tab" href="#wod1" role="tab"
+        aria-controls="wod1" aria-selected="false">Wodonga</a>
+</li>
+<li class="nav-item">
+    <a class="nav-link" id="wun1-tab" data-toggle="tab" href="#wun1" role="tab"
+        aria-controls="wun1" aria-selected="false">Wundowie</a>
+</li>
     </ul>
 
     <div class="tab-content" id="foundryTabsContent">
@@ -30,42 +40,33 @@
             <script>
                 const mtJoliData = {{ mt_joli_chart_data|safe }};
                 const mtJoliTopProducts = JSON.parse(document.getElementById('mt-joli-top-products-data').textContent);
+                const mtJoliPourPlan = {{ mt_joli_monthly_pour_plan|safe }};
+                mtJoliData.datasets.push({
+                    type: 'line',
+                    label: 'Pour Plan',
+                    data: mtJoliPourPlan,
+                    borderColor: 'red',
+                    borderWidth: 2,
+                    fill: false,
+                    pointRadius: 0,
+                    order: 0
+                });
                 const ctxMtJoli = document.getElementById('mtJoliChart').getContext('2d');
-
                 new Chart(ctxMtJoli, {
                     type: 'bar',
-                    data: {
-                        labels: mtJoliData.labels,
-                        datasets: [
-                            {
-                                label: 'Tonnes',
-                                data: mtJoliData.tons.map(x => Math.round(x)),
-                                backgroundColor: 'rgba(75, 192, 192, 0.2)',
-                                borderColor: 'rgba(75, 192, 192, 1)',
-                                borderWidth: 1
-                            },
-                            {
-                                label: 'Dress Mass',
-                                data: mtJoliData.dress_mass,
-                                type: 'line',
-                                borderColor: 'rgba(255, 99, 132, 1)',
-                                backgroundColor: 'rgba(255, 99, 132, 0.2)',
-                                borderWidth: 2,
-                                fill: false,
-                                tension: 0.4
-                            }
-                        ]
-                    },
+                    data: mtJoliData,
                     options: {
                         responsive: true,
                         plugins: {
+                            legend: { display: true },
                             tooltip: {
                                 callbacks: {
                                     afterBody: function (context) {
+                                        const group = context[0].dataset.label;
                                         const month = context[0].label;
-                                        const top = mtJoliTopProducts[month];
-                                        if (!top) return '';
-                                        return 'Top 10 Products:\n' + top.map(
+                                        const topByGroup = mtJoliTopProducts[month] && mtJoliTopProducts[month][group];
+                                        if (!topByGroup || topByGroup.length === 0) return '';
+                                        return 'Top 10 Products in ' + group + ':\n' + topByGroup.map(
                                             (p, i) => `${i + 1}. ${p[0]}: ${parseInt(p[1])}`
                                         ).join('\n');
                                     }
@@ -73,19 +74,8 @@
                             }
                         },
                         scales: {
-                            x: {
-                                title: {
-                                    display: true,
-                                    text: 'Month'
-                                }
-                            },
-                            y: {
-                                title: {
-                                    display: true,
-                                    text: 'Tonnes / Dress Mass'
-                                },
-                                beginAtZero: true
-                            }
+                            x: { title: { display: true, text: 'Month' } },
+                            y: { title: { display: true, text: 'Tonnes / Dress Mass' }, beginAtZero: true }
                         }
                     }
                 });
@@ -98,44 +88,35 @@
                 {{ coimbatore_top_products_json|safe }}
             </script>
             <script>
-                const coimbatoreData = {{ coimbatore_chart_data| safe }};
+                const coimbatoreData = {{ coimbatore_chart_data|safe }};
                 const coimbatoreTopProducts = JSON.parse(document.getElementById('coimbatore-top-products-data').textContent);
+                const coimbatorePourPlan = {{ coimbatore_monthly_pour_plan|safe }};
+                coimbatoreData.datasets.push({
+                    type: 'line',
+                    label: 'Pour Plan',
+                    data: coimbatorePourPlan,
+                    borderColor: 'red',
+                    borderWidth: 2,
+                    fill: false,
+                    pointRadius: 0,
+                    order: 0
+                });
                 const ctxCoimbatore = document.getElementById('coimbatoreChart').getContext('2d');
-
                 new Chart(ctxCoimbatore, {
                     type: 'bar',
-                    data: {
-                        labels: coimbatoreData.labels,
-                        datasets: [
-                            {
-                                label: 'Tonnes',
-                                data: coimbatoreData.tons.map(x => Math.round(x)),
-                                backgroundColor: 'rgba(75, 192, 192, 0.2)',
-                                borderColor: 'rgba(75, 192, 192, 1)',
-                                borderWidth: 1
-                            },
-                            {
-                                label: 'Dress Mass',
-                                data: coimbatoreData.dress_mass,
-                                type: 'line',
-                                borderColor: 'rgba(255, 99, 132, 1)',
-                                backgroundColor: 'rgba(255, 99, 132, 0.2)',
-                                borderWidth: 2,
-                                fill: false,
-                                tension: 0.4
-                            }
-                        ]
-                    },
+                    data: coimbatoreData,
                     options: {
                         responsive: true,
                         plugins: {
+                            legend: { display: true },
                             tooltip: {
                                 callbacks: {
                                     afterBody: function (context) {
+                                        const group = context[0].dataset.label;
                                         const month = context[0].label;
-                                        const top = coimbatoreTopProducts[month];
-                                        if (!top) return '';
-                                        return 'Top 10 Products:\n' + top.map(
+                                        const topByGroup = coimbatoreTopProducts[month] && coimbatoreTopProducts[month][group];
+                                        if (!topByGroup || topByGroup.length === 0) return '';
+                                        return 'Top 10 Products in ' + group + ':\n' + topByGroup.map(
                                             (p, i) => `${i + 1}. ${p[0]}: ${parseInt(p[1])}`
                                         ).join('\n');
                                     }
@@ -143,25 +124,13 @@
                             }
                         },
                         scales: {
-                            x: {
-                                title: {
-                                    display: true,
-                                    text: 'Month'
-                                }
-                            },
-                            y: {
-                                title: {
-                                    display: true,
-                                    text: 'Tonnes / Dress Mass'
-                                },
-                                beginAtZero: true
-                            }
+                            x: { title: { display: true, text: 'Month' } },
+                            y: { title: { display: true, text: 'Tonnes / Dress Mass' }, beginAtZero: true }
                         }
                     }
                 });
             </script>
         </div>
-
         <!-- Xuzhou Chart -->
         <div class="tab-pane fade" id="xuzhou" role="tabpanel" aria-labelledby="xuzhou-tab">
             <canvas id="xuzhouChart" width="400" height="200"></canvas>
@@ -169,44 +138,35 @@
                 {{ xuzhou_top_products_json|safe }}
             </script>
             <script>
-                const xuzhouData = {{ xuzhou_chart_data| safe }};
+                const xuzhouData = {{ xuzhou_chart_data|safe }};
                 const xuzhouTopProducts = JSON.parse(document.getElementById('xuzhou-top-products-data').textContent);
+                const xuzhouPourPlan = {{ xuzhou_monthly_pour_plan|safe }};
+                xuzhouData.datasets.push({
+                    type: 'line',
+                    label: 'Pour Plan',
+                    data: xuzhouPourPlan,
+                    borderColor: 'red',
+                    borderWidth: 2,
+                    fill: false,
+                    pointRadius: 0,
+                    order: 0
+                });
                 const ctxXuzhou = document.getElementById('xuzhouChart').getContext('2d');
-
                 new Chart(ctxXuzhou, {
                     type: 'bar',
-                    data: {
-                        labels: xuzhouData.labels,
-                        datasets: [
-                            {
-                                label: 'Tonnes',
-                                data: xuzhouData.tons.map(x => Math.round(x)),
-                                backgroundColor: 'rgba(75, 192, 192, 0.2)',
-                                borderColor: 'rgba(75, 192, 192, 1)',
-                                borderWidth: 1
-                            },
-                            {
-                                label: 'Dress Mass',
-                                data: xuzhouData.dress_mass,
-                                type: 'line',
-                                borderColor: 'rgba(255, 99, 132, 1)',
-                                backgroundColor: 'rgba(255, 99, 132, 0.2)',
-                                borderWidth: 2,
-                                fill: false,
-                                tension: 0.4
-                            }
-                        ]
-                    },
+                    data: xuzhouData,
                     options: {
                         responsive: true,
                         plugins: {
+                            legend: { display: true },
                             tooltip: {
                                 callbacks: {
                                     afterBody: function (context) {
+                                        const group = context[0].dataset.label;
                                         const month = context[0].label;
-                                        const top = xuzhouTopProducts[month];
-                                        if (!top) return '';
-                                        return 'Top 10 Products:\n' + top.map(
+                                        const topByGroup = xuzhouTopProducts[month] && xuzhouTopProducts[month][group];
+                                        if (!topByGroup || topByGroup.length === 0) return '';
+                                        return 'Top 10 Products in ' + group + ':\n' + topByGroup.map(
                                             (p, i) => `${i + 1}. ${p[0]}: ${parseInt(p[1])}`
                                         ).join('\n');
                                     }
@@ -214,25 +174,13 @@
                             }
                         },
                         scales: {
-                            x: {
-                                title: {
-                                    display: true,
-                                    text: 'Month'
-                                }
-                            },
-                            y: {
-                                title: {
-                                    display: true,
-                                    text: 'Tonnes / Dress Mass'
-                                },
-                                beginAtZero: true
-                            }
+                            x: { title: { display: true, text: 'Month' } },
+                            y: { title: { display: true, text: 'Tonnes / Dress Mass' }, beginAtZero: true }
                         }
                     }
                 });
             </script>
         </div>
-
         <!-- Merlimau Chart -->
         <div class="tab-pane fade" id="merlimau" role="tabpanel" aria-labelledby="merlimau-tab">
             <canvas id="merlimauChart" width="400" height="200"></canvas>
@@ -240,44 +188,35 @@
                 {{ merlimau_top_products_json|safe }}
             </script>
             <script>
-                const merlimauData = {{ merlimau_chart_data| safe }};
+                const merlimauData = {{ merlimau_chart_data|safe }};
                 const merlimauTopProducts = JSON.parse(document.getElementById('merlimau-top-products-data').textContent);
+                const merlimauPourPlan = {{ merlimau_monthly_pour_plan|safe }};
+                merlimauData.datasets.push({
+                    type: 'line',
+                    label: 'Pour Plan',
+                    data: merlimauPourPlan,
+                    borderColor: 'red',
+                    borderWidth: 2,
+                    fill: false,
+                    pointRadius: 0,
+                    order: 0
+                });
                 const ctxMerlimau = document.getElementById('merlimauChart').getContext('2d');
-
                 new Chart(ctxMerlimau, {
                     type: 'bar',
-                    data: {
-                        labels: merlimauData.labels,
-                        datasets: [
-                            {
-                                label: 'Tonnes',
-                                data: merlimauData.tons.map(x => Math.round(x)),
-                                backgroundColor: 'rgba(75, 192, 192, 0.2)',
-                                borderColor: 'rgba(75, 192, 192, 1)',
-                                borderWidth: 1
-                            },
-                            {
-                                label: 'Dress Mass',
-                                data: merlimauData.dress_mass,
-                                type: 'line',
-                                borderColor: 'rgba(255, 99, 132, 1)',
-                                backgroundColor: 'rgba(255, 99, 132, 0.2)',
-                                borderWidth: 2,
-                                fill: false,
-                                tension: 0.4
-                            }
-                        ]
-                    },
+                    data: merlimauData,
                     options: {
                         responsive: true,
                         plugins: {
+                            legend: { display: true },
                             tooltip: {
                                 callbacks: {
                                     afterBody: function (context) {
+                                        const group = context[0].dataset.label;
                                         const month = context[0].label;
-                                        const top = merlimauTopProducts[month];
-                                        if (!top) return '';
-                                        return 'Top 10 Products:\n' + top.map(
+                                        const topByGroup = merlimauTopProducts[month] && merlimauTopProducts[month][group];
+                                        if (!topByGroup || topByGroup.length === 0) return '';
+                                        return 'Top 10 Products in ' + group + ':\n' + topByGroup.map(
                                             (p, i) => `${i + 1}. ${p[0]}: ${parseInt(p[1])}`
                                         ).join('\n');
                                     }
@@ -285,23 +224,112 @@
                             }
                         },
                         scales: {
-                            x: {
-                                title: {
-                                    display: true,
-                                    text: 'Month'
-                                }
-                            },
-                            y: {
-                                title: {
-                                    display: true,
-                                    text: 'Tonnes / Dress Mass'
-                                },
-                                beginAtZero: true
-                            }
+                            x: { title: { display: true, text: 'Month' } },
+                            y: { title: { display: true, text: 'Tonnes / Dress Mass' }, beginAtZero: true }
                         }
                     }
                 });
             </script>
         </div>
+        <!-- WOD1 Chart -->
+<div class="tab-pane fade" id="wod1" role="tabpanel" aria-labelledby="wod1-tab">
+    <canvas id="wod1Chart" width="400" height="200"></canvas>
+    <script id="wod1-top-products-data" type="application/json">
+        {{ wod1_top_products_json|safe }}
+    </script>
+    <script>
+        const wod1Data = {{ wod1_chart_data|safe }};
+        const wod1TopProducts = JSON.parse(document.getElementById('wod1-top-products-data').textContent);
+        const wod1PourPlan = {{ wod1_monthly_pour_plan|safe }};
+        wod1Data.datasets.push({
+            type: 'line',
+            label: 'Pour Plan',
+            data: wod1PourPlan,
+            borderColor: 'red',
+            borderWidth: 2,
+            fill: false,
+            pointRadius: 0,
+            order: 0
+        });
+        const ctxWod1 = document.getElementById('wod1Chart').getContext('2d');
+        new Chart(ctxWod1, {
+            type: 'bar',
+            data: wod1Data,
+            options: {
+                responsive: true,
+                plugins: {
+                    legend: { display: true },
+                    tooltip: {
+                        callbacks: {
+                            afterBody: function (context) {
+                                const group = context[0].dataset.label;
+                                const month = context[0].label;
+                                const topByGroup = wod1TopProducts[month] && wod1TopProducts[month][group];
+                                if (!topByGroup || topByGroup.length === 0) return '';
+                                return 'Top 10 Products in ' + group + ':\n' + topByGroup.map(
+                                    (p, i) => `${i + 1}. ${p[0]}: ${parseInt(p[1])}`
+                                ).join('\n');
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    x: { title: { display: true, text: 'Month' } },
+                    y: { title: { display: true, text: 'Tonnes / Dress Mass' }, beginAtZero: true }
+                }
+            }
+        });
+    </script>
+</div>
+<!-- WUN1 Chart -->
+<div class="tab-pane fade" id="wun1" role="tabpanel" aria-labelledby="wun1-tab">
+    <canvas id="wun1Chart" width="400" height="200"></canvas>
+    <script id="wun1-top-products-data" type="application/json">
+        {{ wun1_top_products_json|safe }}
+    </script>
+    <script>
+        const wun1Data = {{ wun1_chart_data|safe }};
+        const wun1TopProducts = JSON.parse(document.getElementById('wun1-top-products-data').textContent);
+        const wun1PourPlan = {{ wun1_monthly_pour_plan|safe }};
+        wun1Data.datasets.push({
+            type: 'line',
+            label: 'Pour Plan',
+            data: wun1PourPlan,
+            borderColor: 'red',
+            borderWidth: 2,
+            fill: false,
+            pointRadius: 0,
+            order: 0
+        });
+        const ctxWun1 = document.getElementById('wun1Chart').getContext('2d');
+        new Chart(ctxWun1, {
+            type: 'bar',
+            data: wun1Data,
+            options: {
+                responsive: true,
+                plugins: {
+                    legend: { display: true },
+                    tooltip: {
+                        callbacks: {
+                            afterBody: function (context) {
+                                const group = context[0].dataset.label;
+                                const month = context[0].label;
+                                const topByGroup = wun1TopProducts[month] && wun1TopProducts[month][group];
+                                if (!topByGroup || topByGroup.length === 0) return '';
+                                return 'Top 10 Products in ' + group + ':\n' + topByGroup.map(
+                                    (p, i) => `${i + 1}. ${p[0]}: ${parseInt(p[1])}`
+                                ).join('\n');
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    x: { title: { display: true, text: 'Month' } },
+                    y: { title: { display: true, text: 'Tonnes / Dress Mass' }, beginAtZero: true }
+                }
+            }
+        });
+    </script>
+</div>
     </div>
 </div>

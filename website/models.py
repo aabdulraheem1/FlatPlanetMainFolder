@@ -363,12 +363,13 @@ class CalcualtedReplenishmentModel(models.Model):
         return f"{self.version.version} - {self.Product} - {self.Site}"
     
 class CalculatedProductionModel(models.Model):
-    version = models.ForeignKey(scenarios , on_delete=models.CASCADE)  # Foreign key from scenarios
+    version = models.ForeignKey(scenarios , on_delete=models.CASCADE)
     product = models.ForeignKey(MasterDataProductModel, on_delete=models.CASCADE)
-    site = models.ForeignKey(MasterDataPlantModel, max_length=250, null=True, blank=True, on_delete=models.CASCADE)  # Allow NULL values
+    site = models.ForeignKey(MasterDataPlantModel, max_length=250, null=True, blank=True, on_delete=models.CASCADE)
     pouring_date = models.DateField()
     production_quantity = models.FloatField(default=0)
     tonnes = models.FloatField(default=0)
+    product_group = models.CharField(max_length=250, null=True, blank=True)  # <-- Add this line
 
     def __str__(self):
         return f"{self.version.version} - {self.product.Product} - {self.site.SiteName} - {self.pouring_date}"

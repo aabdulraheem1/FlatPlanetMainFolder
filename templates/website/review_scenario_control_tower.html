@@ -1,3 +1,38 @@
+{% load static %}
+{% load humanize %}
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Control Tower</title>
+    <link href="{% static 'css/bootstrap.min.css' %}" rel="stylesheet">
+    <style>
+        .ct-table th,
+        .ct-table td {
+            text-align: center;
+            vertical-align: middle;
+            border: 1px solid #888;
+            padding: 6px 10px;
+        }
+        .ct-table th {
+            background: #e9ecef;
+        }
+        .ct-table .row-label {
+            background: #f5f5f5;
+            font-weight: bold;
+            text-align: left;
+        }
+        .ct-table .total-row {
+            background: #f0f0f0;
+            font-weight: bold;
+        }
+        .ct-table .highlight {
+            background: #d3d3d3;
+        }
+    </style>
+</head>
+<body>
 <div class="container mt-4">
     <h3>Control Tower</h3>
     <ul class="nav nav-tabs" id="controlTowerTab" role="tablist">
@@ -15,45 +50,17 @@
         </li>
     </ul>
     <div class="tab-content" id="controlTowerTabContent">
+        <!-- FY25 Tab -->
         <div class="tab-pane fade show active p-3" id="fy25" role="tabpanel" aria-labelledby="fy25-tab">
-            <!-- FY25 table structure -->
-            <style>
-                .ct-table th,
-                .ct-table td {
-                    text-align: center;
-                    vertical-align: middle;
-                    border: 1px solid #888;
-                    padding: 6px 10px;
-                }
-
-                .ct-table th {
-                    background: #e9ecef;
-                }
-
-                .ct-table .row-label {
-                    background: #f5f5f5;
-                    font-weight: bold;
-                    text-align: left;
-                }
-
-                .ct-table .total-row {
-                    background: #f0f0f0;
-                    font-weight: bold;
-                }
-
-                .ct-table .highlight {
-                    background: #d3d3d3;
-                }
-            </style>
             <table class="table ct-table" style="width:auto; min-width:900px;">
                 <thead>
                     <tr>
                         <th></th>
                         <th>FY25 Budget</th>
                         <th>Available Capacity</th>
-                        <th>Previous Pour Plan</th>
+                        
                         <th>Current Pour Plan</th>
-                        <th>Previous Demand Plan</th>
+                        
                         <th>Current Demand Plan (inv)</th>
                     </tr>
                 </thead>
@@ -62,81 +69,92 @@
                         <td class="row-label">Mt Joli</td>
                         <td>21,865</td>
                         <td class="highlight">30,976</td>
-                        <td class="highlight">20,276</td>
-                        <td class="highlight">19,234</td>
-                        <td class="highlight">18,254</td>
-                        <td class="highlight">17,377</td>
+                        
+                        <td class="highlight">{{ pour_plan.FY25.MTJ1|intcomma }}</td>
+                        
+                        <td class="highlight">
+                          <span
+                            class="popover-demand"
+                            data-fy="FY25"
+                            data-site="MTJ1"
+                            tabindex="0"
+                            data-bs-toggle="popover"
+                            data-bs-trigger="hover focus"
+                            data-bs-html="true">
+                            {{ demand_plan.FY25.MTJ1|intcomma }}
+                          </span>
+                        </td>
                     </tr>
                     <tr>
                         <td class="row-label">Coimbatore</td>
                         <td>20,763</td>
                         <td class="highlight">25,214</td>
-                        <td class="highlight">19,770</td>
-                        <td class="highlight">19,821</td>
-                        <td class="highlight">18,161</td>
-                        <td class="highlight">18,551</td>
+                        
+                        <td class="highlight">{{ pour_plan.FY25.COI2|intcomma }}</td>
+                        
+                        <td class="highlight">{{ demand_plan.FY25.COI2|intcomma }}</td>
                     </tr>
                     <tr>
                         <td class="row-label">Xuzhou</td>
                         <td>16,531</td>
                         <td class="highlight">21,006</td>
-                        <td class="highlight">20,095</td>
-                        <td class="highlight">20,547</td>
-                        <td class="highlight">16,600</td>
-                        <td class="highlight">17,397</td>
+                        
+                        <td class="highlight">{{ pour_plan.FY25.XUZ1|intcomma }}</td>
+                        
+                        <td class="highlight">{{ demand_plan.FY25.XUZ1|intcomma }}</td>
                     </tr>
                     <tr>
                         <td class="row-label">Merlimau</td>
                         <td>5,883</td>
                         <td class="highlight">6,973</td>
-                        <td class="highlight">4,963</td>
-                        <td class="highlight">4,736</td>
-                        <td class="highlight">4,402</td>
-                        <td class="highlight">4,585</td>
+                        
+                        <td class="highlight">{{ pour_plan.FY25.MER1|intcomma }}</td>
+                        
+                        <td class="highlight">{{ demand_plan.FY25.MER1|intcomma }}</td>
                     </tr>
                     <tr>
                         <td class="row-label">Wundowie</td>
                         <td>3,754</td>
                         <td class="highlight">3,492</td>
-                        <td class="highlight">3,446</td>
-                        <td class="highlight">3,356</td>
-                        <td class="highlight">2,925</td>
-                        <td class="highlight">3,242</td>
+                        
+                        <td class="highlight">{{ pour_plan.FY25.WUN1|intcomma }}</td>
+                        
+                        <td class="highlight">{{ demand_plan.FY25.WUN1|intcomma }}</td>
                     </tr>
                     <tr>
                         <td class="row-label">Wodonga</td>
                         <td>3,793</td>
                         <td class="highlight">3,717</td>
-                        <td class="highlight">3,717</td>
-                        <td class="highlight">3,750</td>
-                        <td class="highlight">2,890</td>
-                        <td class="highlight">2,721</td>
+                        
+                        <td class="highlight">{{ pour_plan.FY25.WOD1|intcomma }}</td>
+                        
+                        <td class="highlight">{{ demand_plan.FY25.WOD1|intcomma }}</td>
                     </tr>
                     <tr>
                         <td class="row-label">Chilca</td>
                         <td>1,466</td>
                         <td class="highlight">900</td>
-                        <td class="highlight">810</td>
-                        <td class="highlight">810</td>
-                        <td class="highlight">426</td>
-                        <td class="highlight">426</td>
+                        
+                        <td class="highlight">{{ pour_plan.FY25.CHI1|intcomma }}</td>
+                        
+                        <td class="highlight">{{ demand_plan.FY25.CHI1|intcomma }}</td>
                     </tr>
                     <tr class="total-row">
                         <td>Total Castings</td>
                         <td>74,055</td>
                         <td>92,278</td>
-                        <td>73,076</td>
+                        
                         <td>72,254</td>
-                        <td>64,894</td>
+                        
                         <td>65,534</td>
                     </tr>
                     <tr>
                         <td class="row-label">Outsource</td>
                         <td>8,672</td>
                         <td></td>
-                        <td class="highlight">10,151</td>
+                        
                         <td class="highlight">11,182</td>
-                        <td class="highlight">10,572</td>
+                        
                         <td class="highlight">11,182</td>
                     </tr>
                 </tbody>
@@ -188,355 +206,263 @@
                 </div>
             </div>
         </div>
+        <!-- FY26 Tab -->
         <div class="tab-pane fade p-3" id="fy26" role="tabpanel" aria-labelledby="fy26-tab">
-            <div class="tab-pane fade show active p-3" id="fy25" role="tabpanel" aria-labelledby="fy25-tab">
-                <!-- FY25 table structure -->
-                <style>
-                    .ct-table th,
-                    .ct-table td {
-                        text-align: center;
-                        vertical-align: middle;
-                        border: 1px solid #888;
-                        padding: 6px 10px;
-                    }
-
-                    .ct-table th {
-                        background: #e9ecef;
-                    }
-
-                    .ct-table .row-label {
-                        background: #f5f5f5;
-                        font-weight: bold;
-                        text-align: left;
-                    }
-
-                    .ct-table .total-row {
-                        background: #f0f0f0;
-                        font-weight: bold;
-                    }
-
-                    .ct-table .highlight {
-                        background: #d3d3d3;
-                    }
-                </style>
-                <table class="table ct-table" style="width:auto; min-width:900px;">
-                    <thead>
-                        <tr>
-                            <th></th>
-                            <th>FY25 Budget</th>
-                            <th>Available Capacity</th>
-                            <th>Previous Pour Plan</th>
-                            <th>Current Pour Plan</th>
-                            <th>Previous Demand Plan</th>
-                            <th>Current Demand Plan (inv)</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <tr>
-                            <td class="row-label">Mt Joli</td>
-                            <td>21,865</td>
-                            <td class="highlight">30,976</td>
-                            <td class="highlight">20,276</td>
-                            <td class="highlight">19,234</td>
-                            <td class="highlight">18,254</td>
-                            <td class="highlight">17,377</td>
-                        </tr>
-                        <tr>
-                            <td class="row-label">Coimbatore</td>
-                            <td>20,763</td>
-                            <td class="highlight">25,214</td>
-                            <td class="highlight">19,770</td>
-                            <td class="highlight">19,821</td>
-                            <td class="highlight">18,161</td>
-                            <td class="highlight">18,551</td>
-                        </tr>
-                        <tr>
-                            <td class="row-label">Xuzhou</td>
-                            <td>16,531</td>
-                            <td class="highlight">21,006</td>
-                            <td class="highlight">20,095</td>
-                            <td class="highlight">20,547</td>
-                            <td class="highlight">16,600</td>
-                            <td class="highlight">17,397</td>
-                        </tr>
-                        <tr>
-                            <td class="row-label">Merlimau</td>
-                            <td>5,883</td>
-                            <td class="highlight">6,973</td>
-                            <td class="highlight">4,963</td>
-                            <td class="highlight">4,736</td>
-                            <td class="highlight">4,402</td>
-                            <td class="highlight">4,585</td>
-                        </tr>
-                        <tr>
-                            <td class="row-label">Wundowie</td>
-                            <td>3,754</td>
-                            <td class="highlight">3,492</td>
-                            <td class="highlight">3,446</td>
-                            <td class="highlight">3,356</td>
-                            <td class="highlight">2,925</td>
-                            <td class="highlight">3,242</td>
-                        </tr>
-                        <tr>
-                            <td class="row-label">Wodonga</td>
-                            <td>3,793</td>
-                            <td class="highlight">3,717</td>
-                            <td class="highlight">3,717</td>
-                            <td class="highlight">3,750</td>
-                            <td class="highlight">2,890</td>
-                            <td class="highlight">2,721</td>
-                        </tr>
-                        <tr>
-                            <td class="row-label">Chilca</td>
-                            <td>1,466</td>
-                            <td class="highlight">900</td>
-                            <td class="highlight">810</td>
-                            <td class="highlight">810</td>
-                            <td class="highlight">426</td>
-                            <td class="highlight">426</td>
-                        </tr>
-                        <tr class="total-row">
-                            <td>Total Castings</td>
-                            <td>74,055</td>
-                            <td>92,278</td>
-                            <td>73,076</td>
-                            <td>72,254</td>
-                            <td>64,894</td>
-                            <td>65,534</td>
-                        </tr>
-                        <tr>
-                            <td class="row-label">Outsource</td>
-                            <td>8,672</td>
-                            <td></td>
-                            <td class="highlight">10,151</td>
-                            <td class="highlight">11,182</td>
-                            <td class="highlight">10,572</td>
-                            <td class="highlight">11,182</td>
-                        </tr>
-                    </tbody>
-                </table>
-                <div class="row mb-2">
-                    <div class="col-md-3">
-                        <div class="p-2 border text-center highlight">Bassendean</div>
-                    </div>
-                    <div class="col-md-9 d-flex flex-wrap">
-                        <div class="p-2 border text-center highlight m-1">85,844K<br>COGS</div>
-                        <div class="p-2 border text-center highlight m-1">85,844K<br>COGS</div>
-                        <div class="p-2 border text-center highlight m-1">85,844K<br>COGS</div>
-                        <div class="p-2 border text-center highlight m-1">81,410K<br>COGS</div>
-                        <div class="p-2 border text-center highlight m-1">83,073K<br>COGS</div>
-                    </div>
-                </div>
-                <div class="row mb-2">
-                    <div class="col-md-3">
-                        <div class="p-2 border text-center highlight">Buckets ex-work</div>
-                    </div>
-                </div>
-                <div class="row mb-2">
-                    <div class="col-md-3">
-                        <div class="p-2 border text-center highlight">Dump Body</div>
-                    </div>
-                </div>
-                <div class="row mb-2">
-                    <div class="col-md-3">
-                        <div class="p-2 border text-center highlight">Ore Cars</div>
-                    </div>
-                </div>
-                <div class="row mb-2">
-                    <div class="col-md-4">
-                        <div class="p-2 border text-center highlight">Buckets<br>159</div>
-                    </div>
-                    <div class="col-md-4">
-                        <div class="p-2 border text-center highlight">TTrays<br>17</div>
-                    </div>
-                    <div class="col-md-4">
-                        <div class="p-2 border text-center highlight">Wagon<br>20</div>
-                    </div>
-                </div>
-                <div class="row mb-2">
-                    <div class="col-md-4">
-                        <div class="p-2 border text-center highlight">Buckets<br>138</div>
-                    </div>
-                    <div class="col-md-4">
-                        <div class="p-2 border text-center highlight">TTrays<br>13</div>
-                    </div>
-                </div>
-            </div>
+            <table class="table ct-table" style="width:auto; min-width:900px;">
+                <thead>
+                    <tr>
+                        <th></th>
+                        <th>FY26 Budget</th>
+                        <th>Available Capacity</th>
+                        
+                        <th>Current Pour Plan</th>
+                        
+                        <th>Current Demand Plan (inv)</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td class="row-label">Mt Joli</td>
+                        <td>21,865</td>
+                        <td class="highlight">30,976</td>
+                        
+                        <td class="highlight">{{ pour_plan.FY26.MTJ1|intcomma }}</td>
+                        
+                        <td class="highlight">
+                          <span
+                            class="popover-demand"
+                            data-fy="FY26"
+                            data-site="MTJ1"
+                            tabindex="0"
+                            data-bs-toggle="popover"
+                            data-bs-trigger="hover focus"
+                            data-bs-html="true">
+                            {{ demand_plan.FY26.MTJ1|intcomma }}
+                          </span>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td class="row-label">Coimbatore</td>
+                        <td>20,763</td>
+                        <td class="highlight">25,214</td>
+                        
+                        <td class="highlight">{{ pour_plan.FY26.COI2|intcomma }}</td>
+                        
+                        <td class="highlight">{{ demand_plan.FY26.COI2|intcomma }}</td>
+                    </tr>
+                    <tr>
+                        <td class="row-label">Xuzhou</td>
+                        <td>16,531</td>
+                        <td class="highlight">21,006</td>
+                        
+                        <td class="highlight">{{ pour_plan.FY26.XUZ1|intcomma }}</td>
+                        
+                        <td class="highlight">{{ demand_plan.FY26.XUZ1|intcomma }}</td>
+                    </tr>
+                    <tr>
+                        <td class="row-label">Merlimau</td>
+                        <td>5,883</td>
+                        <td class="highlight">6,973</td>
+                        
+                        <td class="highlight">{{ pour_plan.FY26.MER1|intcomma }}</td>
+                        
+                        <td class="highlight">{{ demand_plan.FY26.MER1|intcomma }}</td>
+                    </tr>
+                    <tr>
+                        <td class="row-label">Wundowie</td>
+                        <td>3,754</td>
+                        <td class="highlight">3,492</td>
+                        
+                        <td class="highlight">{{ pour_plan.FY26.WUN1|intcomma }}</td>
+                        
+                        <td class="highlight">{{ demand_plan.FY26.WUN1|intcomma }}</td>
+                    </tr>
+                    <tr>
+                        <td class="row-label">Wodonga</td>
+                        <td>3,793</td>
+                        <td class="highlight">3,717</td>
+                        
+                        <td class="highlight">{{ pour_plan.FY26.WOD1|intcomma }}</td>
+                        
+                        <td class="highlight">{{ demand_plan.FY26.WOD1|intcomma }}</td>
+                    </tr>
+                    <tr>
+                        <td class="row-label">Chilca</td>
+                        <td>1,466</td>
+                        <td class="highlight">900</td>
+                        
+                        <td class="highlight">{{ pour_plan.FY26.CHI1|intcomma }}</td>
+                        
+                        <td class="highlight">{{ demand_plan.FY26.CHI1|intcomma }}</td>
+                    </tr>
+                    <tr class="total-row">
+                        <td>Total Castings</td>
+                        <td>74,055</td>
+                        <td>92,278</td>
+                        
+                        <td>72,254</td>
+                        
+                        <td>65,534</td>
+                    </tr>
+                    <tr>
+                        <td class="row-label">Outsource</td>
+                        <td>8,672</td>
+                        <td></td>
+                        
+                        <td class="highlight">11,182</td>
+                        
+                        <td class="highlight">11,182</td>
+                    </tr>
+                </tbody>
+            </table>
         </div>
+        <!-- FY27 Tab -->
         <div class="tab-pane fade p-3" id="fy27" role="tabpanel" aria-labelledby="fy27-tab">
-            <div class="tab-pane fade show active p-3" id="fy27" role="tabpanel" aria-labelledby="fy27-tab">
-                <!-- FY25 table structure -->
-                <style>
-                    .ct-table th,
-                    .ct-table td {
-                        text-align: center;
-                        vertical-align: middle;
-                        border: 1px solid #888;
-                        padding: 6px 10px;
-                    }
-
-                    .ct-table th {
-                        background: #e9ecef;
-                    }
-
-                    .ct-table .row-label {
-                        background: #f5f5f5;
-                        font-weight: bold;
-                        text-align: left;
-                    }
-
-                    .ct-table .total-row {
-                        background: #f0f0f0;
-                        font-weight: bold;
-                    }
-
-                    .ct-table .highlight {
-                        background: #d3d3d3;
-                    }
-                </style>
-                <table class="table ct-table" style="width:auto; min-width:900px;">
-                    <thead>
-                        <tr>
-                            <th></th>
-                            <th>FY25 Budget</th>
-                            <th>Available Capacity</th>
-                            <th>Previous Pour Plan</th>
-                            <th>Current Pour Plan</th>
-                            <th>Previous Demand Plan</th>
-                            <th>Current Demand Plan (inv)</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <tr>
-                            <td class="row-label">Mt Joli</td>
-                            <td>21,865</td>
-                            <td class="highlight">30,976</td>
-                            <td class="highlight">20,276</td>
-                            <td class="highlight">19,234</td>
-                            <td class="highlight">18,254</td>
-                            <td class="highlight">17,377</td>
-                        </tr>
-                        <tr>
-                            <td class="row-label">Coimbatore</td>
-                            <td>20,763</td>
-                            <td class="highlight">25,214</td>
-                            <td class="highlight">19,770</td>
-                            <td class="highlight">19,821</td>
-                            <td class="highlight">18,161</td>
-                            <td class="highlight">18,551</td>
-                        </tr>
-                        <tr>
-                            <td class="row-label">Xuzhou</td>
-                            <td>16,531</td>
-                            <td class="highlight">21,006</td>
-                            <td class="highlight">20,095</td>
-                            <td class="highlight">20,547</td>
-                            <td class="highlight">16,600</td>
-                            <td class="highlight">17,397</td>
-                        </tr>
-                        <tr>
-                            <td class="row-label">Merlimau</td>
-                            <td>5,883</td>
-                            <td class="highlight">6,973</td>
-                            <td class="highlight">4,963</td>
-                            <td class="highlight">4,736</td>
-                            <td class="highlight">4,402</td>
-                            <td class="highlight">4,585</td>
-                        </tr>
-                        <tr>
-                            <td class="row-label">Wundowie</td>
-                            <td>3,754</td>
-                            <td class="highlight">3,492</td>
-                            <td class="highlight">3,446</td>
-                            <td class="highlight">3,356</td>
-                            <td class="highlight">2,925</td>
-                            <td class="highlight">3,242</td>
-                        </tr>
-                        <tr>
-                            <td class="row-label">Wodonga</td>
-                            <td>3,793</td>
-                            <td class="highlight">3,717</td>
-                            <td class="highlight">3,717</td>
-                            <td class="highlight">3,750</td>
-                            <td class="highlight">2,890</td>
-                            <td class="highlight">2,721</td>
-                        </tr>
-                        <tr>
-                            <td class="row-label">Chilca</td>
-                            <td>1,466</td>
-                            <td class="highlight">900</td>
-                            <td class="highlight">810</td>
-                            <td class="highlight">810</td>
-                            <td class="highlight">426</td>
-                            <td class="highlight">426</td>
-                        </tr>
-                        <tr class="total-row">
-                            <td>Total Castings</td>
-                            <td>74,055</td>
-                            <td>92,278</td>
-                            <td>73,076</td>
-                            <td>72,254</td>
-                            <td>64,894</td>
-                            <td>65,534</td>
-                        </tr>
-                        <tr>
-                            <td class="row-label">Outsource</td>
-                            <td>8,672</td>
-                            <td></td>
-                            <td class="highlight">10,151</td>
-                            <td class="highlight">11,182</td>
-                            <td class="highlight">10,572</td>
-                            <td class="highlight">11,182</td>
-                        </tr>
-                    </tbody>
-                </table>
-                <div class="row mb-2">
-                    <div class="col-md-3">
-                        <div class="p-2 border text-center highlight">Bassendean</div>
-                    </div>
-                    <div class="col-md-9 d-flex flex-wrap">
-                        <div class="p-2 border text-center highlight m-1">85,844K<br>COGS</div>
-                        <div class="p-2 border text-center highlight m-1">85,844K<br>COGS</div>
-                        <div class="p-2 border text-center highlight m-1">85,844K<br>COGS</div>
-                        <div class="p-2 border text-center highlight m-1">81,410K<br>COGS</div>
-                        <div class="p-2 border text-center highlight m-1">83,073K<br>COGS</div>
-                    </div>
-                </div>
-                <div class="row mb-2">
-                    <div class="col-md-3">
-                        <div class="p-2 border text-center highlight">Buckets ex-work</div>
-                    </div>
-                </div>
-                <div class="row mb-2">
-                    <div class="col-md-3">
-                        <div class="p-2 border text-center highlight">Dump Body</div>
-                    </div>
-                </div>
-                <div class="row mb-2">
-                    <div class="col-md-3">
-                        <div class="p-2 border text-center highlight">Ore Cars</div>
-                    </div>
-                </div>
-                <div class="row mb-2">
-                    <div class="col-md-4">
-                        <div class="p-2 border text-center highlight">Buckets<br>159</div>
-                    </div>
-                    <div class="col-md-4">
-                        <div class="p-2 border text-center highlight">TTrays<br>17</div>
-                    </div>
-                    <div class="col-md-4">
-                        <div class="p-2 border text-center highlight">Wagon<br>20</div>
-                    </div>
-                </div>
-                <div class="row mb-2">
-                    <div class="col-md-4">
-                        <div class="p-2 border text-center highlight">Buckets<br>138</div>
-                    </div>
-                    <div class="col-md-4">
-                        <div class="p-2 border text-center highlight">TTrays<br>13</div>
-                    </div>
-                </div>
-            </div>
+            <table class="table ct-table" style="width:auto; min-width:900px;">
+                <thead>
+                    <tr>
+                        <th></th>
+                        <th>FY27 Budget</th>
+                        <th>Available Capacity</th>
+                        
+                        <th>Current Pour Plan</th>
+                        
+                        <th>Current Demand Plan (inv)</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td class="row-label">Mt Joli</td>
+                        <td>21,865</td>
+                        <td class="highlight">30,976</td>
+                        
+                        <td class="highlight">{{ pour_plan.FY27.MTJ1|intcomma }}</td>
+                        
+                        <td class="highlight">
+                          <span
+                            class="popover-demand"
+                            data-fy="FY27"
+                            data-site="MTJ1"
+                            tabindex="0"
+                            data-bs-toggle="popover"
+                            data-bs-trigger="hover focus"
+                            data-bs-html="true">
+                            {{ demand_plan.FY27.MTJ1|intcomma }}
+                          </span>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td class="row-label">Coimbatore</td>
+                        <td>20,763</td>
+                        <td class="highlight">25,214</td>
+                        
+                        <td class="highlight">{{ pour_plan.FY27.COI2|intcomma }}</td>
+                        
+                        <td class="highlight">{{ demand_plan.FY27.COI2|intcomma }}</td>
+                    </tr>
+                    <tr>
+                        <td class="row-label">Xuzhou</td>
+                        <td>16,531</td>
+                        <td class="highlight">21,006</td>
+                        
+                        <td class="highlight">{{ pour_plan.FY27.XUZ1|intcomma }}</td>
+                        
+                        <td class="highlight">{{ demand_plan.FY27.XUZ1|intcomma }}</td>
+                    </tr>
+                    <tr>
+                        <td class="row-label">Merlimau</td>
+                        <td>5,883</td>
+                        <td class="highlight">6,973</td>
+                        
+                        <td class="highlight">{{ pour_plan.FY27.MER1|intcomma }}</td>
+                        
+                        <td class="highlight">{{ demand_plan.FY27.MER1|intcomma }}</td>
+                    </tr>
+                    <tr>
+                        <td class="row-label">Wundowie</td>
+                        <td>3,754</td>
+                        <td class="highlight">3,492</td>
+                        
+                        <td class="highlight">{{ pour_plan.FY27.WUN1|intcomma }}</td>
+                        
+                        <td class="highlight">{{ demand_plan.FY27.WUN1|intcomma }}</td>
+                    </tr>
+                    <tr>
+                        <td class="row-label">Wodonga</td>
+                        <td>3,793</td>
+                        <td class="highlight">3,717</td>
+                        
+                        <td class="highlight">{{ pour_plan.FY27.WOD1|intcomma }}</td>
+                        
+                        <td class="highlight">{{ demand_plan.FY27.WOD1|intcomma }}</td>
+                    </tr>
+                    <tr>
+                        <td class="row-label">Chilca</td>
+                        <td>1,466</td>
+                        <td class="highlight">900</td>
+                        
+                        <td class="highlight">{{ pour_plan.FY27.CHI1|intcomma }}</td>
+                        
+                        <td class="highlight">{{ demand_plan.FY27.CHI1|intcomma }}</td>
+                    </tr>
+                    <tr class="total-row">
+                        <td>Total Castings</td>
+                        <td>74,055</td>
+                        <td>92,278</td>
+                        
+                        <td>72,254</td>
+                        
+                        <td>65,534</td>
+                    </tr>
+                    <tr>
+                        <td class="row-label">Outsource</td>
+                        <td>8,672</td>
+                        <td></td>
+                        
+                        <td class="highlight">11,182</td>
+                        
+                        <td class="highlight">11,182</td>
+                    </tr>
+                </tbody>
+            </table>
         </div>
     </div>
 </div>
+
+<script src="{% static 'js/bootstrap.bundle.min.js' %}"></script>
+<script>
+window.monthlyTableHtml = JSON.parse('{{ monthly_table_html|escapejs }}');
+</script>
+<script>
+function initPopovers() {
+  document.querySelectorAll('.popover-demand').forEach(function(el) {
+    // Dispose any existing popover to avoid duplicates
+    if (el._popoverInstance) {
+      el._popoverInstance.dispose();
+    }
+    var fy = el.getAttribute('data-fy');
+    var site = el.getAttribute('data-site');
+    var tableHtml = window.monthlyTableHtml[fy][site];
+    el._popoverInstance = new bootstrap.Popover(el, {
+      html: true,
+      trigger: 'hover focus',
+      content: tableHtml
+    });
+  });
+}
+document.addEventListener('DOMContentLoaded', function () {
+  initPopovers();
+  // Re-initialize popovers when a tab is shown
+  document.querySelectorAll('a[data-bs-toggle="tab"], button[data-bs-toggle="tab"]').forEach(function(tab) {
+    tab.addEventListener('shown.bs.tab', function () {
+      initPopovers();
+    });
+  });
+});
+</script>
+<script>
+console.log(Object.keys(window.monthlyTableHtml)); // Should show FY25, FY26, FY27
+console.log(Object.keys(window.monthlyTableHtml["FY25"])); // Should show MTJ1, COI2, etc.
+</script>
+</body>
+</html>

@@ -11,9 +11,29 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css">
 </head>
-
+{% if messages %}
+  <div class="container mt-2">
+    {% for message in messages %}
+      <div class="alert alert-{{ message.tags }}">{{ message }}</div>
+    {% endfor %}
+  </div>
+{% endif %}
 <body>
     <div class="container mt-3">
+        <div class="d-flex justify-content-start mb-3">
+            <form method="post" action="{% url 'manual_optimize_product' version=version %}" class="mr-2">
+                {% csrf_token %}
+                <button type="submit" class="btn btn-primary">Manual Optimize Product</button>
+            </form>
+            <form method="post" action="{% url 'balance_hard_green_sand' version=version %}" class="mr-2">
+                {% csrf_token %}
+                <button type="submit" class="btn btn-secondary">Balance Hard &amp; Green Sand</button>
+            </form>
+            <form method="post" action="{% url 'create_balanced_pour_plan' version=version %}">
+                {% csrf_token %}
+                <button type="submit" class="btn btn-success">Create Balanced Pour Plan</button>
+            </form>
+        </div>
         <div class="alert alert-info" role="alert">
             <strong>Version:</strong> {{ version }}
         </div>

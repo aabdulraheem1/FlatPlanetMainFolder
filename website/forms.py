@@ -114,7 +114,7 @@ class MasterDataPlanForm(forms.ModelForm):
     Month = forms.ChoiceField(required=False)
 
     # Only allow these plant codes
-    FOUNDRY_CODES = ['COI2', 'MTJ1', 'XUZ1', 'WOD1', 'WUN1', 'MER1']
+    FOUNDRY_CODES = ['COI2', 'MTJ1', 'XUZ1', 'WOD1', 'WUN1', 'MER1','CHI1',]
 
     Foundry = forms.ModelChoiceField(
         queryset=MasterDataPlantModel.objects.filter(SiteName__in=FOUNDRY_CODES),

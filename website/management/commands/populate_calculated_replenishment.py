@@ -81,29 +81,18 @@ class Command(BaseCommand):
             period = forecast['Period_AU']
             total_qty = forecast['total_qty'] or 0
 
-            # Use cached site lookup
-            site = self._get_site_cached(
-                scenario.version, product, plant_data_map,
-                order_book_map, production_map, supplier_map
-            )
-            if not site:
-                print(f"SKIP: No site for product={product}, version={scenario.version}")
-                continue
-
             # --- Shipping Date Calculation Logic ---
             forecast_region = forecast.get('Forecast_Region')
             customer_code = forecast.get('Customer_code')
 
-            # Filter freight by version, region, and site
             freight = None
-            if forecast_region and site:
+            if forecast_region:
+                # site is not available yet, so skip site filter here
                 freight = MasterDataFreightModel.objects.filter(
                     version=scenario,
-                    ForecastRegion=forecast_region,
-                    ManufacturingSite_id=site.pk
+                    ForecastRegion=forecast_region
                 ).first()
 
-            # Filter incoterm by version and customer code
             incoterm = None
             if customer_code:
                 incoterm_obj = MasterdataIncoTermsModel.objects.filter(
@@ -126,6 +115,26 @@ class Command(BaseCommand):
                 else:
                     shipping_date = period
             # --- End Shipping Date Calculation Logic ---
+           
+
+            site = self._get_site_cached(
+                scenario.version, product, plant_data_map,
+                order_book_map, production_map, supplier_map,
+                shipping_date=shipping_date
+            )
+            if not site:
+                print(f"SKIP: No site for product={product}, version={scenario.version}")
+                continue
+
+              # Ensure shipping_date is not before inventory snapshot date
+            inventory_snapshot = MasterDataInventory.objects.filter(
+                version=scenario.version,
+                product=product,
+                site=site
+            ).order_by('date_of_snapshot').first()
+            
+            if inventory_snapshot and shipping_date < inventory_snapshot.date_of_snapshot:
+                shipping_date = inventory_snapshot.date_of_snapshot
 
             inventory = inventory_lookup.get((product, location), {})
             onhand_stock = inventory.get('onhand', 0)
@@ -180,28 +189,46 @@ class Command(BaseCommand):
                 return location.split("-", 1)[1][:4]
         return location
 
-    def _get_site_cached(self, version, product, plant_data_map, order_book_map, production_map, supplier_map):
+    def _get_site_cached(
+        self, version, product, plant_data_map, order_book_map, production_map, supplier_map, shipping_date=None
+    ):
         # OrderBook
         site_name = order_book_map.get((version, product))
-        if site_name:
-            return plant_data_map.get(site_name)
+        site = plant_data_map.get(site_name) if site_name else None
+
         # Production
-        foundry = production_map.get((version, product))
-        if foundry:
-            return plant_data_map.get(foundry)
+        if not site:
+            foundry = production_map.get((version, product))
+            site = plant_data_map.get(foundry) if foundry else None
+
         # Supplier
-        vendor_id = supplier_map.get((version, product))
-        if vendor_id:
-            vendor_to_site_mapping = {
-                "MTJ1": "MTJ1", "COI2": "COI2", "XUZ1": "XUZ1",
-                "MER1": "MER1", "WOD1": "WOD1", "CHI1": "CHI1",
-            }
-            if vendor_id in vendor_to_site_mapping:
-                return plant_data_map.get(vendor_id)
-            excluded_vendor_ids = {
-                "000000", "BKAU03", "BKCA01", "BKCL01", "BKCN01", "BKCN02",
-                "BKID02", "BKIN01", "BKMY01", "BKPE01", "BKUS01", "BKZA01"
-            }
-            if vendor_id not in excluded_vendor_ids:
-                return plant_data_map.get(vendor_id)
-        return None
+        if not site:
+            vendor_id = supplier_map.get((version, product))
+            if vendor_id:
+                vendor_to_site_mapping = {
+                    "MTJ1", "COI2", "XUZ1", "MER1", "WOD1", "CHI1"
+                }
+                excluded_vendor_ids = {
+                    "000000", "BKAU03", "BKCA01", "BKCL01", "BKCN01", "BKCN02",
+                    "BKID02", "BKIN01", "BKMY01", "BKPE01", "BKUS01", "BKZA01"
+                }
+                if vendor_id in vendor_to_site_mapping:
+                    site = plant_data_map.get(vendor_id)
+                elif vendor_id not in excluded_vendor_ids:
+                    site = plant_data_map.get(vendor_id)
+
+        # Overwrite with manually assigned site if available
+        if shipping_date:
+            from website.models import MasterDataManuallyAssignProductionRequirement, MasterDataProductModel, MasterDataPlantModel, scenarios
+            try:
+                manual = MasterDataManuallyAssignProductionRequirement.objects.filter(
+                    version__version=version,
+                    Product__Product=product,
+                    ShippingDate=shipping_date
+                ).select_related('Site').first()
+                if manual and manual.Site:
+                    site = manual.Site
+            except Exception:
+                pass
+
+        return site

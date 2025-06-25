@@ -400,7 +400,17 @@ def edit_scenario(request, version):
     user_name = request.user.username
     scenario = get_object_or_404(scenarios, version=version)
 
-    # Check if there is data related to the scenario
+    # Only the creator can edit
+    if user_name != scenario.created_by:
+        if not scenario.open_to_update:
+            messages.error(request, "This scenario is locked and cannot be updated or deleted.")
+            return redirect('list_scenarios')
+        else:
+            messages.error(request, "Only the creator can edit this scenario.")
+            return redirect('list_scenarios')
+
+
+    
     product_allocation_order_book = MasterDataOrderBook.objects.filter(version=scenario).exists()
     production_allocation_pouring_history = MasterDataHistoryOfProductionModel.objects.filter(version=scenario).exists()
 
@@ -705,159 +715,451 @@ def get_dress_mass_data(site_name, version):
         dress_mass_data.append({'month': record.Month, 'dress_mass': dress_mass})
     return dress_mass_data
 
+from collections import defaultdict
+from django.db.models.functions import TruncMonth
+from django.db.models import Sum
+import json
+
+from collections import defaultdict
+from django.db.models.functions import TruncMonth
+from django.db.models import Sum
+import json
+from django.shortcuts import get_object_or_404, render
+from django.contrib.auth.decorators import login_required
+from .models import (
+    scenarios,
+    AggregatedForecast,
+    CalculatedProductionModel,
+    MasterDataPlan,
+)
+
+def get_dress_mass_data(site_name, version):
+    queryset = MasterDataPlan.objects.filter(Foundry__SiteName=site_name, version=version).order_by('Month')
+    dress_mass_data = []
+    for record in queryset:
+        dress_mass = (
+            record.AvailableDays
+            * record.heatsperdays
+            * record.TonsPerHeat
+            * record.Yield
+            * (1 - (record.WasterPercentage or 0) / 100)
+        ) if record.AvailableDays and record.heatsperdays and record.TonsPerHeat and record.Yield else 0
+        dress_mass_data.append({'month': record.Month, 'dress_mass': dress_mass})
+    return dress_mass_data
+
+from datetime import date
+from django.db.models import Sum
+from django.utils.safestring import mark_safe
+import json
 @login_required
 def review_scenario(request, version):
     user_name = request.user.username
     scenario = get_object_or_404(scenarios, version=version)
 
-    def get_production_data(site_name):
+    def get_production_data_by_group(site_name, scenario_version):
         queryset = (
-            CalculatedProductionModel.objects.filter(site__SiteName=site_name, version=scenario.version)
+            CalculatedProductionModel.objects
+            .filter(site__SiteName=site_name, version=scenario_version)
             .annotate(month=TruncMonth('pouring_date'))
-            .values('month')
+            .values('month', 'product__ProductGroup')
             .annotate(total_tonnes=Sum('tonnes'))
-            .order_by('month')
+            .order_by('month', 'product__ProductGroup')
         )
-        return queryset
-
-    def get_forecast_data():
-        queryset = (
-            AggregatedForecast.objects.filter(version=version)
-            .annotate(month=TruncMonth('period'))
-            .values('month', 'parent_product_group_description')
-            .annotate(total_tonnes=Sum('tonnes'))
-            .order_by('month', 'parent_product_group_description')
-        )
-        return queryset
-
-    def prepare_forecast_chart_data(queryset):
+        # Build data structure: {group: {month: total}}, labels: [months]
         data = {}
+        labels_set = set()
         for entry in queryset:
             month = entry['month'].strftime('%Y-%m')
-            group = entry['parent_product_group_description'] or 'Unknown'
-            if group not in data:
-                data[group] = {'labels': [], 'tons': []}
-            if month not in data[group]['labels']:
-                data[group]['labels'].append(month)
-                data[group]['tons'].append(entry['total_tonnes'])
-        return data
+            group = entry['product__ProductGroup'] or 'Unknown'
+            labels_set.add(month)
+            data.setdefault(group, {})[month] = entry['total_tonnes']
+        labels = sorted(labels_set)
+        # Filter out product groups with all zero totals
+        filtered_data = {}
+        for group, month_dict in data.items():
+            values = [month_dict.get(label, 0) for label in labels]
+            if any(v != 0 for v in values):
+                filtered_data[group] = month_dict
+        # Convert to chart.js format
+        datasets = []
+        colors = [
+            'rgba(75,192,192,0.6)', 'rgba(255,99,132,0.6)', 'rgba(255,206,86,0.6)',
+            'rgba(54,162,235,0.6)', 'rgba(153,102,255,0.6)', 'rgba(255,159,64,0.6)'
+        ]
+        for idx, (group, month_dict) in enumerate(filtered_data.items()):
+            datasets.append({
+                'label': group,
+                'data': [month_dict.get(label, 0) for label in labels],
+                'backgroundColor': colors[idx % len(colors)],
+                'borderColor': colors[idx % len(colors)],
+                'borderWidth': 1,
+                'stack': 'tonnes'
+            })
+        return {'labels': labels, 'datasets': datasets}
 
-    def prepare_parent_group_data(queryset):
-        data = {}
-        for entry in queryset:
-            month = entry['month'].strftime('%Y-%m')
-            group = entry['parent_product_group_description'] or 'Unknown'
-            if group not in data:
-                data[group] = {'labels': [], 'tons': []}
-            if month not in data[group]['labels']:
-                data[group]['labels'].append(month)
-                data[group]['tons'].append(entry['total_tonnes'])
-        return data
-
-    def prepare_production_chart_data(queryset):
-        labels = [entry['month'].strftime('%Y-%m') for entry in queryset]
-        tons = [entry['total_tonnes'] for entry in queryset]
-        return {'labels': labels, 'tons': tons}
-
-    def prepare_combined_chart_data(production_data, dress_mass_data):
-        labels = [entry['month'].strftime('%Y-%m') for entry in production_data]
-        tonnes = [entry['total_tonnes'] for entry in production_data]
-        dress_mass = {entry['month'].strftime('%Y-%m'): entry['dress_mass'] for entry in dress_mass_data}
-        dress_mass_values = [dress_mass.get(label, 0) for label in labels]
-        return {'labels': labels, 'tons': tonnes, 'dress_mass': dress_mass_values}
-
-    # --- Top 10 products per month for each foundry ---
-    def get_top_products_per_month(site_name):
+    def get_top_products_per_month_by_group(site_name):
         queryset = (
             CalculatedProductionModel.objects
             .filter(site__SiteName=site_name, version=scenario.version)
             .annotate(month=TruncMonth('pouring_date'))
-            .values('month', 'product__Product')
+            .values('month', 'product__ProductGroup', 'product__Product')
             .annotate(total_tonnes=Sum('tonnes'))
-            .order_by('month', '-total_tonnes')
+            .order_by('month', 'product__ProductGroup', '-total_tonnes')
         )
-        month_products = defaultdict(list)
+        # Structure: {month: {group: [(product, tonnes), ...]}}
+        month_group_products = defaultdict(lambda: defaultdict(list))
         for entry in queryset:
             month = entry['month'].strftime('%Y-%m')
-            product_name = entry['product__Product']
+            group = entry['product__ProductGroup'] or 'Unknown'
+            product = entry['product__Product']
             tonnes = entry['total_tonnes']
-            month_products[month].append((product_name, tonnes))
-        top_products = {}
-        for month, products in month_products.items():
-            products_sorted = sorted(products, key=lambda x: x[1], reverse=True)[:10]
-            top_products[month] = products_sorted
-        return top_products
+            month_group_products[month][group].append((product, tonnes))
+        # Keep only top 10 per group
+        for month in month_group_products:
+            for group in month_group_products[month]:
+                month_group_products[month][group] = sorted(
+                    month_group_products[month][group], key=lambda x: x[1], reverse=True
+                )[:10]
+        return month_group_products
 
     # Data for charts
-    mt_joli_data = get_production_data('MTJ1')
+    mt_joli_data = get_production_data_by_group('MTJ1', scenario.version)
     mt_joli_dress_mass_data = get_dress_mass_data('MTJ1', scenario.version)
-    coimbatore_data = get_production_data('COI2')
+    coimbatore_data = get_production_data_by_group('COI2', scenario.version)
     coimbatore_dress_mass_data = get_dress_mass_data('COI2', scenario.version)
-    xuzhou_data = get_production_data('XUZ1')
+    xuzhou_data = get_production_data_by_group('XUZ1', scenario.version)
     xuzhou_dress_mass_data = get_dress_mass_data('XUZ1', scenario.version)
-    merlimau_data = get_production_data('MER1')
+    merlimau_data = get_production_data_by_group('MER1', scenario.version)
     merlimau_dress_mass_data = get_dress_mass_data('MER1', scenario.version)
-    wodonga_data = get_production_data('WON1')
-    wundowie_data = get_production_data('WUN1')
-    chilcal_data = get_production_data('CHILCA')
+    # --- WOD1 ---
+    wod1_data = get_production_data_by_group('WOD1', scenario.version)
+    wod1_chart_data = wod1_data
+    wod1_top_products = get_top_products_per_month_by_group('WOD1')
+    wod1_top_products_json = json.dumps(wod1_top_products)
 
-    mt_joli_chart_data = prepare_combined_chart_data(mt_joli_data, mt_joli_dress_mass_data)
-    coimbatore_chart_data = prepare_combined_chart_data(coimbatore_data, coimbatore_dress_mass_data)
-    xuzhou_chart_data = prepare_combined_chart_data(xuzhou_data, xuzhou_dress_mass_data)
-    merlimau_chart_data = prepare_combined_chart_data(merlimau_data, merlimau_dress_mass_data)
+# --- WUN1 ---
+    wun1_data = get_production_data_by_group('WUN1', scenario.version)
+    wun1_chart_data = wun1_data
+    wun1_top_products = get_top_products_per_month_by_group('WUN1')
+    wun1_top_products_json = json.dumps(wun1_top_products)
 
-    supplier_a_data = get_production_data('HBZJBF02')
-    supplier_a_chart_data = prepare_production_chart_data(supplier_a_data)
-    supplier_a_top_products = get_top_products_per_month('HBZJBF02')
-    supplier_a_top_products_json = json.dumps(supplier_a_top_products)
+    mt_joli_chart_data = mt_joli_data
+    coimbatore_chart_data = coimbatore_data
+    xuzhou_chart_data = xuzhou_data
+    merlimau_chart_data = merlimau_data
 
-    # Top 10 products per month for each foundry (JSON for JS)
-    mt_joli_top_products = get_top_products_per_month('MTJ1')
+    # Top 10 products per month by group for each foundry
+    mt_joli_top_products = get_top_products_per_month_by_group('MTJ1')
     mt_joli_top_products_json = json.dumps(mt_joli_top_products)
-    coimbatore_top_products = get_top_products_per_month('COI2')
+    coimbatore_top_products = get_top_products_per_month_by_group('COI2')
     coimbatore_top_products_json = json.dumps(coimbatore_top_products)
-    xuzhou_top_products = get_top_products_per_month('XUZ1')
+    xuzhou_top_products = get_top_products_per_month_by_group('XUZ1')
     xuzhou_top_products_json = json.dumps(xuzhou_top_products)
-    merlimau_top_products = get_top_products_per_month('MER1')
+    merlimau_top_products = get_top_products_per_month_by_group('MER1')
     merlimau_top_products_json = json.dumps(merlimau_top_products)
 
-    forecast_data = get_forecast_data()
-    forecast_chart_data = prepare_forecast_chart_data(forecast_data)
-    parent_product_group_data = (
-        AggregatedForecast.objects.filter(version=version)
-        .annotate(month=TruncMonth('period'))
-        .values('month', 'parent_product_group_description')
-        .annotate(total_tonnes=Sum('tonnes'))
-        .order_by('month', 'parent_product_group_description')
-    )
-    chart_data_parent_product_group = prepare_parent_group_data(parent_product_group_data)
+    def get_supplier_data_by_group(site_name, scenario_version):
+        queryset = (
+            CalculatedProductionModel.objects
+            .filter(site__SiteName=site_name, version=scenario_version)
+            .annotate(month=TruncMonth('pouring_date'))
+            .values('month', 'product__ProductGroup')
+            .annotate(total_tonnes=Sum('tonnes'))
+            .order_by('month', 'product__ProductGroup')
+        )
+        data = {}
+        labels_set = set()
+        for entry in queryset:
+            month = entry['month'].strftime('%Y-%m')
+            group = entry['product__ProductGroup'] or 'Unknown'
+            labels_set.add(month)
+            data.setdefault(group, {})[month] = entry['total_tonnes']
+        labels = sorted(labels_set)
+        # Filter out product groups with all zero totals
+        filtered_data = {}
+        for group, month_dict in data.items():
+            values = [month_dict.get(label, 0) for label in labels]
+            if any(v != 0 for v in values):
+                filtered_data[group] = month_dict
+        # Convert to chart.js format
+        datasets = []
+        colors = [
+            'rgba(75,192,192,0.6)', 'rgba(255,99,132,0.6)', 'rgba(255,206,86,0.6)',
+            'rgba(54,162,235,0.6)', 'rgba(153,102,255,0.6)', 'rgba(255,159,64,0.6)'
+        ]
+        for idx, (group, month_dict) in enumerate(filtered_data.items()):
+            datasets.append({
+                'label': group,
+                'data': [month_dict.get(label, 0) for label in labels],
+                'backgroundColor': colors[idx % len(colors)],
+                'borderColor': colors[idx % len(colors)],
+                'borderWidth': 1,
+                'stack': 'tonnes'
+            })
+        return {'labels': labels, 'datasets': datasets}
+
+    def get_supplier_top_products_by_group(site_name, scenario_version):
+        queryset = (
+            CalculatedProductionModel.objects
+            .filter(site__SiteName=site_name, version=scenario_version)
+            .annotate(month=TruncMonth('pouring_date'))
+            .values('month', 'product__ProductGroup', 'product__Product')
+            .annotate(total_tonnes=Sum('tonnes'))
+            .order_by('month', 'product__ProductGroup', '-total_tonnes')
+        )
+        month_group_products = defaultdict(lambda: defaultdict(list))
+        for entry in queryset:
+            month = entry['month'].strftime('%Y-%m')
+            group = entry['product__ProductGroup'] or 'Unknown'
+            product = entry['product__Product']
+            tonnes = entry['total_tonnes']
+            month_group_products[month][group].append((product, tonnes))
+        # Keep only top 10 per group
+        for month in month_group_products:
+            for group in month_group_products[month]:
+                month_group_products[month][group] = sorted(
+                    month_group_products[month][group], key=lambda x: x[1], reverse=True
+                )[:10]
+        return month_group_products
+
+    # In your view:
+    supplier_a_chart_data = get_supplier_data_by_group('HBZJBF02', scenario.version)
+    supplier_a_top_products = get_supplier_top_products_by_group('HBZJBF02', scenario.version)
+    supplier_a_top_products_json = json.dumps(supplier_a_top_products)
+
+    # Add this inside your review_scenario view, before the context dict
+    sites = ["MTJ1", "COI2", "XUZ1", "MER1", "WUN1", "WOD1", "CHI1",]
+    fy_ranges = {
+        "FY25": (date(2025, 4, 1), date(2026, 3, 31)),
+        "FY26": (date(2026, 4, 1), date(2027, 3, 31)),
+        "FY27": (date(2027, 4, 1), date(2028, 3, 31)),
+    }
+
+    demand_plan = {}
+    for fy, (start, end) in fy_ranges.items():
+        demand_plan[fy] = {}
+        for site in sites:
+            total = CalculatedProductionModel.objects.filter(
+                version=scenario,
+                site=site,  # or site__SiteName=site if ForeignKey
+                pouring_date__gte=start,
+                pouring_date__lte=end
+            ).aggregate(total=Sum('tonnes'))['total'] or 0
+            demand_plan[fy][site] = round(total)
+
+    from django.utils.safestring import mark_safe
+
+    def build_monthly_table(rows):
+        table = "<table class='table table-sm table-bordered mb-0'><tr><th>Month</th><th>Tonnes</th></tr>"
+        for row in rows:
+            table += f"<tr><td>{row['month'].strftime('%b %Y')}</td><td>{row['total']:,}</td></tr>"
+        table += "</table>"
+        # Remove newlines and escape double quotes
+        table = table.replace('\n', '').replace('\r', '').replace('"', '&quot;')
+        return mark_safe(table)
+
+    monthly_plan = defaultdict(lambda: defaultdict(list))
+    for fy, (start, end) in fy_ranges.items():
+        for site in sites:
+            qs = (
+                CalculatedProductionModel.objects
+                .filter(
+                    version=scenario,
+                    site=site,
+                    pouring_date__gte=start,
+                    pouring_date__lte=end
+                )
+                .annotate(month=TruncMonth('pouring_date'))
+                .values('month')
+                .annotate(total=Sum('tonnes'))
+                .order_by('month')
+            )
+            monthly_plan[fy][site] = list(qs)
+
+    # ...existing code...
+
+    from django.db.models import Q
+
+    pour_plan = {}
+    for fy, (start, end) in fy_ranges.items():
+        pour_plan[fy] = {}
+        for site in sites:
+            # Get all plans for this site and FY
+            plans = MasterDataPlan.objects.filter(
+                version=scenario,
+                Foundry__SiteName=site,
+                Month__gte=start,
+                Month__lte=end
+            )
+            # Sum the PlanDressMass property for each plan
+            total = sum(plan.PlanDressMass for plan in plans)
+            pour_plan[fy][site] = round(total)
+
+ 
+
+    monthly_table_html = {}
+    for fy, (start, end) in fy_ranges.items():
+        monthly_table_html[fy] = {}
+        for site in sites:
+            qs = (
+                CalculatedProductionModel.objects
+                .filter(
+                    version=scenario,
+                    site=site,
+                    pouring_date__gte=start,
+                    pouring_date__lte=end
+                )
+                .annotate(month=TruncMonth('pouring_date'))
+                .values('month')
+                .annotate(total=Sum('tonnes'))
+                .order_by('month')
+            )
+            monthly_table_html[fy][site] = build_monthly_table(qs)
+
+    from datetime import datetime
+    from django.db.models import Q
+
+    from datetime import datetime
+
+    # --- Mt Joli ---
+    mt_joli_months = mt_joli_chart_data['labels']
+    mt_joli_monthly_pour_plan = []
+    for month in mt_joli_months:
+        month_date = datetime.strptime(month, "%Y-%m").date().replace(day=1)
+        if month_date.month == 12:
+            next_month = month_date.replace(year=month_date.year + 1, month=1, day=1)
+        else:
+            next_month = month_date.replace(month=month_date.month + 1, day=1)
+        plans = MasterDataPlan.objects.filter(
+            version=scenario,
+            Foundry__SiteName='MTJ1',
+            Month__gte=month_date,
+            Month__lt=next_month
+        )
+        value = sum(plan.PlanDressMass for plan in plans)
+        mt_joli_monthly_pour_plan.append(round(value))
+
+    # --- Coimbatore ---
+    coimbatore_months = coimbatore_chart_data['labels']
+    coimbatore_monthly_pour_plan = []
+    for month in coimbatore_months:
+        month_date = datetime.strptime(month, "%Y-%m").date().replace(day=1)
+        if month_date.month == 12:
+            next_month = month_date.replace(year=month_date.year + 1, month=1, day=1)
+        else:
+            next_month = month_date.replace(month=month_date.month + 1, day=1)
+        plans = MasterDataPlan.objects.filter(
+            version=scenario,
+            Foundry__SiteName='COI2',
+            Month__gte=month_date,
+            Month__lt=next_month
+        )
+        value = sum(plan.PlanDressMass for plan in plans)
+        coimbatore_monthly_pour_plan.append(round(value))
+
+    # --- Xuzhou ---
+    xuzhou_months = xuzhou_chart_data['labels']
+    xuzhou_monthly_pour_plan = []
+    for month in xuzhou_months:
+        month_date = datetime.strptime(month, "%Y-%m").date().replace(day=1)
+        if month_date.month == 12:
+            next_month = month_date.replace(year=month_date.year + 1, month=1, day=1)
+        else:
+            next_month = month_date.replace(month=month_date.month + 1, day=1)
+        plans = MasterDataPlan.objects.filter(
+            version=scenario,
+            Foundry__SiteName='XUZ1',
+            Month__gte=month_date,
+            Month__lt=next_month
+        )
+        value = sum(plan.PlanDressMass for plan in plans)
+        xuzhou_monthly_pour_plan.append(round(value))
+
+    # --- Merlimau ---
+    merlimau_months = merlimau_chart_data['labels']
+    merlimau_monthly_pour_plan = []
+    for month in merlimau_months:
+        month_date = datetime.strptime(month, "%Y-%m").date().replace(day=1)
+        if month_date.month == 12:
+            next_month = month_date.replace(year=month_date.year + 1, month=1, day=1)
+        else:
+            next_month = month_date.replace(month=month_date.month + 1, day=1)
+        plans = MasterDataPlan.objects.filter(
+            version=scenario,
+            Foundry__SiteName='MER1',
+            Month__gte=month_date,
+            Month__lt=next_month
+        )
+        value = sum(plan.PlanDressMass for plan in plans)
+        merlimau_monthly_pour_plan.append(round(value))
+
+    
+    wod1_months = wod1_chart_data['labels']
+    wod1_monthly_pour_plan = []
+    for month in wod1_months:
+        month_date = datetime.strptime(month, "%Y-%m").date().replace(day=1)
+        if month_date.month == 12:
+            next_month = month_date.replace(year=month_date.year + 1, month=1, day=1)
+        else:
+            next_month = month_date.replace(month=month_date.month + 1, day=1)
+        plans = MasterDataPlan.objects.filter(
+            version=scenario,
+            Foundry__SiteName='WOD1',
+            Month__gte=month_date,
+            Month__lt=next_month
+        )
+        value = sum(plan.PlanDressMass for plan in plans)
+        wod1_monthly_pour_plan.append(round(value))
+
+    # --- WUN1 ---
+    wun1_months = wun1_chart_data['labels']
+    wun1_monthly_pour_plan = []
+    for month in wun1_months:
+        month_date = datetime.strptime(month, "%Y-%m").date().replace(day=1)
+        if month_date.month == 12:
+            next_month = month_date.replace(year=month_date.year + 1, month=1, day=1)
+        else:
+            next_month = month_date.replace(month=month_date.month + 1, day=1)
+        plans = MasterDataPlan.objects.filter(
+            version=scenario,
+            Foundry__SiteName='WUN1',
+            Month__gte=month_date,
+            Month__lt=next_month
+        )
+        value = sum(plan.PlanDressMass for plan in plans)
+        wun1_monthly_pour_plan.append(round(value))
+    
 
     context = {
         'version': scenario.version,
         'user_name': user_name,
-        'forecast_chart_data': forecast_chart_data,
-        'chart_data_parent_product_group': chart_data_parent_product_group,
-        'mt_joli_data': prepare_production_chart_data(mt_joli_data),
         'mt_joli_chart_data': mt_joli_chart_data,
         'mt_joli_top_products_json': mt_joli_top_products_json,
-        'coimbatore_data': prepare_production_chart_data(coimbatore_data),
         'coimbatore_chart_data': coimbatore_chart_data,
         'coimbatore_top_products_json': coimbatore_top_products_json,
-        'xuzhou_data': prepare_production_chart_data(xuzhou_data),
         'xuzhou_chart_data': xuzhou_chart_data,
         'xuzhou_top_products_json': xuzhou_top_products_json,
-        'merlimau_data': prepare_production_chart_data(merlimau_data),
         'merlimau_chart_data': merlimau_chart_data,
         'merlimau_top_products_json': merlimau_top_products_json,
-        'wodonga_data': prepare_production_chart_data(wodonga_data),
-        'wundowie_data': prepare_production_chart_data(wundowie_data),
-        'chilcal_data': prepare_production_chart_data(chilcal_data),
-        'supplier_a_data': supplier_a_data,
         'supplier_a_chart_data': supplier_a_chart_data,
         'supplier_a_top_products_json': supplier_a_top_products_json,
-      
+        'demand_plan': demand_plan,
+        'monthly_plan': monthly_plan,
+        'monthly_table_html': mark_safe(json.dumps(monthly_table_html)),
+        'pour_plan': pour_plan,
+        'mt_joli_monthly_pour_plan': mt_joli_monthly_pour_plan,
+        'mt_joli_monthly_pour_plan': mt_joli_monthly_pour_plan,
+        'coimbatore_monthly_pour_plan': coimbatore_monthly_pour_plan,
+        'xuzhou_monthly_pour_plan': xuzhou_monthly_pour_plan,
+        'merlimau_monthly_pour_plan': merlimau_monthly_pour_plan,
+        'wod1_chart_data': wod1_chart_data,
+        'wod1_top_products_json': wod1_top_products_json,
+        'wod1_monthly_pour_plan': wod1_monthly_pour_plan,
+        'wun1_chart_data': wun1_chart_data,
+        'wun1_top_products_json': wun1_top_products_json,
+        'wun1_monthly_pour_plan': wun1_monthly_pour_plan,
     }
-
+    print("monthly_table_html:", monthly_table_html)
     return render(request, 'website/review_scenario.html', context)
 
 from django.db.models import Sum
@@ -2143,7 +2445,7 @@ def update_pour_plan_data(request, version):
     user_name = request.user.username
     scenario = scenarios.objects.get(version=version)
 
-    foundry_options = ['COI2', 'MTJ1', 'XUZ1', 'WOD1', 'WUN1', 'MER1']
+    foundry_options = ['COI2', 'MTJ1', 'XUZ1', 'WOD1', 'WUN1', 'MER1','CHI1',]
 
     plans = MasterDataPlan.objects.filter(version=scenario)
 
@@ -2941,3 +3243,138 @@ def add_manually_assign_production_requirement(request, version):
         'errors': errors,
         'user_name': user_name,
     })
+
+# ...existing code...
+
+from django.core.management import call_command
+from .models import CalcualtedReplenishmentModel, MasterDataPlantModel
+from django.core.paginator import Paginator
+from django.shortcuts import render, redirect
+from django.contrib.auth.decorators import login_required
+
+from django.contrib import messages
+
+from django.contrib import messages
+from django.core.paginator import Paginator
+from django.shortcuts import render, redirect
+from django.contrib.auth.decorators import login_required
+from .models import CalcualtedReplenishmentModel, MasterDataPlantModel
+
+@login_required
+def manual_optimize_product(request, version):
+    user_name = request.user.username
+    # Get filter values from GET
+    product_filter = request.GET.get('product', '').strip()
+    location_filter = request.GET.get('location', '').strip()
+    site_filter = request.GET.get('site', '').strip()
+    shipping_date_filter = request.GET.get('shipping_date', '').strip()
+
+    # Filter the queryset
+    replenishments_qs = CalcualtedReplenishmentModel.objects.filter(version__version=version)
+    if product_filter:
+        replenishments_qs = replenishments_qs.filter(Product__Product__icontains=product_filter)
+    if location_filter:
+        replenishments_qs = replenishments_qs.filter(Location__icontains=location_filter)
+    if site_filter:
+        replenishments_qs = replenishments_qs.filter(Site__SiteName__icontains=site_filter)
+    if shipping_date_filter:
+        replenishments_qs = replenishments_qs.filter(ShippingDate=shipping_date_filter)
+
+    sites = MasterDataPlantModel.objects.all()
+    paginator = Paginator(replenishments_qs, 20)  # Show 20 per page
+    page_number = request.GET.get('page')
+    page_obj = paginator.get_page(page_number)
+
+    if request.method == "POST" and "save_changes" in request.POST:
+        for row in page_obj.object_list:
+            qty = request.POST.get(f"qty_{row.id}")
+            site_id = request.POST.get(f"site_{row.id}")
+            shipping_date = request.POST.get(f"shipping_date_{row.id}")
+            split_qty = request.POST.get(f"split_qty_{row.id}")
+            split_site_id = request.POST.get(f"split_site_{row.id}")
+
+            changed = False
+
+            # --- Handle split logic first ---
+            if split_qty and split_site_id:
+                try:
+                    split_qty_val = float(split_qty)
+                except ValueError:
+                    split_qty_val = 0
+                if (
+                    split_qty_val > 0
+                    and split_site_id
+                    and split_site_id != ""
+                    and split_qty_val < row.ReplenishmentQty
+                ):
+                    # Subtract from original
+                    row.ReplenishmentQty -= split_qty_val
+                    row.save()
+                    # Create new row
+                    CalcualtedReplenishmentModel.objects.create(
+                        version=row.version,
+                        Product=row.Product,
+                        Location=row.Location,
+                        Site=MasterDataPlantModel.objects.get(pk=split_site_id),
+                        ShippingDate=row.ShippingDate,
+                        ReplenishmentQty=split_qty_val,
+                    )
+                    # After split, update qty variable to the new value for further checks
+                    if qty is not None:
+                        try:
+                            qty = float(qty)
+                        except ValueError:
+                            qty = row.ReplenishmentQty
+                    else:
+                        qty = row.ReplenishmentQty
+
+            # --- Handle normal field changes ---
+            if qty is not None and float(qty) != row.ReplenishmentQty:
+                row.ReplenishmentQty = float(qty)
+                changed = True
+            if site_id and str(row.Site_id) != site_id:
+                row.Site_id = site_id
+                changed = True
+            if shipping_date and str(row.ShippingDate) != shipping_date:
+                row.ShippingDate = shipping_date
+                changed = True
+            if changed:
+                row.save()
+
+            print(f"Processing row {row.id}: qty={qty}, site_id={site_id}, split_qty={split_qty}, split_site_id={split_site_id}, current_qty={row.ReplenishmentQty}")
+            print(f"Saved row {row.id} or created split.")
+
+        messages.success(request, "Changes and splits saved successfully!")
+
+        # Recalculate production for this scenario version
+        try:
+            call_command('populate_calculated_production', version)
+            messages.success(request, "Production recalculated successfully!")
+        except Exception as e:
+            messages.error(request, f"Error recalculating production: {e}")
+
+
+        return redirect('review_scenario', version=version)
+
+    return render(request, "website/manual_optimize_product.html", {
+        "version": version,
+        "sites": sites,
+        "page_obj": page_obj,
+        "replenishments": page_obj.object_list,
+        "product_filter": product_filter,
+        "location_filter": location_filter,
+        "site_filter": site_filter,
+        "shipping_date_filter": shipping_date_filter,
+        "user_name": user_name,
+    })
+
+@login_required
+def balance_hard_green_sand(request, version):
+    pass
+
+@login_required
+def create_balanced_pour_plan(request, version):
+    pass
+
+# ...existing code...
+

@@ -1,14 +1,13 @@
-<!-- Section 3: Supplier Tabs -->
 <div class="container mt-5">
     <h2>Supplier Review</h2>
     <ul class="nav nav-tabs" id="supplierTabs" role="tablist">
         <li class="nav-item">
             <a class="nav-link active" id="supplier-a-tab" data-toggle="tab" href="#supplier-a" role="tab"
-                aria-controls="supplier-a" aria-selected="true">Supplier A</a>
+                aria-controls="supplier-a" aria-selected="true">HBZJBF02</a>
         </li>
         <li class="nav-item">
             <a class="nav-link" id="supplier-b-tab" data-toggle="tab" href="#supplier-b" role="tab"
-                aria-controls="supplier-b" aria-selected="false">Supplier B</a>
+                aria-controls="supplier-b" aria-selected="false">NBHZSJ02</a>
         </li>
     </ul>
 
@@ -23,31 +22,24 @@
                 const supplierAData = {{ supplier_a_chart_data|safe }};
                 const supplierATopProducts = JSON.parse(document.getElementById('supplier-a-top-products-data').textContent);
                 const ctxSupplierA = document.getElementById('supplierAChart').getContext('2d');
-
                 new Chart(ctxSupplierA, {
                     type: 'bar',
                     data: {
                         labels: supplierAData.labels,
-                        datasets: [
-                            {
-                                label: 'Tonnes',
-                                data: supplierAData.tons.map(x => Math.round(x)),
-                                backgroundColor: 'rgba(75, 192, 192, 0.2)',
-                                borderColor: 'rgba(75, 192, 192, 1)',
-                                borderWidth: 1
-                            }
-                        ]
+                        datasets: supplierAData.datasets
                     },
                     options: {
                         responsive: true,
                         plugins: {
+                            legend: { display: true },
                             tooltip: {
                                 callbacks: {
                                     afterBody: function (context) {
+                                        const group = context[0].dataset.label;
                                         const month = context[0].label;
-                                        const top = supplierATopProducts[month];
-                                        if (!top) return '';
-                                        return 'Top 10 Products:\n' + top.map(
+                                        const topByGroup = supplierATopProducts[month] && supplierATopProducts[month][group];
+                                        if (!topByGroup || topByGroup.length === 0) return '';
+                                        return 'Top 10 Products in ' + group + ':\n' + topByGroup.map(
                                             (p, i) => `${i + 1}. ${p[0]}: ${parseInt(p[1])}`
                                         ).join('\n');
                                     }
@@ -56,16 +48,10 @@
                         },
                         scales: {
                             x: {
-                                title: {
-                                    display: true,
-                                    text: 'Month'
-                                }
+                                title: { display: true, text: 'Month' }
                             },
                             y: {
-                                title: {
-                                    display: true,
-                                    text: 'Tonnes'
-                                },
+                                title: { display: true, text: 'Tonnes' },
                                 beginAtZero: true
                             }
                         }

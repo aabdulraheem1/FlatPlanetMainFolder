@@ -16,13 +16,17 @@ class Command(BaseCommand):
 
     def add_arguments(self, parser):
         parser.add_argument(
-            'version',
+            'scenario_version',
             type=str,
             help="The version of the scenario to populate data for.",
         )
 
     def handle(self, *args, **kwargs):
-        version = kwargs['version']
+        version = kwargs['scenario_version']
+
+        if not version:
+            self.stdout.write(self.style.ERROR("No version argument provided."))
+            return
 
         try:
             scenario = scenarios.objects.get(version=version)
@@ -58,7 +62,13 @@ class Command(BaseCommand):
         batch_size = 1000
         calculated_productions = []
 
-        for replenishment in CalcualtedReplenishmentModel.objects.filter(version=scenario).values(
+        # --- FIX: Check if there are any replenishments before proceeding ---
+        replenishments_qs = CalcualtedReplenishmentModel.objects.filter(version=scenario)
+        if not replenishments_qs.exists():
+            self.stdout.write(self.style.WARNING("No replenishment records found for this version."))
+            return
+
+        for replenishment in replenishments_qs.values(
             'Product', 'Site', 'ShippingDate'
         ).annotate(
             total_qty=Sum('ReplenishmentQty')
@@ -74,6 +84,16 @@ class Command(BaseCommand):
                 cast_to_despatch_days = 0
 
             pouring_date = shipping_date - timedelta(days=cast_to_despatch_days)
+
+            # --- Ensure pouring_date is not before inventory snapshot date ---
+            inventory_snapshot = MasterDataInventory.objects.filter(
+                version=scenario,
+                product=product,
+                site__SiteName=site
+            ).order_by('date_of_snapshot').first()
+            if inventory_snapshot and pouring_date < inventory_snapshot.date_of_snapshot:
+                pouring_date = inventory_snapshot.date_of_snapshot
+
             product_instance = product_data_map.get(product)
             site_instance = site_data_map.get(site)
             if not product_instance or not site_instance:
@@ -117,7 +137,8 @@ class Command(BaseCommand):
                 site=site_instance,
                 pouring_date=pouring_date,
                 production_quantity=production_quantity,
-                tonnes=tonnes
+                tonnes=tonnes,
+                product_group=product_instance.ProductGroup  # <-- Add this
             ))
 
             wip_lookup[(product, site)] = wip_stock

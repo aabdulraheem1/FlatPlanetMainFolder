@@ -1,0 +1,118 @@
+{% extends 'website/base.html' %}
+{% block content %}
+<h2>Manual Optimize Product (Version: {{ version }})</h2>
+
+<!-- Success/Error Messages -->
+{% if messages %}
+  <div class="container mt-2">
+    {% for message in messages %}
+      <div class="alert alert-{{ message.tags }}">{{ message }}</div>
+    {% endfor %}
+  </div>
+{% endif %}
+
+<!-- Filter Form (GET) -->
+<form method="get" class="mb-2">
+    <table class="table table-bordered">
+        <thead>
+            <tr>
+                <th><input type="text" name="product" class="form-control" placeholder="Product" value="{{ product_filter }}"></th>
+                <th><input type="text" name="location" class="form-control" placeholder="Location" value="{{ location_filter }}"></th>
+                <th><input type="text" name="site" class="form-control" placeholder="Site" value="{{ site_filter }}"></th>
+                <th><input type="date" name="shipping_date" class="form-control" value="{{ shipping_date_filter }}"></th>
+                <th colspan="4">
+                    <button type="submit" class="btn btn-sm btn-primary">Filter</button>
+                    <a href="?" class="btn btn-sm btn-secondary">Clear</a>
+                </th>
+            </tr>
+            <tr>
+                <th>Product</th>
+                <th>Location</th>
+                <th>Site</th>
+                <th>Shipping Date</th>
+                <th>Replenishment Qty</th>
+                <th>Split Qty</th>
+                <th>New Site for Split</th>
+                <th><!-- Actions column intentionally left blank --></th>
+            </tr>
+        </thead>
+    </table>
+</form>
+
+<!-- Edit/Split Form (POST) -->
+<form method="post">
+    {% csrf_token %}
+    <table class="table table-bordered">
+        <tbody>
+            {% for row in replenishments %}
+            <tr>
+                <td>{{ row.Product.Product }}</td>
+                <td>{{ row.Location }}</td>
+                <td>
+                    <select name="site_{{ row.id }}">
+                        {% for site in sites %}
+                        <option value="{{ site.pk }}" {% if row.Site and row.Site.pk == site.pk %}selected{% endif %}>{{ site.SiteName }}</option>
+                        {% endfor %}
+                    </select>
+                </td>
+                <td>
+                    <input type="date" name="shipping_date_{{ row.id }}" value="{{ row.ShippingDate|date:'Y-m-d' }}">
+                </td>
+                <td><input type="number" step="any" name="qty_{{ row.id }}" value="{{ row.ReplenishmentQty }}"></td>
+                <td><input type="number" step="any" name="split_qty_{{ row.id }}"></td>
+                <td>
+                    <select name="split_site_{{ row.id }}">
+                        <option value="">--Select--</option>
+                        {% for site in sites %}
+                        <option value="{{ site.pk }}">{{ site.SiteName }}</option>
+                        {% endfor %}
+                    </select>
+                </td>
+                <td><!-- No split button here --></td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    <button type="submit" name="save_changes" class="btn btn-primary">Save Changes</button>
+</form>
+
+<!-- Pagination controls (unchanged) -->
+<nav aria-label="Page navigation">
+  <ul class="pagination">
+    {% if page_obj.has_previous %}
+      <li class="page-item">
+        <a class="page-link" href="?page={{ page_obj.previous_page_number }}{% if product_filter %}&product={{ product_filter }}{% endif %}{% if location_filter %}&location={{ location_filter }}{% endif %}{% if site_filter %}&site={{ site_filter }}{% endif %}{% if shipping_date_filter %}&shipping_date={{ shipping_date_filter }}{% endif %}" aria-label="Previous">
+          <span aria-hidden="true">&laquo;</span>
+        </a>
+      </li>
+    {% else %}
+      <li class="page-item disabled">
+        <span class="page-link">&laquo;</span>
+      </li>
+    {% endif %}
+
+    {# Show a window of 3 pages: current, one before, one after #}
+    {% for num in page_obj.paginator.page_range %}
+      {% if num >= page_obj.number|add:'-1' and num <= page_obj.number|add:'1' %}
+        {% if page_obj.number == num %}
+          <li class="page-item active"><span class="page-link">{{ num }}</span></li>
+        {% else %}
+          <li class="page-item"><a class="page-link" href="?page={{ num }}{% if product_filter %}&product={{ product_filter }}{% endif %}{% if location_filter %}&location={{ location_filter }}{% endif %}{% if site_filter %}&site={{ site_filter }}{% endif %}{% if shipping_date_filter %}&shipping_date={{ shipping_date_filter }}{% endif %}">{{ num }}</a></li>
+        {% endif %}
+      {% endif %}
+    {% endfor %}
+
+    {% if page_obj.has_next %}
+      <li class="page-item">
+        <a class="page-link" href="?page={{ page_obj.next_page_number }}{% if product_filter %}&product={{ product_filter }}{% endif %}{% if location_filter %}&location={{ location_filter }}{% endif %}{% if site_filter %}&site={{ site_filter }}{% endif %}{% if shipping_date_filter %}&shipping_date={{ shipping_date_filter }}{% endif %}" aria-label="Next">
+          <span aria-hidden="true">&raquo;</span>
+        </a>
+      </li>
+    {% else %}
+      <li class="page-item disabled">
+        <span class="page-link">&raquo;</span>
+      </li>
+    {% endif %}
+  </ul>
+</nav>
+{% endblock %}

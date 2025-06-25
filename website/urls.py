@@ -125,6 +125,11 @@ urlpatterns = [
 
     path('add_manually_assign_production_requirement/<str:version>/', views.add_manually_assign_production_requirement, name='add_manually_assign_production_requirement'),
 
+     # Add these three URLs for the scenario review action buttons
+    path('manual_optimize_product/<str:version>/', views.manual_optimize_product, name='manual_optimize_product'),
+    path('balance_hard_green_sand/<str:version>/', views.balance_hard_green_sand, name='balance_hard_green_sand'),
+    path('create_balanced_pour_plan/<str:version>/', views.create_balanced_pour_plan, name='create_balanced_pour_plan'),
+
 
 
 

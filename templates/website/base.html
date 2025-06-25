@@ -1,3 +1,4 @@
+{% load static %}
 <!DOCTYPE html>
 <html lang="en">
 
@@ -5,9 +6,9 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Navbar with Icon</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- Use local Bootstrap CSS -->
+    <link href="{% static 'css/bootstrap.min.css' %}" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
-    <!-- Font Awesome -->
     <style>
         /* Keep the horizontal navbar fixed at the top */
         .navbar {
@@ -167,10 +168,10 @@
             <div class="collapse" id="scenariosDropdown">
                 <a href="{% url 'create_scenario' %}" class="d-block text-decoration-none mb-2 dropdown-item">Create</a>
                 <a href="{% url 'list_scenarios' %}" class="d-block text-decoration-none mb-2 dropdown-item">Edit</a>
-                <a href="#" class="d-block text-decoration-none mb-2 dropdown-item">Review</a>
+                
             </div><br>
-            <a href="{%  url 'supplyoptions'%}" class="d-block text-decoration-none mb-2 nav-link">Optimization</a><br>
-            <a href="#" class="d-block text-decoration-none mb-2 nav-link">Inventory Review</a><br>
+            <a href="{%  url 'supplyoptions'%}" class="d-block text-decoration-none mb-2 nav-link">Supply Options</a><br>
+            
             <a href="#" class="d-block text-decoration-none mb-2 nav-link">Contact</a><br>
             <a href="{% url 'logout' %}" class="d-block text-decoration-none nav-link logout-link">Logout</a>
         </div>
@@ -190,23 +191,15 @@
             {% endfor %}
         </div>
         {% endif %}
-        {% block content %}
-        <h1>Main Content</h1>
-        <p>
-            <!-- Your content here -->
-        </p>
-        {% endblock %}
+        {% block content %}{% endblock %}
     </div>
 
+    <!-- Only include local Bootstrap Bundle JS (includes Popper) -->
+    <script src="{% static 'js/bootstrap.bundle.min.js' %}"></script>
+    <!-- If you need Chart.js, include it once -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@4.6.2/dist/js/bootstrap.bundle.min.js"></script>
-    <!-- Include Bootstrap CSS -->
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@4.6.2/dist/css/bootstrap.min.css" rel="stylesheet">
-
-    <!-- Include jQuery -->
+    <!-- If you need jQuery for other scripts, include it once -->
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
 </body>
-
 
 </html>

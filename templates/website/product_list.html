@@ -8,6 +8,7 @@
 
 <div class="container mt-5">
     <h1>Product List</h1>
+    <h2>Product List</h2>
     <form method="GET" action="">
         <div class="table-responsive">
             <table class="table table-bordered">
@@ -50,7 +51,7 @@
         <div class="d-flex justify-content-between">
             <button type="submit" class="btn btn-primary">Filter</button>
             <!-- Button to navigate to create_product URL -->
-            <a href="{% url 'create_product' %}" class="btn btn-primary mt-3">Add products</a>
+            <a href="{% url 'create_product' %}" class="btn btn-danger mt-3">Add products</a>
             <button type="button" class="btn btn-danger" data-bs-toggle="modal"
                 data-bs-target="#refreshModal">Refresh</button>
         </div>
