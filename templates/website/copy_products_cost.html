@@ -1,0 +1,15 @@
+{% extends "website/base.html" %}
+{% block content %}
+<h3>Copy Product Costs to {{ scenario.version }}</h3>
+<form method="post">
+    {% csrf_token %}
+    <label for="from_version">Copy from version:</label>
+    <select name="from_version" id="from_version" required>
+        {% for v in all_versions %}
+        <option value="{{ v.version }}">{{ v.version }}</option>
+        {% endfor %}
+    </select>
+    <button type="submit" class="btn btn-primary">Copy</button>
+    <a href="{% url 'edit_scenario' scenario.version %}" class="btn btn-secondary">Cancel</a>
+</form>
+{% endblock %}

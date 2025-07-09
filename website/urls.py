@@ -130,6 +130,13 @@ urlpatterns = [
     path('balance_hard_green_sand/<str:version>/', views.balance_hard_green_sand, name='balance_hard_green_sand'),
     path('create_balanced_pour_plan/<str:version>/', views.create_balanced_pour_plan, name='create_balanced_pour_plan'),
 
+    # ... other url patterns ...
+    path('update_products_cost/<str:version>/', views.update_products_cost, name='update_products_cost'),
+    path('delete_products_cost/<str:version>/', views.delete_products_cost, name='delete_products_cost'),
+    path('upload_products_cost/<str:version>/', views.upload_products_cost, name='upload_products_cost'),
+    path('copy_products_cost/<str:version>/', views.copy_products_cost, name='copy_products_cost'),
+
+
 
 
 

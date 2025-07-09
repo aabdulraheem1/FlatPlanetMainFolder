@@ -3,6 +3,34 @@
 {% block title %}Edit Forecasts{% endblock %}
 
 {% block content %}
+<style>
+    #forecastTable input[type="text"], 
+    #forecastTable input[type="number"], 
+    #forecastTable input[type="date"] {
+        width: 120px;
+        min-width: 80px;
+        max-width: 180px;
+        padding: 2px 6px;
+        font-size: 0.95rem;
+    }
+    #forecastTable td, #forecastTable th {
+        vertical-align: middle;
+        text-align: left;
+    }
+    #forecastTable td.price-aud-cell input {
+        width: 80px;
+        min-width: 60px;
+        max-width: 100px;
+        text-align: right;
+        font-family: monospace;
+        background: #f8f9fa;
+    }
+    #forecastTable th.price-aud-header {
+        text-align: center;
+        vertical-align: middle;
+        white-space: nowrap;
+    }
+</style>
 
 <h2>Edit Forecasts for Scenario: {{ scenario.version }}</h2>
 
@@ -49,7 +77,7 @@
                 <th>Customer Code</th>
                 <th>Location</th>
                 <th>Dress Mass</th>
-                <th>Price AUD</th>
+                <th class="price-aud-header text-center align-middle" style="width:90px;">Price<br>AUD</th>
                 <th>Date</th>
                 <th>Qty</th>
             </tr>
@@ -65,19 +93,15 @@
                 <td>{{ form.Customer_code }}</td>
                 <td>{{ form.Location }}</td>
                 <td>
-                    {% if form.Forecasted_Weight_Curr.value %}
-                    {{ form.Forecasted_Weight_Curr.value|floatformat:1 }}
-                    {% else %}
-                    {{ form.Forecasted_Weight_Curr }}
-                    {% endif %}
+                    {{ form.Forecasted_Weight_Curr.value|default_if_none:""|floatformat:1 }}
                 </td>
-                <td>
-                    {% if form.PriceAUD.value %}
-                    {{ form.PriceAUD.value|floatformat:1 }}
-                    {% else %}
-                    {{ form.PriceAUD }}
-                    {% endif %}
-                </td>
+                <td class="price-aud-cell">
+            {% if form.PriceAUD.value %}
+            {{ form.PriceAUD.value|floatformat:1 }}
+            {% else %}
+            {{ form.PriceAUD }}
+            {% endif %}
+        </td>
                 <td>
                     {{ form.Period_AU }}
                 </td>

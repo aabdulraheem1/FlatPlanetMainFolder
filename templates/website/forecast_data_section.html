@@ -165,17 +165,18 @@
             <div class="modal-body">
                 <p>Please ensure your Excel file contains the following fields in the header:</p>
                 <ul>
-                    <li><strong>Product</strong>: The product name or code.</li>
-                    <li><strong>Location</strong>: The location.</li>
-                    <li><strong>Customer_code</strong>: The customer code.</li>
-                    <li><strong>ProductFamilyDescription</strong>: The product family description.</li>
-                    <li><strong>LOCATIONCOUNTRY</strong>: The location country.</li>
-                    <li><strong>FORECASTREGION</strong>: The forecast region.</li>
-                    <li><strong>Forecasted_Weight_Curr</strong>: The forecasted weight in the current currency.</li>
-                    <li><strong>PriceAUD</strong>: The price in AUD.</li>
-                    <li><strong>Period_AU</strong>: The period in AU format.</li>
-                    <li><strong>Qty</strong>: The quantity.</li>
-                </ul>
+    <li><strong>Forecast_Region</strong>: The forecast region.</li>
+    <li><strong>Product_Group</strong>: The product group.</li>
+    <li><strong>Product</strong>: The product name or code.</li>
+    <li><strong>ProductFamilyDescription</strong>: The product family description.</li>
+    <li><strong>Customer_code</strong>: The customer code.</li>
+    <li><strong>Location</strong>: The location.</li>
+    <li><strong>Forecasted_Weight_Curr</strong>: The forecasted weight in the current currency.</li>
+    <li><strong>PriceAUD</strong>: The price in AUD.</li>
+    <li><strong>DP_Cycle</strong>: The demand planning cycle.</li>
+    <li><strong>Period_AU</strong>: The period in AU format.</li>
+    <li><strong>Qty</strong>: The quantity.</li>
+</ul>
                 <form method="post" enctype="multipart/form-data" action="{% url 'upload_forecast' 'Not in SMART' %}">
                     {% csrf_token %}
                     <input type="hidden" name="version" value="{{ scenario.version }}">

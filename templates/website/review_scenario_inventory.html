@@ -1,0 +1,108 @@
+<div class="container mt-5">
+    <h2>Inventory</h2>
+    <ul class="nav nav-tabs" id="inventoryTabs" role="tablist">
+        <li class="nav-item">
+            <a class="nav-link active" id="inv-tab-1" data-toggle="tab" href="#inv-1" role="tab"
+                aria-controls="inv-1" aria-selected="true">COGS</a>
+        </li>
+        <li class="nav-item">
+            <a class="nav-link" id="inv-tab-2" data-toggle="tab" href="#inv-2" role="tab"
+                aria-controls="inv-2" aria-selected="false">Production AUD</a>
+        </li>
+        <li class="nav-item">
+            <a class="nav-link" id="inv-tab-3" data-toggle="tab" href="#inv-3" role="tab"
+                aria-controls="inv-3" aria-selected="false">Projected Inventory</a>
+        </li>
+        <li class="nav-item">
+            <a class="nav-link" id="inv-tab-4" data-toggle="tab" href="#inv-4" role="tab"
+                aria-controls="inv-4" aria-selected="false">Tabular Format</a>
+        </li>
+        <li class="nav-item">
+            <a class="nav-link" id="inv-tab-5" data-toggle="tab" href="#inv-5" role="tab"
+                aria-controls="inv-5" aria-selected="false">Tab 5</a>
+        </li>
+    </ul>
+    <div class="tab-content" id="inventoryTabsContent">
+        <div class="tab-pane fade show active" id="inv-1" role="tabpanel" aria-labelledby="inv-tab-1">
+            <canvas id="inventoryChart1" width="400" height="200"></canvas>
+        </div>
+        <div class="tab-pane fade" id="inv-2" role="tabpanel" aria-labelledby="inv-tab-2">
+            <canvas id="inventoryChart2" width="400" height="200"></canvas>
+        </div>
+        <div class="tab-pane fade" id="inv-3" role="tabpanel" aria-labelledby="inv-tab-3">
+            <canvas id="inventoryChart3" width="400" height="200"></canvas>
+        </div>
+        <div class="tab-pane fade" id="inv-4" role="tabpanel" aria-labelledby="inv-tab-4">
+            <!-- Example table, replace with your data -->
+            <div class="table-responsive mt-3">
+                <table class="table table-bordered">
+                    <thead>
+                        <tr>
+                            <th>Month</th>
+                            <th>COGS</th>
+                            <th>Production AUD</th>
+                            <th>Projected Inventory</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td>Jan</td>
+                            <td>1000</td>
+                            <td>1200</td>
+                            <td>800</td>
+                        </tr>
+                        <tr>
+                            <td>Feb</td>
+                            <td>1100</td>
+                            <td>1300</td>
+                            <td>900</td>
+                        </tr>
+                        <tr>
+                            <td>Mar</td>
+                            <td>1050</td>
+                            <td>1250</td>
+                            <td>850</td>
+                        </tr>
+                        <tr>
+                            <td>Apr</td>
+                            <td>1150</td>
+                            <td>1350</td>
+                            <td>950</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        <div class="tab-pane fade" id="inv-5" role="tabpanel" aria-labelledby="inv-tab-5">
+            <canvas id="inventoryChart5" width="400" height="200"></canvas>
+        </div>
+    </div>
+    <script>
+        // Example: Replace with your actual data and chart options
+        // Only render charts for tabs 1, 2, 3, and 5
+        [1, 2, 3, 5].forEach(function(i) {
+            const ctx = document.getElementById('inventoryChart' + i).getContext('2d');
+            new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: ['Jan', 'Feb', 'Mar', 'Apr'],
+                    datasets: [{
+                        label: document.querySelector(`#inv-tab-${i}`).textContent,
+                        data: [12, 19, 3, 5],
+                        backgroundColor: 'rgba(54, 162, 235, 0.5)'
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    plugins: {
+                        legend: { display: true }
+                    },
+                    scales: {
+                        x: { title: { display: true, text: 'Month' } },
+                        y: { title: { display: true, text: 'Units' }, beginAtZero: true }
+                    }
+                }
+            });
+        });
+    </script>
+</div>

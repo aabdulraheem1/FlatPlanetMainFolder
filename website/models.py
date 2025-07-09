@@ -43,12 +43,16 @@ class SMART_Forecast_Model(models.Model):
     ProductFamilyDescription = models.CharField(max_length=100,blank=True, null=True)
     Customer_code = models.CharField(max_length=100,blank=True, null=True)
     Location = models.CharField(max_length=100,blank=True, null=True)
-    Forecasted_Weight_Curr = models.FloatField(default=0, null=True)
+    Forecasted_Weight_Curr = models.FloatField(default=0, null=True,blank=True)
     PriceAUD = models.FloatField(default=0, null=True,blank=True)
     DP_Cycle = models.DateField( null=True,blank=True)
     Period_AU = models.DateField( null=True,blank=True)
     Qty = models.FloatField(default=0, null=True,blank=True)
     Tonnes = models.FloatField(default=0, null=True, blank=True) # New field to store pre-calculated Tonnes
+    
+
+
+
    
     def __str__(self):
         return self.Product   
@@ -312,6 +316,9 @@ class AggregatedForecast(models.Model):
     product_group_description = models.TextField(null=True, blank=True)
     parent_product_group_description = models.TextField(null=True, blank=True)
     forecast_region = models.CharField(max_length=100, null=True, blank=True)  # New field
+    cogs_aud = models.FloatField(default=0, null=True, blank=True)
+    revenue_aud = models.FloatField(default=0, null=True, blank=True)
+    qty = models.FloatField(default=0, null=True, blank=True)
 
     def __str__(self):
         return f"{self.product.Product} - {self.version.version}"
@@ -325,6 +332,7 @@ class MasterDataInventory(models.Model):
     onhandstock_qty = models.FloatField(default=0)  # Quantity of on-hand stock
     intransitstock_qty = models.FloatField(default=0)  # Quantity of in-transit stock
     wip_stock_qty = models.FloatField(default=0)  # Quantity of WIP stock
+    cost_aud = models.FloatField(default=0, null=True, blank=True)  # Cost in AUD
 
     def __str__(self):
         return f"{self.version.version} - {self.product} - {self.date_of_snapshot}"
@@ -370,6 +378,11 @@ class CalculatedProductionModel(models.Model):
     production_quantity = models.FloatField(default=0)
     tonnes = models.FloatField(default=0)
     product_group = models.CharField(max_length=250, null=True, blank=True)  # <-- Add this line
+    
+    price_aud = models.FloatField(default=0, null=True, blank=True)
+    cost_aud = models.FloatField(default=0, null=True, blank=True)
+    cogs_aud = models.FloatField(default=0, null=True, blank=True)
+    revenue_aud = models.FloatField(default=0, null=True, blank=True)
 
     def __str__(self):
         return f"{self.version.version} - {self.product.Product} - {self.site.SiteName} - {self.pouring_date}"
@@ -460,3 +473,17 @@ class MasterDataManuallyAssignProductionRequirement(models.Model):
 
     def __str__(self):
         return f"{self.Product.Product} - {self.Site.SiteName} - {self.ShippingDate}"
+    
+class ProductSiteCostModel(models.Model):
+    version = models.ForeignKey(scenarios, on_delete=models.CASCADE)
+    product = models.ForeignKey(MasterDataProductModel, on_delete=models.CASCADE)
+    site = models.ForeignKey(MasterDataPlantModel, on_delete=models.CASCADE)
+    cost_aud = models.FloatField(null=True, blank=True)
+    cost_date = models.DateField(null=True, blank=True)
+    revenue_cost_aud = models.FloatField(null=True, blank=True)  # <-- Add this line
+
+    class Meta:
+        unique_together = ('version', 'product', 'site')
+
+    def __str__(self):
+        return f"{self.version.version} - {self.product.Product} - {self.site.SiteName}"

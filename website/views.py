@@ -19,6 +19,13 @@ from django.urls import reverse
 from .forms import ProductForm, ProductPictureForm, MasterDataPlantsForm
 import requests
 from django.core.files.storage import FileSystemStorage
+from django.shortcuts import render, redirect, get_object_or_404
+from django.urls import reverse
+from django.contrib import messages
+from django.http import HttpResponse
+from .models import scenarios, ProductSiteCostModel, MasterDataProductModel, MasterDataPlantModel
+from django.views.decorators.http import require_POST
+import subprocess
 
 
 from django.shortcuts import render, get_object_or_404, redirect
@@ -423,6 +430,7 @@ def edit_scenario(request, version):
     # Check if there is data for Fixed Plant and Revenue forecasts
     fixed_plant_forecast_data = SMART_Forecast_Model.objects.filter(version=scenario, Data_Source='Fixed Plant').exists()
     revenue_forecast_data = SMART_Forecast_Model.objects.filter(version=scenario, Data_Source='Revenue Forecast').exists()
+    products_cost_from_epicor = ProductSiteCostModel.objects.filter(version=scenario).exists()
 
 
     # Check if there is data for Master Data Incoterm Types
@@ -466,6 +474,7 @@ def edit_scenario(request, version):
         'missing_regions': missing_regions,  # Pass missing regions to the template
         'production_allocation_epicor_master_data': production_allocation_epicor_master_data,
         'pour_plan_data_has_data': pour_plan_data_has_data,
+        'products_cost_from_epicor': products_cost_from_epicor,
     })
 
 
@@ -488,6 +497,8 @@ from .models import scenarios, SMART_Forecast_Model
 import pandas as pd
 from django.core.files.storage import FileSystemStorage
 
+from datetime import datetime
+
 @login_required
 def upload_forecast(request, forecast_type):
     if request.method == 'POST' and request.FILES['file']:
@@ -507,8 +518,7 @@ def upload_forecast(request, forecast_type):
                 'version': version_value
             })
 
-        df = pd.read_excel(file_path)
-        print("Excel DataFrame head:", df.head())
+        
         # Set the data source based on the forecast type
         if forecast_type == 'SMART':
             data_source = 'SMART'
@@ -521,22 +531,54 @@ def upload_forecast(request, forecast_type):
         else:
             data_source = forecast_type  # fallback
 
-        for _, row in df.iterrows():
-            SMART_Forecast_Model.objects.create(
-                version=version,
-                Data_Source=data_source,
-                Forecast_Region=row.get('Forecast_Region') if pd.notna(row.get('Forecast_Region')) else None,
-                Product_Group=row.get('Product_Group') if pd.notna(row.get('Product_Group')) else None,
-                Product=row.get('Product') if pd.notna(row.get('Product')) else None,
-                ProductFamilyDescription=row.get('ProductFamilyDescription') if pd.notna(row.get('ProductFamilyDescription')) else None,
-                Customer_code=row.get('Customer_code') if pd.notna(row.get('Customer_code')) else None,
-                Location=row.get('Location') if pd.notna(row.get('Location')) else None,
-                Forecasted_Weight_Curr=row.get('Forecasted_Weight_Curr') if pd.notna(row.get('Forecasted_Weight_Curr')) else None,
-                PriceAUD=row.get('PriceAUD') if pd.notna(row.get('PriceAUD')) else None,
-                DP_Cycle=row.get('DP_Cycle') if pd.notna(row.get('DP_Cycle')) else None,
-                Period_AU=row.get('Period_AU') if pd.notna(row.get('Period_AU')) else None,
-                Qty=row.get('Qty') if pd.notna(row.get('Qty')) else None
-            )
+        # --- Remove old records for this version and data source ---
+        SMART_Forecast_Model.objects.filter(version=version, Data_Source=data_source).delete()
+
+        df = pd.read_excel(file_path)
+        print("Excel DataFrame head:", df.head())
+
+          
+        for idx, row in df.iterrows():
+            try:
+                
+                period_au = row.get('Period_AU')
+                if pd.notna(period_au):
+                    # Try to parse common formats
+                    try:
+                        # If it's already a datetime, just use .date()
+                        if isinstance(period_au, datetime):
+                            period_au = period_au.date()
+                        else:
+                            # Try parsing as day/month/year
+                            period_au = datetime.strptime(str(period_au), "%d/%m/%Y").date()
+                    except ValueError:
+                        try:
+                            # Try parsing as year-month-day
+                            period_au = datetime.strptime(str(period_au), "%Y-%m-%d").date()
+                        except ValueError:
+                            raise ValueError(f"{row.get('Period_AU')} value has an invalid date format. It must be in YYYY-MM-DD or DD/MM/YYYY format.")
+                else:
+                    period_au = None
+                SMART_Forecast_Model.objects.create(
+                    version=version,
+                    Data_Source=data_source,
+                    Forecast_Region=row.get('Forecast_Region') if pd.notna(row.get('Forecast_Region')) else None,
+                    Product_Group=row.get('Product_Group') if pd.notna(row.get('Product_Group')) else None,
+                    Product=row.get('Product') if pd.notna(row.get('Product')) else None,
+                    ProductFamilyDescription=row.get('ProductFamilyDescription') if pd.notna(row.get('ProductFamilyDescription')) else None,
+                    Customer_code=row.get('Customer_code') if pd.notna(row.get('Customer_code')) else None,
+                    Location=row.get('Location') if pd.notna(row.get('Location')) else None,
+                    Forecasted_Weight_Curr=row.get('Forecasted_Weight_Curr') if pd.notna(row.get('Forecasted_Weight_Curr')) else None,
+                    PriceAUD=row.get('PriceAUD') if pd.notna(row.get('PriceAUD')) else None,
+                    DP_Cycle=row.get('DP_Cycle') if pd.notna(row.get('DP_Cycle')) else None,
+                    Period_AU=period_au,  
+                    Qty=row.get('Qty') if pd.notna(row.get('Qty')) else None,
+                   
+                )
+            except Exception as e:
+                print(f"Row {idx} failed: {e}")
+
+           
 
         return redirect('edit_scenario', version=version.version)
 
@@ -3378,3 +3420,83 @@ def create_balanced_pour_plan(request, version):
 
 # ...existing code...
 
+from django.shortcuts import render, redirect, get_object_or_404
+from django.urls import reverse
+from django.contrib import messages
+from django.http import HttpResponse
+from .models import scenarios, ProductSiteCostModel, MasterDataProductModel, MasterDataPlantModel
+from django.views.decorators.http import require_POST
+import subprocess
+
+from django.core.paginator import Paginator
+
+def update_products_cost(request, version):
+    scenario = get_object_or_404(scenarios, version=version)
+    costs = ProductSiteCostModel.objects.filter(version=scenario)
+
+    # Filtering logic
+    product_filter = request.GET.get('product', '')
+    site_filter = request.GET.get('site', '')
+    if product_filter:
+        costs = costs.filter(product__Product__icontains=product_filter)
+    if site_filter:
+        costs = costs.filter(site__SiteName__icontains=site_filter)
+
+    # Pagination logic: 20 per page
+    paginator = Paginator(costs.order_by('product__Product', 'site__SiteName'), 20)
+    page_number = request.GET.get('page')
+    page_obj = paginator.get_page(page_number)
+
+    if request.method == "POST":
+        for cost in page_obj.object_list:
+            cost_aud = request.POST.get(f'cost_aud_{cost.id}')
+            cost_date = request.POST.get(f'cost_date_{cost.id}')
+            revenue_cost_aud = request.POST.get(f'revenue_cost_aud_{cost.id}')
+            if cost_aud is not None:
+                cost.cost_aud = float(cost_aud) if cost_aud else None
+            if cost_date:
+                cost.cost_date = cost_date
+            if revenue_cost_aud is not None:
+                cost.revenue_cost_aud = float(revenue_cost_aud) if revenue_cost_aud else None
+            cost.save()
+        messages.success(request, "Product costs updated.")
+        # Stay on the same page after POST
+        return redirect(f"{reverse('update_products_cost', args=[version])}?page={page_number}&product={product_filter}&site={site_filter}")
+
+    return render(request, 'website/update_products_cost.html', {
+        'scenario': scenario,
+        'costs': page_obj.object_list,
+        'page_obj': page_obj,
+        'product_filter': product_filter,
+        'site_filter': site_filter,
+    })
+
+def delete_products_cost(request, version):
+    scenario = get_object_or_404(scenarios, version=version)
+    ProductSiteCostModel.objects.filter(version=scenario).delete()
+    messages.success(request, "All product costs deleted for this scenario.")
+    return redirect(request.META.get('HTTP_REFERER', '/'))
+
+def upload_products_cost(request, version):
+    # This will call your management command to fetch and populate costs
+    subprocess.call(['python', 'manage.py', 'Populate_ProductSiteCostModel', version])
+    messages.success(request, "Product costs uploaded from Epicor.")
+    return redirect(request.META.get('HTTP_REFERER', '/'))
+
+def copy_products_cost(request, version):
+    scenario = get_object_or_404(scenarios, version=version)
+    if request.method == "POST":
+        from_version = request.POST.get('from_version')
+        from_scenario = get_object_or_404(scenarios, version=from_version)
+        ProductSiteCostModel.objects.filter(version=scenario).delete()
+        for cost in ProductSiteCostModel.objects.filter(version=from_scenario):
+            cost.pk = None
+            cost.version = scenario
+            cost.save()
+        messages.success(request, f"Product costs copied from {from_version}.")
+        return redirect(request.META.get('HTTP_REFERER', '/'))
+    all_versions = scenarios.objects.exclude(version=version)
+    return render(request, 'website/copy_products_cost.html', {
+        'scenario': scenario,
+        'all_versions': all_versions,
+    })

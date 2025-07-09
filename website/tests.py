@@ -1,20 +1,23 @@
+import os
 import pandas as pd
-from sqlalchemy import create_engine
 
-Server = 'bkgcc-sql'
-Database = 'Bradken_Data_Warehouse'
-Driver = 'ODBC Driver 17 for SQL Server'
-Database_Con = f'mssql+pyodbc://@{Server}/{Database}?driver={Driver}'
-engine = create_engine(Database_Con)
-connection = engine.connect()
+folder = r"X:\SPR\Inventory Model Master Data"
+all_products = set()
 
-try:
-    sql = """
-        SELECT TOP 10 *
-        FROM PowerBI.HeatProducts
-        WHERE skProductId = 9735343
-    """
-    df = pd.read_sql(sql, connection)
-    print(df)
-finally:
-    connection.close()
+for file in os.listdir(folder):
+    if file.endswith('.xlsx') or file.endswith('.xls'):
+        path = os.path.join(folder, file)
+        try:
+            df = pd.read_excel(path)
+            if 'Product' in df.columns:
+                products = df['Product'].dropna().astype(str).unique()
+                all_products.update(products)
+        except Exception as e:
+            print(f"Error reading {file}: {e}")
+
+# Convert to sorted list and print or save
+product_list = sorted(all_products)
+print(product_list)  # Print first 10 products for brevity
+
+
+

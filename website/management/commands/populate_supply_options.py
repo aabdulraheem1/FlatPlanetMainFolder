@@ -94,6 +94,80 @@ class Command(BaseCommand):
                         Tonnes=tonnes,
                     ))
 
+        Server2 = 'bkgcc-sql'
+        Database_Con2 = f'mssql+pyodbc://@{Server2}/{Database}?driver={Driver}'
+        engine2 = create_engine(Database_Con2)
+
+        with engine2.connect() as connection2:
+            query3 = text("""
+                SELECT 
+                    hp.CastQty,
+                    hp.TapTime,
+                    p.ProductKey AS ProductCode,
+                    p.DressMass,
+                    s.SiteName,
+                    s.Location
+                FROM PowerBI.HeatProducts hp
+                INNER JOIN PowerBI.Products p ON hp.skProductId = p.skProductId
+                INNER JOIN PowerBI.Warehouse s ON hp.SkWarehouseId = s.skWarehouseId
+            """)
+            result1 = connection2.execute(query3)
+            for row in result1:
+                if not row.ProductCode or not row.SiteName or not row.CastQty or not row.DressMass:
+                    continue
+
+                tonnes = row.CastQty * row.DressMass
+
+                product_instance = MasterDataProductModel.objects.filter(Product=row.ProductCode).first()
+                site_instance = MasterDataPlantModel.objects.filter(SiteName=row.SiteName).first()
+
+                if product_instance and site_instance:
+                    supply_options_data.append(MasterDataSupplyOptionsModel(
+                        Product=product_instance,
+                        Site=site_instance,
+                        DateofSupply=row.TapTime,
+                        InhouseOrOutsource="Inhouse",
+                        Supplier=None,
+                        SourceName=row.Location,
+                        Qty=row.CastQty,
+                        Tonnes=tonnes,
+                    ))
+
+            query4 = text("""
+                SELECT 
+                    pr.[Transaction Qty] AS TransactionQty,
+                    d.DateValue,
+                    p.ProductKey,
+                    p.DressMass,
+                    s.VendorNo,
+                    s.TradingName
+                FROM [PowerBI].[PO Receipts] pr
+                INNER JOIN PowerBI.Products p ON pr.skProductId = p.skProductId
+                INNER JOIN PowerBI.Supplier s ON pr.skSupplierId = s.skSupplierId
+                INNER JOIN PowerBI.Dates d ON pr.skReceiptDateId = d.skDateId  
+            """)
+            result2 = connection2.execute(query4)
+            for row in result2:
+                if not row.ProductKey or not row.VendorNo or not row.TransactionQty or not row.DressMass:
+                    continue
+
+                tonnes = row.TransactionQty * row.DressMass
+
+                product_instance = MasterDataProductModel.objects.filter(Product=row.ProductKey).first()
+                supplier_instance = MasterDataSuppliersModel.objects.filter(VendorID=row.VendorNo).first()
+
+                if product_instance and supplier_instance:
+                    supply_options_data.append(MasterDataSupplyOptionsModel(
+                        Product=product_instance,
+                        Supplier=supplier_instance,
+                        Site=None,
+                        DateofSupply=row.DateValue,
+                        InhouseOrOutsource="Outsource",
+                        SourceName=row.TradingName,
+                        Qty=row.TransactionQty,
+                        Tonnes=tonnes,
+                    ))
+
         # Bulk save all records to the database
         MasterDataSupplyOptionsModel.objects.bulk_create(supply_options_data)
 

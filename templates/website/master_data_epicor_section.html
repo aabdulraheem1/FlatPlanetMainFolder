@@ -148,6 +148,31 @@
                 </a>
             </td>
         </tr>
+        <tr>
+    <td>Products Cost from Epicor</td>
+    <td>
+        <!-- Checkbox dynamically ticked based on database records -->
+        <input type="checkbox" {% if products_cost_from_epicor %}checked{% endif %} disabled>
+    </td>
+    <td>
+        <a href="{% url 'update_products_cost' scenario.version %}" class="btn btn-warning btn-sm"
+            onclick="showLoading('Updating records...');">
+            <img src="/static/icons/update.png" alt="Update">
+        </a>
+        <a href="{% url 'delete_products_cost' scenario.version %}" class="btn btn-danger btn-sm"
+            onclick="return confirmDelete();">
+            <img src="/static/icons/delete.png" alt="Delete">
+        </a>
+        <a href="{% url 'upload_products_cost' scenario.version %}" class="btn btn-info btn-sm"
+            onclick="showLoading('Uploading records...');">
+            <img src="/static/icons/upload.png" alt="Upload">
+        </a>
+        <a href="{% url 'copy_products_cost' scenario.version %}" class="btn btn-info btn-sm"
+            onclick="showLoading('Copying records...');">
+            <img src="/static/icons/copy.png" alt="Copy">
+        </a>
+    </td>
+</tr>
     </tbody>
 </table>
 
