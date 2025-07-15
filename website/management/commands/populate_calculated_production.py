@@ -8,11 +8,14 @@ from website.models import (
     MasterDataProductModel,
     MasterDataInventory,
     CalculatedProductionModel,
-    MasterDataPlantModel
+    MasterDataPlantModel, ProductSiteCostModel
 )
+import pandas as pd
 
 class Command(BaseCommand):
-    help = "Populate data in CalculatedProductionModel from CalcualtedReplenishmentModel"
+    help = "Populate data in CalculatedProductionModel from CalcualtedReplenishmentModel (fast pandas version)"
+
+    
 
     def add_arguments(self, parser):
         parser.add_argument(
@@ -35,68 +38,109 @@ class Command(BaseCommand):
 
         CalculatedProductionModel.objects.filter(version=scenario).delete()
 
-        # Prefetch product and site data as dicts for fast lookup
-        product_data_map = {
-            product.Product: product
-            for product in MasterDataProductModel.objects.all()
-        }
-        site_data_map = {
-            site.SiteName: site
-            for site in MasterDataPlantModel.objects.all()
-        }
+        # Load replenishments in bulk
+        replenishments = pd.DataFrame(list(
+            CalcualtedReplenishmentModel.objects.filter(version=scenario)
+            .values('Product', 'Site', 'ShippingDate', 'ReplenishmentQty')
+        ))
+        if replenishments.empty:
+            self.stdout.write(self.style.WARNING("No replenishment records found for this version."))
+            return
+        
+        inventory_df = pd.DataFrame(list(
+            MasterDataInventory.objects.filter(version=scenario)
+            .values('version_id', 'product', 'site_id', 'cost_aud')
+        ))
 
-        cast_to_despatch_map = {
+        # Aggregate replenishments
+        replenishments = replenishments.groupby(['Product', 'Site', 'ShippingDate'], as_index=False)['ReplenishmentQty'].sum()
+        replenishments.rename(columns={'ReplenishmentQty': 'total_qty'}, inplace=True)
+
+        # Load product and site data
+        product_df = pd.DataFrame(list(MasterDataProductModel.objects.all().values('Product', 'DressMass', 'ProductGroup', 'ParentProductGroupDescription')))
+        site_df = pd.DataFrame(list(MasterDataPlantModel.objects.all().values('SiteName')))
+
+        # Load cast to despatch days
+        cast_to_despatch = {
             (entry.Foundry.SiteName, entry.version.version): entry.CastToDespatchDays
             for entry in MasterDataCastToDespatchModel.objects.filter(version=scenario)
         }
 
-        wip_lookup = {
-            (item['product'], item['site_id']): item['total_wip']
-            for item in MasterDataInventory.objects.filter(version=scenario).values('product', 'site_id').annotate(total_wip=Sum('wip_stock_qty'))
-        }
-        onhand_lookup = {
-            (item['product'], item['site_id']): item['total_onhand']
-            for item in MasterDataInventory.objects.filter(version=scenario).values('product', 'site_id').annotate(total_onhand=Sum('onhandstock_qty'))
-        }
+        # Load inventory snapshots
+        wip_df = pd.DataFrame(list(
+            MasterDataInventory.objects.filter(version=scenario)
+            .values('product', 'site_id')
+            .annotate(total_wip=Sum('wip_stock_qty'))
+        ))
+        onhand_df = pd.DataFrame(list(
+            MasterDataInventory.objects.filter(version=scenario)
+            .values('product', 'site_id')
+            .annotate(total_onhand=Sum('onhandstock_qty'))
+        ))
 
-        batch_size = 1000
+        # Load ProductSiteCostModel for cost lookups
+        cost_df = pd.DataFrame(list(
+            ProductSiteCostModel.objects.filter(version=scenario)
+            .values('version_id', 'product_id', 'site_id', 'cost_aud', 'revenue_cost_aud')
+        ))
+
+        # Build all three lookup dicts
+        cost_lookup = {
+            str(row['product_id']): row['cost_aud']
+            for _, row in cost_df.iterrows()
+            if pd.notnull(row['cost_aud'])
+        }
+        inv_cost_lookup = {
+            str(row['product']): row['cost_aud']
+            for _, row in inventory_df.iterrows()
+            if pd.notnull(row['cost_aud'])
+        }
+        revenue_cost_lookup = {
+            str(row['product_id']): row['revenue_cost_aud']
+            for _, row in cost_df.iterrows()
+            if pd.notnull(row['revenue_cost_aud'])
+        }
+        # Build lookup dicts for fast access
+        product_map = {row['Product']: row for _, row in product_df.iterrows()}
+        site_map = {row['SiteName']: row for _, row in site_df.iterrows()}
+        wip_lookup = {(row['product'], row['site_id']): row['total_wip'] for _, row in wip_df.iterrows()}
+        onhand_lookup = {(row['product'], row['site_id']): row['total_onhand'] for _, row in onhand_df.iterrows()}
+
         calculated_productions = []
 
-        # --- FIX: Check if there are any replenishments before proceeding ---
-        replenishments_qs = CalcualtedReplenishmentModel.objects.filter(version=scenario)
-        if not replenishments_qs.exists():
-            self.stdout.write(self.style.WARNING("No replenishment records found for this version."))
-            return
-
-        for replenishment in replenishments_qs.values(
-            'Product', 'Site', 'ShippingDate'
-        ).annotate(
-            total_qty=Sum('ReplenishmentQty')
-        ).order_by('ShippingDate').iterator(chunk_size=batch_size):
-
+        for _, replenishment in replenishments.iterrows():
             product = replenishment['Product']
             site = replenishment['Site']
             shipping_date = replenishment['ShippingDate']
             total_qty = replenishment['total_qty']
 
-            cast_to_despatch_days = cast_to_despatch_map.get((site, scenario.version))
-            if cast_to_despatch_days is None:
-                cast_to_despatch_days = 0
-
+            cast_to_despatch_days = cast_to_despatch.get((site, scenario.version), 0)
             pouring_date = shipping_date - timedelta(days=cast_to_despatch_days)
+            product_row = product_map.get(product)
+            site_row = site_map.get(site)
 
-            # --- Ensure pouring_date is not before inventory snapshot date ---
-            inventory_snapshot = MasterDataInventory.objects.filter(
+            key = (str(scenario.version), str(product_row['Product']), str(site_row['SiteName']))
+            cost = cost_lookup.get(key)
+
+            if cost is not None:
+                cogs_aud = cost * production_quantity
+            else:
+                cogs_aud = 0
+
+            # Get inventory snapshot date (if any)
+            inv_snapshots = MasterDataInventory.objects.filter(
                 version=scenario,
                 product=product,
                 site__SiteName=site
-            ).order_by('date_of_snapshot').first()
-            if inventory_snapshot and pouring_date < inventory_snapshot.date_of_snapshot:
-                pouring_date = inventory_snapshot.date_of_snapshot
+            ).order_by('date_of_snapshot')
+            if inv_snapshots.exists():
+                snapshot_date = inv_snapshots.first().date_of_snapshot
+                if pouring_date < snapshot_date:
+                    pouring_date = snapshot_date
 
-            product_instance = product_data_map.get(product)
-            site_instance = site_data_map.get(site)
-            if not product_instance or not site_instance:
+            product_row = product_map.get(product)
+            site_row = site_map.get(site)
+            if product_row is None or site_row is None or product_row.empty or site_row.empty:
                 continue
 
             # Remove from onhand stock first
@@ -109,8 +153,6 @@ class Command(BaseCommand):
                 else:
                     total_qty -= onhand_stock
                     onhand_stock = 0
-            else:
-                pass
 
             # Remove from WIP stock next
             wip_stock = wip_lookup.get((product, site), 0)
@@ -128,37 +170,36 @@ class Command(BaseCommand):
             else:
                 production_quantity = 0
 
-            dress_mass = product_instance.DressMass or 0
+            dress_mass = product_row['DressMass'] or 0
             tonnes = (production_quantity * dress_mass) / 1000
+
+            product_key = str(product_row['Product'])
+
+            costs = [
+                cost_lookup.get(product_key, 0),
+                inv_cost_lookup.get(product_key, 0),
+                revenue_cost_lookup.get(product_key, 0)
+            ]
+            cost = max(costs) if any(costs) else 0
+
+            cogs_aud = cost * production_quantity
 
             calculated_productions.append(CalculatedProductionModel(
                 version=scenario,
-                product=product_instance,
-                site=site_instance,
+                product_id=product_row['Product'],
+                site_id=site_row['SiteName'],
                 pouring_date=pouring_date,
                 production_quantity=production_quantity,
                 tonnes=tonnes,
-                product_group=product_instance.ProductGroup  # <-- Add this
+                product_group=product_row['ProductGroup'],
+                parent_product_group=product_row.get('ParentProductGroupDescription', ''),  # <-- Add this line
+                cogs_aud=cogs_aud,  # <-- Add this line
             ))
 
             wip_lookup[(product, site)] = wip_stock
             onhand_lookup[(product, site)] = onhand_stock
 
-            if len(calculated_productions) >= batch_size:
-                try:
-                    CalculatedProductionModel.objects.bulk_create(
-                        calculated_productions, batch_size=batch_size, atomic=False
-                    )
-                except Exception:
-                    for obj in calculated_productions:
-                        obj.save()
-                calculated_productions = []
-
         if calculated_productions:
-            try:
-                CalculatedProductionModel.objects.bulk_create(
-                    calculated_productions, batch_size=batch_size, atomic=False
-                )
-            except Exception:
-                for obj in calculated_productions:
-                    obj.save()
+            CalculatedProductionModel.objects.bulk_create(calculated_productions, batch_size=1000)
+
+        self.stdout.write(self.style.SUCCESS(f"CalculatedProductionModel populated for version {version} (fast pandas version)."))

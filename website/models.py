@@ -378,7 +378,7 @@ class CalculatedProductionModel(models.Model):
     production_quantity = models.FloatField(default=0)
     tonnes = models.FloatField(default=0)
     product_group = models.CharField(max_length=250, null=True, blank=True)  # <-- Add this line
-    
+    parent_product_group = models.CharField(max_length=250, null=True, blank=True)  # <-- Add this line    
     price_aud = models.FloatField(default=0, null=True, blank=True)
     cost_aud = models.FloatField(default=0, null=True, blank=True)
     cogs_aud = models.FloatField(default=0, null=True, blank=True)

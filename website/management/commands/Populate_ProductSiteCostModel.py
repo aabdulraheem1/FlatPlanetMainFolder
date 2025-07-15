@@ -5,6 +5,7 @@ from django.core.management.base import BaseCommand
 from website.models import (
     scenarios, ProductSiteCostModel, MasterDataProductModel, MasterDataPlantModel, SMART_Forecast_Model
 )
+import math
 
 def extract_site_code(location):
     if not location:
@@ -14,6 +15,16 @@ def extract_site_code(location):
     if '_' in location:
         return location.split('_')[-1]
     return location
+
+def safe_float(val):
+    if val is None:
+        return None
+    try:
+        if pd.isna(val):
+            return None
+        return float(val)
+    except Exception:
+        return None
 
 class Command(BaseCommand):
     help = "Populate ProductSiteCostModel with all product-site combinations for a version"
@@ -39,44 +50,52 @@ class Command(BaseCommand):
                 product_keys.add(product_str.strip())
                 site_names.add(extract_site_code(site_str.strip()))
 
-        # Bulk fetch costs from SQL
+        # Bulk fetch costs from SQL (batched to avoid SQL Server 2100 param limit)
         Server = 'bknew-sql02'
         Database = 'Bradken_Data_Warehouse'
         Driver = 'ODBC Driver 17 for SQL Server'
         Database_Con = f'mssql+pyodbc://@{Server}/{Database}?driver={Driver}'
         engine = create_engine(Database_Con)
 
+        cost_lookup = {}
         if product_keys and site_names:
-            placeholders_products = ','.join(['?'] * len(product_keys))
-            placeholders_sites = ','.join(['?'] * len(site_names))
-            query = f"""
-            SELECT
-                pp.ProductKey,
-                ps.SiteName,
-                pit.UnitPriceAUD,
-                pd.DateValue
-            FROM [PowerBI].[Inventory Transaction] pit
-            LEFT JOIN [PowerBI].[Inventory Transaction Type] pitt ON pit.skInventoryTransactionTypeId = pitt.skInventoryTransactionTypeId
-            LEFT JOIN [PowerBI].[Site] ps ON pit.skSiteId = ps.skSiteId
-            LEFT JOIN [PowerBI].[Products] pp ON pit.skProductId = pp.skProductId
-            LEFT JOIN [PowerBI].[Dates] pd ON pit.skInventoryTransactionDateId = pd.skDateId
-            WHERE pitt.InventoryTransactionTypeDesc = 'Receipt To Stock'
-              AND ps.SiteName IN ({placeholders_sites})
-              AND pp.ProductKey IN ({placeholders_products})
-            ORDER BY pd.DateValue DESC
-            """
-            params = list(site_names) + list(product_keys)
-            df = pd.read_sql_query(query, engine, params=params)
-            # Build lookup: (product_key.lower(), site_name.lower()) -> (cost, date)
-            cost_lookup = {}
-            for _, row in df.iterrows():
-                key = (str(row['ProductKey']).strip().lower(), str(row['SiteName']).strip().lower())
-                if key not in cost_lookup:
-                    cost_lookup[key] = (row['UnitPriceAUD'], row['DateValue'])
+            site_names_list = list(site_names)
+            product_keys_list = list(product_keys)
+            MAX_PARAMS = 2000  # Stay under SQL Server's 2100 param limit
+            max_products_per_batch = max(1, (MAX_PARAMS - len(site_names_list)))
+            num_batches = math.ceil(len(product_keys_list) / max_products_per_batch)
+
+            for i in range(num_batches):
+                batch_products = product_keys_list[i * max_products_per_batch : (i + 1) * max_products_per_batch]
+                placeholders_sites = ','.join(['?'] * len(site_names_list))
+                placeholders_products = ','.join(['?'] * len(batch_products))
+                params = tuple(site_names_list) + tuple(batch_products)
+                query = f"""
+                    SELECT
+                        pp.ProductKey,
+                        ps.SiteName,
+                        pit.UnitPriceAUD,
+                        pd.DateValue
+                    FROM [PowerBI].[Inventory Transaction] pit
+                    LEFT JOIN [PowerBI].[Inventory Transaction Type] pitt ON pit.skInventoryTransactionTypeId = pitt.skInventoryTransactionTypeId
+                    LEFT JOIN [PowerBI].[Site] ps ON pit.skSiteId = ps.skSiteId
+                    LEFT JOIN [PowerBI].[Products] pp ON pit.skProductId = pp.skProductId
+                    LEFT JOIN [PowerBI].[Dates] pd ON pit.skInventoryTransactionDateId = pd.skDateId
+                    WHERE pitt.InventoryTransactionTypeDesc = 'Receipt To Stock'
+                    AND ps.SiteName IN ({placeholders_sites})
+                    AND pp.ProductKey IN ({placeholders_products})
+                    ORDER BY pd.DateValue DESC
+                """
+                df = pd.read_sql_query(query, engine, params=params)
+                # Build lookup: (product_key.lower(), site_name.lower()) -> (cost, date)
+                for _, row in df.iterrows():
+                    key = (str(row['ProductKey']).strip().lower(), str(row['SiteName']).strip().lower())
+                    if key not in cost_lookup:
+                        cost_lookup[key] = (row['UnitPriceAUD'], row['DateValue'])
         else:
             cost_lookup = {}
 
-        # Build forecast lookup once
+        # Build forecast lookup once, but keep the max PriceAUD for each (product, site)
         forecast_lookup = {}
         forecasts = SMART_Forecast_Model.objects.filter(
             version=version,
@@ -85,6 +104,7 @@ class Command(BaseCommand):
         for f in forecasts:
             site_code = extract_site_code(f.Location.strip()) if f.Location else ''
             key = (f.Product.strip().lower(), site_code.lower())
+            # Always keep the max PriceAUD for each key
             if key not in forecast_lookup or (f.PriceAUD and f.PriceAUD > forecast_lookup[key]):
                 forecast_lookup[key] = f.PriceAUD
 
@@ -106,21 +126,19 @@ class Command(BaseCommand):
 
             key = (product.Product.strip().lower(), site_code.lower())
             cost_aud, cost_date = cost_lookup.get(key, (None, None))
-            revenue_cost_aud = None
 
-            if cost_aud is None:
-                price_aud = forecast_lookup.get(key)
-                if price_aud is not None:
-                    revenue_cost_aud = price_aud * 0.65
+            # Use the max PriceAUD for this product/site, if available
+            price_aud = forecast_lookup.get(key)
+            revenue_cost_aud = price_aud * 0.65 if price_aud is not None else None
 
             obj, created_flag = ProductSiteCostModel.objects.update_or_create(
                 version=version,
                 product=product,
                 site=site,
                 defaults={
-                    'cost_aud': cost_aud,
+                    'cost_aud': safe_float(cost_aud),
                     'cost_date': cost_date,
-                    'revenue_cost_aud': revenue_cost_aud
+                    'revenue_cost_aud': safe_float(revenue_cost_aud)
                 }
             )
             if created_flag:

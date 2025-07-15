@@ -26,13 +26,14 @@ from django.http import HttpResponse
 from .models import scenarios, ProductSiteCostModel, MasterDataProductModel, MasterDataPlantModel
 from django.views.decorators.http import require_POST
 import subprocess
-
-
+from django.db.models import Sum
 from django.shortcuts import render, get_object_or_404, redirect
-
 import sys
 import subprocess
 from django.conf import settings
+from .models import AggregatedForecast
+from website.customized_function import (get_monthly_cogs_and_revenue, get_forecast_data_by_parent_product_group, get_monthly_production_cogs,
+get_monthly_production_cogs_by_group, get_monthly_production_cogs_by_parent_group, )
 
 def run_management_command(command, *args):
     import os
@@ -701,13 +702,13 @@ def copy_forecast(request, version, data_source):
 from django.shortcuts import render
 from django.contrib.auth.decorators import login_required
 from django.db.models.functions import TruncMonth
-from django.db.models import Sum
+
 from .models import AggregatedForecast, CalculatedProductionModel, scenarios
 
 from django.shortcuts import render
 from django.contrib.auth.decorators import login_required
 from django.db.models.functions import TruncMonth
-from django.db.models import Sum
+
 from .models import AggregatedForecast, CalculatedProductionModel, scenarios
 
 def get_dress_mass_data(site_name, version):
@@ -733,7 +734,7 @@ def get_dress_mass_data(site_name, version):
 import json
 from collections import defaultdict
 from django.db.models.functions import TruncMonth
-from django.db.models import Sum
+
 from django.shortcuts import get_object_or_404, render
 from django.contrib.auth.decorators import login_required
 from .models import (
@@ -759,12 +760,12 @@ def get_dress_mass_data(site_name, version):
 
 from collections import defaultdict
 from django.db.models.functions import TruncMonth
-from django.db.models import Sum
+
 import json
 
 from collections import defaultdict
 from django.db.models.functions import TruncMonth
-from django.db.models import Sum
+
 import json
 from django.shortcuts import get_object_or_404, render
 from django.contrib.auth.decorators import login_required
@@ -790,14 +791,65 @@ def get_dress_mass_data(site_name, version):
     return dress_mass_data
 
 from datetime import date
-from django.db.models import Sum
+
 from django.utils.safestring import mark_safe
+
 import json
 @login_required
 def review_scenario(request, version):
     user_name = request.user.username
     scenario = get_object_or_404(scenarios, version=version)
 
+    
+    
+    def get_forecast_data_by_product_group(scenario_version):
+        queryset = (
+            AggregatedForecast.objects
+            .filter(version=scenario_version)
+            .values('product_group_description', 'period')
+            .annotate(total_tonnes=Sum('tonnes'))
+            .order_by('product_group_description', 'period')
+        )
+        data = {}
+        labels_set = set()
+        for entry in queryset:
+            group = entry['product_group_description'] or 'Unknown'
+            period = entry['period'].strftime('%Y-%m')
+            labels_set.add(period)
+            data.setdefault(group, {})[period] = entry['total_tonnes']
+        labels = sorted(labels_set)
+        chart_data = {}
+        for group, period_dict in data.items():
+            chart_data[group] = {
+                'labels': labels,
+                'tons': [period_dict.get(label, 0) for label in labels]
+            }
+        return chart_data
+    
+    def get_forecast_data_by_region(scenario_version):
+        queryset = (
+            AggregatedForecast.objects
+            .filter(version=scenario_version)
+            .values('forecast_region', 'period')
+            .annotate(total_tonnes=Sum('tonnes'))
+            .order_by('forecast_region', 'period')
+        )
+        data = {}
+        labels_set = set()
+        for entry in queryset:
+            region = entry['forecast_region'] or 'Unknown'
+            period = entry['period'].strftime('%Y-%m')
+            labels_set.add(period)
+            data.setdefault(region, {})[period] = entry['total_tonnes']
+        labels = sorted(labels_set)
+        chart_data = {}
+        for region, period_dict in data.items():
+            chart_data[region] = {
+                'labels': labels,
+                'tons': [period_dict.get(label, 0) for label in labels]
+            }
+        return chart_data
+    
     def get_production_data_by_group(site_name, scenario_version):
         queryset = (
             CalculatedProductionModel.objects
@@ -878,6 +930,11 @@ def review_scenario(request, version):
     wod1_chart_data = wod1_data
     wod1_top_products = get_top_products_per_month_by_group('WOD1')
     wod1_top_products_json = json.dumps(wod1_top_products)
+
+    # Get forecast data by parent product group
+    chart_data_parent_product_group = get_forecast_data_by_parent_product_group(scenario)
+    chart_data_product_group = get_forecast_data_by_product_group(scenario)
+    chart_data_region = get_forecast_data_by_region(scenario)
 
 # --- WUN1 ---
     wun1_data = get_production_data_by_group('WUN1', scenario.version)
@@ -1170,6 +1227,114 @@ def review_scenario(request, version):
         )
         value = sum(plan.PlanDressMass for plan in plans)
         wun1_monthly_pour_plan.append(round(value))
+
+    
+    # Get months for each series
+    months_cogs, cogs, revenue = get_monthly_cogs_and_revenue(scenario)
+    months_prod, production_cogs = get_monthly_production_cogs(scenario)
+
+    # --- Add this block here ---
+    from datetime import timedelta
+
+    first_inventory = MasterDataInventory.objects.filter(version=scenario).order_by('date_of_snapshot').first()
+    if first_inventory:
+        # Add one day to the first snapshot date, then set to first of that month if you want the next month,
+        # or just use the next day for the start_date
+        start_date = first_inventory.date_of_snapshot + timedelta(days=1)
+    else:
+        start_date = None  # fallback if no inventory
+
+    import pandas as pd
+
+    # Find the last month in your data (from all series)
+    all_dates = []
+    if months_cogs:
+        all_dates.append(pd.to_datetime(months_cogs[-1], format='%b %Y'))
+    if months_prod:
+        all_dates.append(pd.to_datetime(months_prod[-1], format='%b %Y'))
+    if all_dates:
+        end_date = max(all_dates)
+    else:
+        end_date = start_date
+
+    # Build all months from start_date to end_date
+    if start_date and end_date:
+        all_months = pd.date_range(start=start_date, end=end_date, freq='MS').strftime('%b %Y').tolist()
+    else:
+        all_months = []
+
+    
+
+    
+    production_cogs_group_chart = get_monthly_production_cogs_by_parent_group(scenario)
+
+    parent_groups = AggregatedForecast.objects.filter(version=scenario).values_list('parent_product_group_description', flat=True).distinct()
+
+    cogs_data_by_group = defaultdict(lambda: {'months': [], 'cogs': [], 'revenue': [], 'production_aud': []})
+
+    for group in parent_groups:
+        # Aggregate COGS and Revenue from AggregatedForecast
+        agg_qs = (
+            AggregatedForecast.objects
+            .filter(version=scenario, parent_product_group_description=group)
+            .annotate(month=TruncMonth('period'))
+            .values('month')
+            .annotate(
+                total_cogs=Sum('cogs_aud'),
+                total_revenue=Sum('revenue_aud')
+            )
+            .order_by('month')
+        )
+        months = [d['month'].strftime('%b %Y') for d in agg_qs]
+        cogs = [d['total_cogs'] for d in agg_qs]
+        revenue = [d['total_revenue'] for d in agg_qs]
+
+        # Aggregate Production AUD from CalculatedProductionModel
+        prod_qs = (
+            CalculatedProductionModel.objects
+            .filter(version=scenario, parent_product_group=group)
+            .annotate(month=TruncMonth('pouring_date'))
+            .values('month')
+            .annotate(total_production_aud=Sum('cogs_aud'))
+            .order_by('month')
+        )
+        prod_months = [d['month'].strftime('%b %Y') for d in prod_qs]
+        production_aud = [d['total_production_aud'] for d in prod_qs]
+
+        # Union of all months for this group
+        all_months = sorted(set(months) | set(prod_months), key=lambda d: pd.to_datetime(d, format='%b %Y'))
+
+        # Align all series to all_months
+        cogs_map = dict(zip(months, cogs))
+        revenue_map = dict(zip(months, revenue))
+        prod_map = dict(zip(prod_months, production_aud))
+
+        cogs_aligned = [cogs_map.get(m, 0) for m in all_months]
+        revenue_aligned = [revenue_map.get(m, 0) for m in all_months]
+        prod_aligned = [prod_map.get(m, 0) for m in all_months]
+
+        cogs_data_by_group[group]['months'] = all_months
+        cogs_data_by_group[group]['cogs'] = cogs_aligned
+        cogs_data_by_group[group]['revenue'] = revenue_aligned
+        cogs_data_by_group[group]['production_aud'] = prod_aligned
+
+        # Collect all unique months across all groups
+        all_unique_months = set()
+        for group_data in cogs_data_by_group.values():
+            all_unique_months.update(group_data['months'])
+        all_unique_months = sorted(all_unique_months, key=lambda d: pd.to_datetime(d, format='%b %Y'))
+
+        # Re-align every group's data to all_unique_months
+        for group, group_data in cogs_data_by_group.items():
+            months = group_data['months']
+            cogs_map = dict(zip(months, group_data['cogs']))
+            revenue_map = dict(zip(months, group_data['revenue']))
+            prod_map = dict(zip(months, group_data['production_aud']))
+            group_data['months'] = all_unique_months
+            group_data['cogs'] = [cogs_map.get(m, 0) for m in all_unique_months]
+            group_data['revenue'] = [revenue_map.get(m, 0) for m in all_unique_months]
+            group_data['production_aud'] = [prod_map.get(m, 0) for m in all_unique_months]
+      
     
 
     context = {
@@ -1200,11 +1365,22 @@ def review_scenario(request, version):
         'wun1_chart_data': wun1_chart_data,
         'wun1_top_products_json': wun1_top_products_json,
         'wun1_monthly_pour_plan': wun1_monthly_pour_plan,
+        'chart_data_parent_product_group': json.dumps(chart_data_parent_product_group),
+        'chart_data_product_group': json.dumps(chart_data_product_group),
+        'chart_data_region': json.dumps(chart_data_region),
+        'inventory_months': all_months,
+        'inventory_cogs': cogs_aligned,
+        'inventory_revenue': revenue_aligned,
+        'production_aud': prod_aligned,
+        'production_cogs_group_chart': json.dumps(production_cogs_group_chart),
+        'parent_product_groups': list(parent_groups),
+        'cogs_data_by_group': json.dumps(cogs_data_by_group),
+
     }
     print("monthly_table_html:", monthly_table_html)
     return render(request, 'website/review_scenario.html', context)
 
-from django.db.models import Sum
+
 from django.contrib.auth.decorators import login_required
 from django.shortcuts import get_object_or_404, render
 from .models import (
@@ -1662,6 +1838,10 @@ from sqlalchemy import create_engine, text
 from django.shortcuts import render, redirect, get_object_or_404
 from .models import MasterDataInventory, scenarios
 
+from math import ceil
+
+import pandas as pd
+
 @login_required
 def upload_on_hand_stock(request, version):
     # Database connection details
@@ -1675,12 +1855,10 @@ def upload_on_hand_stock(request, version):
     scenario = get_object_or_404(scenarios, version=version)
 
     # Get the list of products available in SMART_Forecast_Model for the current scenario version
-    smart_forecast_products = SMART_Forecast_Model.objects.filter(version=scenario).values_list('Product', flat=True)
+    smart_forecast_products = list(SMART_Forecast_Model.objects.filter(version=scenario).values_list('Product', flat=True))
 
     if request.method == 'POST':
-        # Get the snapshot date entered by the user
         snapshot_date = request.POST.get('snapshot_date')
-
         if not snapshot_date:
             return render(request, 'website/update_on_hand_stock.html', {
                 'error': 'Please enter a valid snapshot date.',
@@ -1691,79 +1869,97 @@ def upload_on_hand_stock(request, version):
         MasterDataInventory.objects.filter(version=scenario).delete()
 
         with engine.connect() as connection:
-            # Query to join tables and fetch inventory data
-            query = text("""
-                SELECT 
-                    Products.ProductKey AS product,
-                    Site.SiteName AS site,
-                    Inventory.StockOnHand AS onhandstock_qty,
-                    Inventory.StockInTransit AS intransitstock_qty
-                FROM PowerBI.[Inventory Daily History] AS Inventory
-                INNER JOIN PowerBI.Site AS Site
-                    ON Inventory.skSiteId = Site.skSiteId
-                INNER JOIN PowerBI.Dates AS Dates
-                    ON Inventory.skReportDateId = Dates.skDateId
-                INNER JOIN PowerBI.Products AS Products
-                    ON Inventory.skProductId = Products.skProductId
-                WHERE Dates.DateValue = :snapshot_date
-            """)
+            # --- Inventory Data ---
+            if smart_forecast_products:
+                placeholders = ','.join([f"'{p}'" for p in smart_forecast_products])
+                inventory_sql = f"""
+                    SELECT 
+                        Products.ProductKey AS product,
+                        Site.SiteName AS site,
+                        Inventory.StockOnHand AS onhandstock_qty,
+                        Inventory.StockInTransit AS intransitstock_qty,
+                        MAX(Inventory.WarehouseCostAUD) AS cost_aud
+                    FROM PowerBI.[Inventory Daily History] AS Inventory
+                    INNER JOIN PowerBI.Site AS Site
+                        ON Inventory.skSiteId = Site.skSiteId
+                    INNER JOIN PowerBI.Dates AS Dates
+                        ON Inventory.skReportDateId = Dates.skDateId
+                    INNER JOIN PowerBI.Products AS Products
+                        ON Inventory.skProductId = Products.skProductId
+                    WHERE Dates.DateValue = '{snapshot_date}'
+                    AND Products.ProductKey IN ({placeholders})
+                    GROUP BY Products.ProductKey, Site.SiteName, Inventory.StockOnHand, Inventory.StockInTransit
+                """
+                inventory_df = pd.read_sql(inventory_sql, connection)
+            else:
+                inventory_df = pd.DataFrame(columns=['product', 'site', 'onhandstock_qty', 'intransitstock_qty'])
 
-            # Execute the query
-            inventory_data = connection.execute(query, {'snapshot_date': snapshot_date}).fetchall()
+            # --- WIP Data ---
+            if smart_forecast_products:
+                wip_placeholders = ','.join([f"'{p}'" for p in smart_forecast_products])
+                wip_sql = f"""
+                    SELECT 
+                        Products.ProductKey AS product,
+                        Site.SiteName AS site,
+                        SUM(WIP.WIPQty) AS wip_stock_qty
+                    FROM PowerBI.[Work In Progress Previous 3 Months] AS WIP
+                    INNER JOIN PowerBI.Site AS Site
+                        ON WIP.skSiteId = Site.skSiteId
+                    INNER JOIN PowerBI.Dates AS Dates
+                        ON WIP.skReportDateId = Dates.skDateId
+                    INNER JOIN PowerBI.Products AS Products
+                        ON WIP.skProductId = Products.skProductId
+                    WHERE Dates.DateValue = '{snapshot_date}'
+                      AND Products.ProductKey IN ({wip_placeholders})
+                    GROUP BY Products.ProductKey, Site.SiteName
+                """
+                wip_df = pd.read_sql(wip_sql, connection)
+            else:
+                wip_df = pd.DataFrame(columns=['product', 'site', 'wip_stock_qty'])
 
-            # Query to join tables and fetch WIP data
-            wip_query = text("""
-                SELECT 
-                    Products.ProductKey AS product,
-                    Site.SiteName AS site,
-                    SUM(WIP.WIPQty) AS wip_stock_qty
-                FROM PowerBI.[Work In Progress] AS WIP
-                INNER JOIN PowerBI.Site AS Site
-                    ON WIP.skSiteId = Site.skSiteId
-                INNER JOIN PowerBI.Dates AS Dates
-                    ON WIP.skReportDateId = Dates.skDateId
-                INNER JOIN PowerBI.Products AS Products
-                    ON WIP.skProductId = Products.skProductId
-                WHERE Dates.DateValue = :snapshot_date
-                GROUP BY Products.ProductKey, Site.SiteName
-            """)
+        # Merge inventory and WIP data
+        merged_df = pd.merge(
+            inventory_df,
+            wip_df,
+            how='left',
+            on=['product', 'site']
+        )
+        merged_df['wip_stock_qty'] = merged_df['wip_stock_qty'].fillna(0)
 
-            # Execute the WIP query
-            wip_data = connection.execute(wip_query, {'snapshot_date': snapshot_date}).fetchall()
+        # Filter out rows where all three quantities are zero
+        filtered_df = merged_df[
+            ~(
+                (merged_df['onhandstock_qty'].fillna(0) == 0) &
+                (merged_df['intransitstock_qty'].fillna(0) == 0) &
+                (merged_df['wip_stock_qty'].fillna(0) == 0)
+            )
+        ]
 
-            # Create a dictionary for WIP data for quick lookup
-            wip_dict = {(row.product, row.site): row.wip_stock_qty for row in wip_data}
-
-            # Store the data in the MasterDataInventory model
-            for row in inventory_data:
-                # Process only if the product is in SMART_Forecast_Model for the current scenario
-                if row.product not in smart_forecast_products:
-                    continue
-
-                wip_stock_qty = wip_dict.get((row.product, row.site), 0)  # Default to 0 if no WIP data
-
-                # Fetch the MasterDataPlantModel instance for the site
-                try:
-                    plant = MasterDataPlantModel.objects.get(SiteName=row.site)
-                except MasterDataPlantModel.DoesNotExist:
-                    # Skip this record if the site does not exist in MasterDataPlantModel
-                    continue
-
-                MasterDataInventory.objects.create(
+        # Use filtered_df for the rest of your logic
+        plants_dict = {p.SiteName: p for p in MasterDataPlantModel.objects.all()}
+        bulk_objs = []
+        for _, row in filtered_df.iterrows():
+            plant = plants_dict.get(row['site'])
+            if not plant:
+                continue
+            bulk_objs.append(
+                MasterDataInventory(
                     version=scenario,
                     date_of_snapshot=snapshot_date,
-                    product=row.product,
-                    site=plant,  # Use the MasterDataPlantModel instance
-                    site_region=plant.PlantRegion,  # Populated from MasterDataPlantModel
-                    onhandstock_qty=row.onhandstock_qty,
-                    intransitstock_qty=row.intransitstock_qty,
-                    wip_stock_qty=wip_stock_qty,
+                    product=row['product'],
+                    site=plant,
+                    site_region=plant.PlantRegion,
+                    onhandstock_qty=row['onhandstock_qty'],
+                    intransitstock_qty=row['intransitstock_qty'],
+                    wip_stock_qty=row['wip_stock_qty'],
+                    cost_aud=row['cost_aud'],  # <-- Set from DataFrame
                 )
+            )
+        if bulk_objs:
+            MasterDataInventory.objects.bulk_create(bulk_objs, batch_size=10000)
 
-        # Redirect to the scenario edit page after successful update
         return redirect('edit_scenario', version=version)
 
-    # Render the form to enter the snapshot date
     return render(request, 'website/upload_on_hand_stock.html', {
         'scenario': scenario
     })
@@ -2928,49 +3124,57 @@ def run_management_command(command, *args):
     result = subprocess.run(cmd, capture_output=True, text=True)
     return result
 
+from django.shortcuts import render, redirect, get_object_or_404
+from django.contrib.auth.decorators import login_required
+from django.db import transaction
+from django.contrib import messages
+from .models import (
+    scenarios,
+    AggregatedForecast,
+    CalcualtedReplenishmentModel,
+    CalculatedProductionModel,
+    ProductSiteCostModel,
+    MasterDataInventory,
+    MasterDataProductModel,
+    MasterDataPlantModel,
+)
+from django.core.paginator import Paginator
+from django.db.models import Max
+
+# Import your optimized command classes directly
+from website.management.commands.populate_aggregated_forecast import Command as AggForecastCommand
+from website.management.commands.populate_calculated_replenishment import Command as ReplenishmentCommand
+from website.management.commands.populate_calculated_production import Command as ProductionCommand
+
 @login_required
 @transaction.non_atomic_requests
 def calculate_model(request, version):
     """
     Run the management commands to calculate the model for the given version.
     """
+    print("calculate_model called with version:", version)
     try:
         # Step 1: Run the first command: populate_aggregated_forecast
-        result = run_management_command('populate_aggregated_forecast', version)
-        if result.returncode != 0:
-            messages.error(request, f"Error in populate_aggregated_forecast: {result.stderr}")
-            return redirect('list_scenarios')
+        print("Running populate_aggregated_forecast")
+        print("version:", version)
+        AggForecastCommand().handle(version=version)
         messages.success(request, f"Aggregated forecast has been successfully populated for version '{version}'.")
 
-        # Step 2: Conditionally delete related records in CalcualtedReplenishmentModel
-        if CalcualtedReplenishmentModel.objects.filter(version=version).exists():
-            CalcualtedReplenishmentModel.objects.filter(version=version).delete()
-            messages.success(request, f"Existing records in CalcualtedReplenishmentModel for version '{version}' have been deleted.")
-        else:
-            messages.warning(request, f"No existing records found in CalcualtedReplenishmentModel for version '{version}'.")
-
-        # Step 3: Run the second command: populate_calculated_replenishment
-        result = run_management_command('populate_calculated_replenishment', version)
-        if result.returncode != 0:
-            messages.error(request, f"Error in populate_calculated_replenishment: {result.stderr}")
-            return redirect('list_scenarios')
+        # Step 2: Run the second command: populate_calculated_replenishment
+        print("Running populate_calculated_replenishment")
+        print("version:", version)
+        ReplenishmentCommand().handle(version=version)
         messages.success(request, f"Calculated replenishment has been successfully populated for version '{version}'.")
 
-        # Step 4: Conditionally delete related records in CalculatedProductionModel
-        if CalculatedProductionModel.objects.filter(version=version).exists():
-            CalculatedProductionModel.objects.filter(version=version).delete()
-            messages.success(request, f"Existing records in CalculatedProductionModel for version '{version}' have been deleted.")
-        else:
-            messages.warning(request, f"No existing records found in CalculatedProductionModel for version '{version}'.")
-
-        # Step 5: Run the third command: populate_calculated_production
-        result = run_management_command('populate_calculated_production', version)
-        if result.returncode != 0:
-            messages.error(request, f"Error in populate_calculated_production: {result.stderr}")
-            return redirect('list_scenarios')
+        # Step 3: Run the third command: populate_calculated_production
+        print("Running populate_calculated_production")
+        print("version:", version)
+        ProductionCommand().handle(scenario_version=version)
         messages.success(request, f"Calculated production has been successfully populated for version '{version}'.")
 
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         messages.error(request, f"An error occurred while calculating the model: {e}")
 
     # Redirect back to the list of scenarios
@@ -3430,7 +3634,11 @@ import subprocess
 
 from django.core.paginator import Paginator
 
+from django.db.models import Max
+
+@login_required
 def update_products_cost(request, version):
+    user_name = request.user.username   
     scenario = get_object_or_404(scenarios, version=version)
     costs = ProductSiteCostModel.objects.filter(version=scenario)
 
@@ -3442,33 +3650,33 @@ def update_products_cost(request, version):
     if site_filter:
         costs = costs.filter(site__SiteName__icontains=site_filter)
 
+    # --- NEW: Build a lookup for max warehouse cost ---
+    from .models import MasterDataInventory
+    warehouse_costs = (
+        MasterDataInventory.objects
+        .filter(version=scenario)
+        .values('product', 'site')
+        .annotate(max_cost=Max('cost_aud'))
+    )
+    warehouse_cost_lookup = {
+        (row['product'], row['site']): row['max_cost']
+        for row in warehouse_costs
+    }
+
     # Pagination logic: 20 per page
     paginator = Paginator(costs.order_by('product__Product', 'site__SiteName'), 20)
     page_number = request.GET.get('page')
     page_obj = paginator.get_page(page_number)
 
-    if request.method == "POST":
-        for cost in page_obj.object_list:
-            cost_aud = request.POST.get(f'cost_aud_{cost.id}')
-            cost_date = request.POST.get(f'cost_date_{cost.id}')
-            revenue_cost_aud = request.POST.get(f'revenue_cost_aud_{cost.id}')
-            if cost_aud is not None:
-                cost.cost_aud = float(cost_aud) if cost_aud else None
-            if cost_date:
-                cost.cost_date = cost_date
-            if revenue_cost_aud is not None:
-                cost.revenue_cost_aud = float(revenue_cost_aud) if revenue_cost_aud else None
-            cost.save()
-        messages.success(request, "Product costs updated.")
-        # Stay on the same page after POST
-        return redirect(f"{reverse('update_products_cost', args=[version])}?page={page_number}&product={product_filter}&site={site_filter}")
-
+    # Pass the lookup to the template
     return render(request, 'website/update_products_cost.html', {
         'scenario': scenario,
         'costs': page_obj.object_list,
         'page_obj': page_obj,
         'product_filter': product_filter,
         'site_filter': site_filter,
+        'warehouse_cost_lookup': warehouse_cost_lookup,  # <-- pass to template
+        'user_name': user_name,
     })
 
 def delete_products_cost(request, version):

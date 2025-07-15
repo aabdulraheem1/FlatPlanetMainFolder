@@ -22,68 +22,120 @@
 
     <div class="tab-content" id="forecastTabsContent">
         <div class="tab-pane fade show active" id="product-group" role="tabpanel" aria-labelledby="product-group-tab">
-            <canvas id="productGroupChart" width="400" height="200"></canvas>
-        </div>
+    <canvas id="productGroupChart" width="400" height="200"></canvas>
+    <script>
+    // Product Group Chart
+    const productGroupData = {{ chart_data_product_group|safe }};
+    const ctxProductGroup = document.getElementById('productGroupChart').getContext('2d');
+    const productGroupDatasets = Object.keys(productGroupData).map(group => ({
+        label: group,
+        data: productGroupData[group].tons,
+        backgroundColor: `rgba(${Math.floor(Math.random() * 255)}, ${Math.floor(Math.random() * 255)}, ${Math.floor(Math.random() * 255)}, 0.6)`,
+        borderColor: `rgba(${Math.floor(Math.random() * 255)}, ${Math.floor(Math.random() * 255)}, ${Math.floor(Math.random() * 255)}, 1)`,
+        borderWidth: 1
+    }));
+    const productGroupLabels = productGroupData[Object.keys(productGroupData)[0]].labels;
+
+    new Chart(ctxProductGroup, {
+        type: 'bar',
+        data: {
+            labels: productGroupLabels,
+            datasets: productGroupDatasets
+        },
+        options: {
+            responsive: true,
+            scales: {
+                x: { stacked: true },
+                y: { stacked: true }
+            }
+        }
+    });
+</script>
+</div>
         <div class="tab-pane fade" id="parent-product-group" role="tabpanel" aria-labelledby="parent-product-group-tab">
             <canvas id="ParentGroupChart" width="400" height="200"></canvas>
             <script>
-                const parentProductGroupData = {{ chart_data_parent_product_group| safe }};
-                const ctxParentGroup = document.getElementById('ParentGroupChart').getContext('2d');
+    // Parent Product Group Chart
+    const parentProductGroupData = {{ chart_data_parent_product_group|safe }};
+    const ctxParentGroup = document.getElementById('ParentGroupChart').getContext('2d');
+    const parentGroupDatasets = Object.keys(parentProductGroupData).map(group => ({
+        label: group,
+        data: parentProductGroupData[group].tons,
+        backgroundColor: `rgba(${Math.floor(Math.random() * 255)}, ${Math.floor(Math.random() * 255)}, ${Math.floor(Math.random() * 255)}, 0.6)`,
+        borderColor: `rgba(${Math.floor(Math.random() * 255)}, ${Math.floor(Math.random() * 255)}, ${Math.floor(Math.random() * 255)}, 1)`,
+        borderWidth: 1
+    }));
+    const parentGroupLabels = parentProductGroupData[Object.keys(parentProductGroupData)[0]].labels;
 
-                // Prepare datasets for each parent product group
-                const datasets = Object.keys(parentProductGroupData).map(group => ({
-                    label: group, // Legend for the parent product group
-                    data: parentProductGroupData[group].tons, // Tonnes data
-                    backgroundColor: `rgba(${Math.floor(Math.random() * 255)}, ${Math.floor(Math.random() * 255)}, ${Math.floor(Math.random() * 255)}, 0.6)`,
-                    borderColor: `rgba(${Math.floor(Math.random() * 255)}, ${Math.floor(Math.random() * 255)}, ${Math.floor(Math.random() * 255)}, 1)`,
-                    borderWidth: 1
-                }));
-
-                // Use the labels from the first group (assuming all groups have the same labels)
-                const labels = parentProductGroupData[Object.keys(parentProductGroupData)[0]].labels;
-
-                new Chart(ctxParentGroup, {
-                    type: 'bar',
-                    data: {
-                        labels: labels, // Monthly buckets
-                        datasets: datasets // Datasets for each parent product group
-                    },
-                    options: {
-                        responsive: true,
-                        plugins: {
-                            title: {
-                                display: true,
-                                text: 'Forecast by Parent Product Group (Stacked)'
-                            },
-                            tooltip: {
-                                mode: 'index',
-                                intersect: false
-                            }
-                        },
-                        scales: {
-                            x: {
-                                stacked: true, // Enable stacking on the x-axis
-                                title: {
-                                    display: true,
-                                    text: 'Month'
-                                }
-                            },
-                            y: {
-                                stacked: true, // Enable stacking on the y-axis
-                                title: {
-                                    display: true,
-                                    text: 'Tons'
-                                },
-                                beginAtZero: true
-                            }
-                        }
+    new Chart(ctxParentGroup, {
+        type: 'bar',
+        data: {
+            labels: parentGroupLabels,
+            datasets: parentGroupDatasets
+        },
+        options: {
+            responsive: true,
+            plugins: {
+                title: {
+                    display: true,
+                    text: 'Forecast by Parent Product Group (Stacked)'
+                },
+                tooltip: {
+                    mode: 'index',
+                    intersect: false
+                }
+            },
+            scales: {
+                x: {
+                    stacked: true,
+                    title: {
+                        display: true,
+                        text: 'Month'
                     }
-                });
-            </script>
+                },
+                y: {
+                    stacked: true,
+                    title: {
+                        display: true,
+                        text: 'Tons'
+                    },
+                    beginAtZero: true
+                }
+            }
+        }
+    });
+</script>
         </div>
         <div class="tab-pane fade" id="region" role="tabpanel" aria-labelledby="region-tab">
-            <canvas id="regionChart" width="400" height="200"></canvas>
-        </div>
+    <canvas id="regionChart" width="400" height="200"></canvas>
+    <script>
+        const regionData = {{ chart_data_region|safe }};
+        const ctxRegion = document.getElementById('regionChart').getContext('2d');
+        const regionDatasets = Object.keys(regionData).map(region => ({
+            label: region,
+            data: regionData[region].tons,
+            backgroundColor: `rgba(${Math.floor(Math.random() * 255)}, ${Math.floor(Math.random() * 255)}, ${Math.floor(Math.random() * 255)}, 0.6)`,
+            borderColor: `rgba(${Math.floor(Math.random() * 255)}, ${Math.floor(Math.random() * 255)}, ${Math.floor(Math.random() * 255)}, 1)`,
+            borderWidth: 1
+        }));
+        const regionLabels = regionData[Object.keys(regionData)[0]].labels;
+
+        new Chart(ctxRegion, {
+            type: 'bar',
+            data: {
+                labels: regionLabels,
+                datasets: regionDatasets
+            },
+            options: {
+                responsive: true,
+                scales: {
+                    x: { stacked: true },
+                    y: { stacked: true }
+                }
+            }
+        });
+    </script>
+</div>
         <div class="tab-pane fade" id="customer" role="tabpanel" aria-labelledby="customer-tab">
             <canvas id="customerChart" width="400" height="200"></canvas>
         </div>

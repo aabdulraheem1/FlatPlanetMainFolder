@@ -1,5 +1,5 @@
 {% extends 'website/base.html' %}
-
+{% load humanize %}
 {% block content %}
 <!-- Display Scenario Version -->
 <div class="alert alert-info" role="alert">
@@ -26,23 +26,27 @@
     {% csrf_token %}
     <table class="table table-bordered">
         <thead>
-            <tr>
-                <th>Site</th>
-                <th>Product</th>
-                <th>On Hand Stock Qty</th>
-                <th>In Transit Stock Qty</th>
-                <th>WIP Stock Qty</th>
-            </tr>
-        </thead>
-        <tbody>
-            {% for form in formset %}
-            <tr>
-                {% for field in form.visible_fields %}
-                <td>{{ field }}</td>
-                {% endfor %}
-            </tr>
-            {% endfor %}
-        </tbody>
+    <tr>
+        <th>Site</th>
+        <th>Product</th>
+        <th>On Hand Stock Qty</th>
+        <th>In Transit Stock Qty</th>
+        <th>WIP Stock Qty</th>
+        <th>Warehouse Unit Cost AUD</th> <!-- Added column -->
+    </tr>
+</thead>
+<tbody>
+    {% for form in formset %}
+    <tr>
+        {% for field in form.visible_fields %}
+        <td>{{ field }}</td>
+        {% endfor %}
+        <td>
+            {{ form.instance.cost_aud|floatformat:1|intcomma|default_if_none:"" }}
+        </td>
+    </tr>
+    {% endfor %}
+</tbody>
     </table>
     <button type="submit" class="btn btn-success">Save Changes</button>
     <a href="{% url 'edit_scenario' scenario.version %}" class="btn btn-secondary">Cancel</a>

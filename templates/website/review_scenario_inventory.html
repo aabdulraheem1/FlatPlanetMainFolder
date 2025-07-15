@@ -4,10 +4,12 @@
         <li class="nav-item">
             <a class="nav-link active" id="inv-tab-1" data-toggle="tab" href="#inv-1" role="tab"
                 aria-controls="inv-1" aria-selected="true">COGS</a>
+                
         </li>
         <li class="nav-item">
             <a class="nav-link" id="inv-tab-2" data-toggle="tab" href="#inv-2" role="tab"
-                aria-controls="inv-2" aria-selected="false">Production AUD</a>
+                aria-controls="inv-2" aria-selected="false">Production Plan AUD</a>
+                
         </li>
         <li class="nav-item">
             <a class="nav-link" id="inv-tab-3" data-toggle="tab" href="#inv-3" role="tab"
@@ -24,11 +26,17 @@
     </ul>
     <div class="tab-content" id="inventoryTabsContent">
         <div class="tab-pane fade show active" id="inv-1" role="tabpanel" aria-labelledby="inv-tab-1">
+            <select id="parentGroupFilter" class="form-control mb-3 mt-5" style="width: 300px;">
+    <option value="">All Parent Product Groups</option>
+    {% for group in parent_product_groups %}
+        <option value="{{ group }}">{{ group }}</option>
+    {% endfor %}
+</select>
             <canvas id="inventoryChart1" width="400" height="200"></canvas>
         </div>
         <div class="tab-pane fade" id="inv-2" role="tabpanel" aria-labelledby="inv-tab-2">
-            <canvas id="inventoryChart2" width="400" height="200"></canvas>
-        </div>
+    <canvas id="productionGroupChart" width="400" height="200"></canvas>
+</div>
         <div class="tab-pane fade" id="inv-3" role="tabpanel" aria-labelledby="inv-tab-3">
             <canvas id="inventoryChart3" width="400" height="200"></canvas>
         </div>
@@ -77,32 +85,129 @@
             <canvas id="inventoryChart5" width="400" height="200"></canvas>
         </div>
     </div>
-    <script>
-        // Example: Replace with your actual data and chart options
-        // Only render charts for tabs 1, 2, 3, and 5
-        [1, 2, 3, 5].forEach(function(i) {
-            const ctx = document.getElementById('inventoryChart' + i).getContext('2d');
-            new Chart(ctx, {
-                type: 'bar',
-                data: {
-                    labels: ['Jan', 'Feb', 'Mar', 'Apr'],
-                    datasets: [{
-                        label: document.querySelector(`#inv-tab-${i}`).textContent,
-                        data: [12, 19, 3, 5],
-                        backgroundColor: 'rgba(54, 162, 235, 0.5)'
-                    }]
-                },
-                options: {
-                    responsive: true,
-                    plugins: {
-                        legend: { display: true }
-                    },
-                    scales: {
-                        x: { title: { display: true, text: 'Month' } },
-                        y: { title: { display: true, text: 'Units' }, beginAtZero: true }
-                    }
+    
+<script>
+const productionGroupChartData = {{ production_cogs_group_chart|safe }};
+
+const ctxGroup = document.getElementById('productionGroupChart').getContext('2d');
+new Chart(ctxGroup, {
+    type: 'bar',
+    data: {
+        labels: productionGroupChartData.labels,
+        datasets: productionGroupChartData.datasets
+    },
+    options: {
+        responsive: true,
+        plugins: {
+            legend: { display: true }
+        },
+        scales: {
+            x: { title: { display: true, text: 'Month' }, stacked: true },
+            y: { title: { display: true, text: 'Production AUD' }, beginAtZero: true, stacked: true }
+        }
+    }
+});
+</script>
+<script>
+const allCogsData = {{ cogs_data_by_group|safe }};
+const filterDropdown = document.getElementById('parentGroupFilter');
+const ctx = document.getElementById('inventoryChart1').getContext('2d');
+
+let chartInstance = null;
+
+function updateChartForGroup(group) {
+    let data;
+    if (!group) {
+        // Combine all groups
+        // Find all unique months across all groups
+        let allMonthsSet = new Set();
+        Object.values(allCogsData).forEach(g => g.months.forEach(m => allMonthsSet.add(m)));
+        let allMonths = Array.from(allMonthsSet).sort((a, b) => {
+    // Parse "Jan 2026" as a date
+    const parseMonth = s => new Date(Date.parse("01 " + s));
+    return parseMonth(a) - parseMonth(b);
+});
+
+        // Sum data for each month across all groups
+        let cogs = Array(allMonths.length).fill(0);
+        let revenue = Array(allMonths.length).fill(0);
+        let production_aud = Array(allMonths.length).fill(0);
+
+        Object.values(allCogsData).forEach(g => {
+            g.months.forEach((m, idx) => {
+                let monthIdx = allMonths.indexOf(m);
+                if (monthIdx !== -1) {
+                    cogs[monthIdx] += g.cogs[idx] || 0;
+                    revenue[monthIdx] += g.revenue[idx] || 0;
+                    production_aud[monthIdx] += g.production_aud[idx] || 0;
                 }
             });
         });
-    </script>
+
+        data = {
+            months: allMonths,
+            cogs: cogs,
+            revenue: revenue,
+            production_aud: production_aud
+        };
+    } else if (allCogsData[group]) {
+        data = allCogsData[group];
+    } else {
+        // No data for this group
+        return;
+    }
+
+    if (chartInstance) chartInstance.destroy();
+    chartInstance = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: data.months,
+            datasets: [
+                {
+                    label: 'COGS',
+                    data: data.cogs,
+                    borderColor: 'rgba(255, 99, 132, 1)',
+                    backgroundColor: 'rgba(255, 99, 132, 0.2)',
+                    fill: false,
+                    tension: 0.1
+                },
+                {
+                    label: 'Revenue',
+                    data: data.revenue,
+                    borderColor: 'rgba(54, 162, 235, 1)',
+                    backgroundColor: 'rgba(54, 162, 235, 0.2)',
+                    fill: false,
+                    tension: 0.1
+                },
+                {
+                    label: 'Production AUD',
+                    data: data.production_aud,
+                    borderColor: 'rgba(255, 206, 86, 1)',
+                    backgroundColor: 'rgba(255, 206, 86, 0.2)',
+                    fill: false,
+                    tension: 0.1
+                }
+            ]
+        },
+        options: {
+            responsive: true,
+            plugins: {
+                legend: { display: true }
+            },
+            scales: {
+                x: { title: { display: true, text: 'Month' } },
+                y: { title: { display: true, text: 'AUD' }, beginAtZero: true }
+            }
+        }
+    });
+}
+
+// Initial chart
+updateChartForGroup(filterDropdown.value);
+
+// On filter change
+filterDropdown.addEventListener('change', function() {
+    updateChartForGroup(this.value);
+});
+</script>
 </div>
