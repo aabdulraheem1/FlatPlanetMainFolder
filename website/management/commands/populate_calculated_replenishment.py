@@ -103,6 +103,10 @@ class Command(BaseCommand):
 
         replenishment_records = []
 
+        # Define sites where onhand stock should not be deducted in replenishment
+        # (because it will be deducted later in production)
+        excluded_sites = {'MTJ1', 'COI2', 'XUZ1', 'MER1', 'WUN1', 'WOD1', 'CHI1'}
+
         for idx, row in forecast_df.iterrows():
             product = row['Product']
             location = row['Location']
@@ -140,7 +144,6 @@ class Command(BaseCommand):
 
             site_obj = plant_map.get(site)
             
-            
             if not site_obj:
                 continue
 
@@ -152,7 +155,6 @@ class Command(BaseCommand):
                     shipping_date = date_of_snapshot
                 onhand_stock = inv_row.iloc[0]['onhandstock_qty'] or 0
                 intransit_stock = inv_row.iloc[0]['intransitstock_qty'] or 0
-                
             else:
                 onhand_stock = 0
                 intransit_stock = 0
@@ -160,13 +162,16 @@ class Command(BaseCommand):
             remaining_qty = total_qty
             
             while remaining_qty > 0:
-                if onhand_stock > 0:
+                # Only deduct onhand stock if the site is not in excluded sites
+                # (to avoid double deduction with production)
+                if onhand_stock > 0 and site_obj.SiteName not in excluded_sites:
                     if remaining_qty <= onhand_stock:
                         onhand_stock -= remaining_qty
                         remaining_qty = 0
                     else:
                         remaining_qty -= onhand_stock
                         onhand_stock = 0
+                
                 if remaining_qty > 0 and intransit_stock > 0:
                     if remaining_qty <= intransit_stock:
                         intransit_stock -= remaining_qty
@@ -174,6 +179,7 @@ class Command(BaseCommand):
                     else:
                         remaining_qty -= intransit_stock
                         intransit_stock = 0
+                
                 if remaining_qty > 0:
                     product_instance = product_map.get(product)
                     if not product_instance:

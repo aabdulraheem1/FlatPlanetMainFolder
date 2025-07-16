@@ -1,5 +1,6 @@
 {% extends 'website/base.html' %}
 {% load humanize %}
+{% load form_tags %} 
 {% block content %}
 <!-- Display Scenario Version -->
 <div class="alert alert-info" role="alert">
@@ -24,30 +25,49 @@
 
 <form method="post">
     {% csrf_token %}
+    {{ formset.management_form }}
     <table class="table table-bordered">
         <thead>
-    <tr>
-        <th>Site</th>
-        <th>Product</th>
-        <th>On Hand Stock Qty</th>
-        <th>In Transit Stock Qty</th>
-        <th>WIP Stock Qty</th>
-        <th>Warehouse Unit Cost AUD</th> <!-- Added column -->
-    </tr>
-</thead>
-<tbody>
-    {% for form in formset %}
-    <tr>
-        {% for field in form.visible_fields %}
-        <td>{{ field }}</td>
-        {% endfor %}
-        <td>
-            {{ form.instance.cost_aud|floatformat:1|intcomma|default_if_none:"" }}
-        </td>
-    </tr>
-    {% endfor %}
-</tbody>
+            <tr>
+                <th>Site</th>
+                <th>Product</th>
+                <th>On Hand Stock Qty</th>
+                <th>In Transit Stock Qty</th>
+                <th>WIP Stock Qty</th>
+                <th>Warehouse Unit Cost AUD</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for form in formset %}
+                {{ form.id }}  <!-- Hidden field for the primary key -->
+                <tr>
+                    {% for field in form.visible_fields %}
+                        <td>
+                            {% if field.name == 'cost_aud' %}
+                                <!-- Make cost_aud editable but styled differently -->
+                                {{ field|add_class:"form-control" }}
+                            {% else %}
+                                {{ field|add_class:"form-control" }}
+                            {% endif %}
+                            {% if field.errors %}
+                                <div class="text-danger">{{ field.errors }}</div>
+                            {% endif %}
+                        </td>
+                    {% endfor %}
+                </tr>
+            {% endfor %}
+        </tbody>
     </table>
+    
+    {% if formset.errors %}
+        <div class="alert alert-danger">
+            <strong>Form Errors:</strong>
+            {% for error in formset.errors %}
+                {{ error }}
+            {% endfor %}
+        </div>
+    {% endif %}
+    
     <button type="submit" class="btn btn-success">Save Changes</button>
     <a href="{% url 'edit_scenario' scenario.version %}" class="btn btn-secondary">Cancel</a>
 </form>

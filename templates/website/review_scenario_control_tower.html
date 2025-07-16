@@ -30,6 +30,48 @@
         .ct-table .highlight {
             background: #d3d3d3;
         }
+        .breakdown-info {
+            font-size: 0.85em;
+            color: #666;
+            font-style: italic;
+        }
+        /* Updated styling for clickable demand plan numbers */
+        .demand-plan-click {
+            cursor: pointer;
+            text-decoration: underline;
+            text-decoration-style: dotted;
+            color: #0066cc;
+            font-weight: bold;
+        }
+        .demand-plan-click:hover {
+            background-color: #f8f9fa;
+            border-radius: 3px;
+            color: #004499;
+        }
+        /* Modal styling */
+        .modal-header {
+            background-color: #e9ecef;
+            border-bottom: 2px solid #dee2e6;
+        }
+        .monthly-breakdown-table {
+            font-size: 13px;
+        }
+        .monthly-breakdown-table th {
+            background-color: #f8f9fa;
+            font-weight: bold;
+            text-align: center;
+        }
+        .monthly-breakdown-table td {
+            text-align: right;
+            padding: 6px 8px;
+        }
+        .monthly-breakdown-table .month-column {
+            text-align: left;
+        }
+        .monthly-breakdown-table tfoot {
+            background-color: #e9ecef;
+            font-weight: bold;
+        }
     </style>
 </head>
 <body>
@@ -58,10 +100,10 @@
                         <th></th>
                         <th>FY25 Budget</th>
                         <th>Available Capacity</th>
-                        
                         <th>Current Pour Plan</th>
-                        
-                        <th>Current Demand Plan (inv)</th>
+                        <th>Current Demand Plan
+                            <div class="breakdown-info">Click for monthly details</div>
+                        </th>
                     </tr>
                 </thead>
                 <tbody>
@@ -69,98 +111,97 @@
                         <td class="row-label">Mt Joli</td>
                         <td>21,865</td>
                         <td class="highlight">30,976</td>
-                        
                         <td class="highlight">{{ pour_plan.FY25.MTJ1|intcomma }}</td>
-                        
                         <td class="highlight">
-                          <span
-                            class="popover-demand"
-                            data-fy="FY25"
-                            data-site="MTJ1"
-                            tabindex="0"
-                            data-bs-toggle="popover"
-                            data-bs-trigger="hover focus"
-                            data-bs-html="true">
-                            {{ demand_plan.FY25.MTJ1|intcomma }}
-                          </span>
+                            <span class="demand-plan-click" data-fy="FY25" data-site="MTJ1" data-site-name="Mt Joli">
+                                {{ demand_plan.FY25.MTJ1|intcomma }}
+                            </span>
                         </td>
                     </tr>
                     <tr>
                         <td class="row-label">Coimbatore</td>
                         <td>20,763</td>
                         <td class="highlight">25,214</td>
-                        
                         <td class="highlight">{{ pour_plan.FY25.COI2|intcomma }}</td>
-                        
-                        <td class="highlight">{{ demand_plan.FY25.COI2|intcomma }}</td>
+                        <td class="highlight">
+                            <span class="demand-plan-click" data-fy="FY25" data-site="COI2" data-site-name="Coimbatore">
+                                {{ demand_plan.FY25.COI2|intcomma }}
+                            </span>
+                        </td>
                     </tr>
                     <tr>
                         <td class="row-label">Xuzhou</td>
                         <td>16,531</td>
                         <td class="highlight">21,006</td>
-                        
                         <td class="highlight">{{ pour_plan.FY25.XUZ1|intcomma }}</td>
-                        
-                        <td class="highlight">{{ demand_plan.FY25.XUZ1|intcomma }}</td>
+                        <td class="highlight">
+                            <span class="demand-plan-click" data-fy="FY25" data-site="XUZ1" data-site-name="Xuzhou">
+                                {{ demand_plan.FY25.XUZ1|intcomma }}
+                            </span>
+                        </td>
                     </tr>
                     <tr>
                         <td class="row-label">Merlimau</td>
                         <td>5,883</td>
                         <td class="highlight">6,973</td>
-                        
                         <td class="highlight">{{ pour_plan.FY25.MER1|intcomma }}</td>
-                        
-                        <td class="highlight">{{ demand_plan.FY25.MER1|intcomma }}</td>
+                        <td class="highlight">
+                            <span class="demand-plan-click" data-fy="FY25" data-site="MER1" data-site-name="Merlimau">
+                                {{ demand_plan.FY25.MER1|intcomma }}
+                            </span>
+                        </td>
                     </tr>
                     <tr>
                         <td class="row-label">Wundowie</td>
                         <td>3,754</td>
                         <td class="highlight">3,492</td>
-                        
                         <td class="highlight">{{ pour_plan.FY25.WUN1|intcomma }}</td>
-                        
-                        <td class="highlight">{{ demand_plan.FY25.WUN1|intcomma }}</td>
+                        <td class="highlight">
+                            <span class="demand-plan-click" data-fy="FY25" data-site="WUN1" data-site-name="Wundowie">
+                                {{ demand_plan.FY25.WUN1|intcomma }}
+                            </span>
+                        </td>
                     </tr>
                     <tr>
                         <td class="row-label">Wodonga</td>
                         <td>3,793</td>
                         <td class="highlight">3,717</td>
-                        
                         <td class="highlight">{{ pour_plan.FY25.WOD1|intcomma }}</td>
-                        
-                        <td class="highlight">{{ demand_plan.FY25.WOD1|intcomma }}</td>
+                        <td class="highlight">
+                            <span class="demand-plan-click" data-fy="FY25" data-site="WOD1" data-site-name="Wodonga">
+                                {{ demand_plan.FY25.WOD1|intcomma }}
+                            </span>
+                        </td>
                     </tr>
                     <tr>
                         <td class="row-label">Chilca</td>
                         <td>1,466</td>
                         <td class="highlight">900</td>
-                        
                         <td class="highlight">{{ pour_plan.FY25.CHI1|intcomma }}</td>
-                        
-                        <td class="highlight">{{ demand_plan.FY25.CHI1|intcomma }}</td>
+                        <td class="highlight">
+                            <span class="demand-plan-click" data-fy="FY25" data-site="CHI1" data-site-name="Chilca">
+                                {{ demand_plan.FY25.CHI1|intcomma }}
+                            </span>
+                        </td>
                     </tr>
                     <tr class="total-row">
                         <td>Total Castings</td>
                         <td>74,055</td>
                         <td>92,278</td>
-                        
                         <td>72,254</td>
-                        
                         <td>65,534</td>
                     </tr>
                     <tr>
                         <td class="row-label">Outsource</td>
                         <td>8,672</td>
                         <td></td>
-                        
                         <td class="highlight">11,182</td>
-                        
                         <td class="highlight">11,182</td>
                     </tr>
                 </tbody>
             </table>
-            
         </div>
+
         <!-- FY26 Tab -->
         <div class="tab-pane fade p-3" id="fy26" role="tabpanel" aria-labelledby="fy26-tab">
             <table class="table ct-table" style="width:auto; min-width:900px;">
@@ -169,10 +210,10 @@
                         <th></th>
                         <th>FY26 Budget</th>
                         <th>Available Capacity</th>
-                        
                         <th>Current Pour Plan</th>
-                        
-                        <th>Current Demand Plan (inv)</th>
+                        <th>Current Demand Plan
+                            <div class="breakdown-info">Click for monthly details</div>
+                        </th>
                     </tr>
                 </thead>
                 <tbody>
@@ -180,97 +221,97 @@
                         <td class="row-label">Mt Joli</td>
                         <td>21,865</td>
                         <td class="highlight">30,976</td>
-                        
                         <td class="highlight">{{ pour_plan.FY26.MTJ1|intcomma }}</td>
-                        
                         <td class="highlight">
-                          <span
-                            class="popover-demand"
-                            data-fy="FY26"
-                            data-site="MTJ1"
-                            tabindex="0"
-                            data-bs-toggle="popover"
-                            data-bs-trigger="hover focus"
-                            data-bs-html="true">
-                            {{ demand_plan.FY26.MTJ1|intcomma }}
-                          </span>
+                            <span class="demand-plan-click" data-fy="FY26" data-site="MTJ1" data-site-name="Mt Joli">
+                                {{ demand_plan.FY26.MTJ1|intcomma }}
+                            </span>
                         </td>
                     </tr>
                     <tr>
                         <td class="row-label">Coimbatore</td>
                         <td>20,763</td>
                         <td class="highlight">25,214</td>
-                        
                         <td class="highlight">{{ pour_plan.FY26.COI2|intcomma }}</td>
-                        
-                        <td class="highlight">{{ demand_plan.FY26.COI2|intcomma }}</td>
+                        <td class="highlight">
+                            <span class="demand-plan-click" data-fy="FY26" data-site="COI2" data-site-name="Coimbatore">
+                                {{ demand_plan.FY26.COI2|intcomma }}
+                            </span>
+                        </td>
                     </tr>
                     <tr>
                         <td class="row-label">Xuzhou</td>
                         <td>16,531</td>
                         <td class="highlight">21,006</td>
-                        
                         <td class="highlight">{{ pour_plan.FY26.XUZ1|intcomma }}</td>
-                        
-                        <td class="highlight">{{ demand_plan.FY26.XUZ1|intcomma }}</td>
+                        <td class="highlight">
+                            <span class="demand-plan-click" data-fy="FY26" data-site="XUZ1" data-site-name="Xuzhou">
+                                {{ demand_plan.FY26.XUZ1|intcomma }}
+                            </span>
+                        </td>
                     </tr>
                     <tr>
                         <td class="row-label">Merlimau</td>
                         <td>5,883</td>
                         <td class="highlight">6,973</td>
-                        
                         <td class="highlight">{{ pour_plan.FY26.MER1|intcomma }}</td>
-                        
-                        <td class="highlight">{{ demand_plan.FY26.MER1|intcomma }}</td>
+                        <td class="highlight">
+                            <span class="demand-plan-click" data-fy="FY26" data-site="MER1" data-site-name="Merlimau">
+                                {{ demand_plan.FY26.MER1|intcomma }}
+                            </span>
+                        </td>
                     </tr>
                     <tr>
                         <td class="row-label">Wundowie</td>
                         <td>3,754</td>
                         <td class="highlight">3,492</td>
-                        
                         <td class="highlight">{{ pour_plan.FY26.WUN1|intcomma }}</td>
-                        
-                        <td class="highlight">{{ demand_plan.FY26.WUN1|intcomma }}</td>
+                        <td class="highlight">
+                            <span class="demand-plan-click" data-fy="FY26" data-site="WUN1" data-site-name="Wundowie">
+                                {{ demand_plan.FY26.WUN1|intcomma }}
+                            </span>
+                        </td>
                     </tr>
                     <tr>
                         <td class="row-label">Wodonga</td>
                         <td>3,793</td>
                         <td class="highlight">3,717</td>
-                        
                         <td class="highlight">{{ pour_plan.FY26.WOD1|intcomma }}</td>
-                        
-                        <td class="highlight">{{ demand_plan.FY26.WOD1|intcomma }}</td>
+                        <td class="highlight">
+                            <span class="demand-plan-click" data-fy="FY26" data-site="WOD1" data-site-name="Wodonga">
+                                {{ demand_plan.FY26.WOD1|intcomma }}
+                            </span>
+                        </td>
                     </tr>
                     <tr>
                         <td class="row-label">Chilca</td>
                         <td>1,466</td>
                         <td class="highlight">900</td>
-                        
                         <td class="highlight">{{ pour_plan.FY26.CHI1|intcomma }}</td>
-                        
-                        <td class="highlight">{{ demand_plan.FY26.CHI1|intcomma }}</td>
+                        <td class="highlight">
+                            <span class="demand-plan-click" data-fy="FY26" data-site="CHI1" data-site-name="Chilca">
+                                {{ demand_plan.FY26.CHI1|intcomma }}
+                            </span>
+                        </td>
                     </tr>
                     <tr class="total-row">
                         <td>Total Castings</td>
                         <td>74,055</td>
                         <td>92,278</td>
-                        
                         <td>72,254</td>
-                        
                         <td>65,534</td>
                     </tr>
                     <tr>
                         <td class="row-label">Outsource</td>
                         <td>8,672</td>
                         <td></td>
-                        
                         <td class="highlight">11,182</td>
-                        
                         <td class="highlight">11,182</td>
                     </tr>
                 </tbody>
             </table>
         </div>
+
         <!-- FY27 Tab -->
         <div class="tab-pane fade p-3" id="fy27" role="tabpanel" aria-labelledby="fy27-tab">
             <table class="table ct-table" style="width:auto; min-width:900px;">
@@ -279,10 +320,10 @@
                         <th></th>
                         <th>FY27 Budget</th>
                         <th>Available Capacity</th>
-                        
                         <th>Current Pour Plan</th>
-                        
-                        <th>Current Demand Plan (inv)</th>
+                        <th>Current Demand Plan
+                            <div class="breakdown-info">Click for monthly details</div>
+                        </th>
                     </tr>
                 </thead>
                 <tbody>
@@ -290,92 +331,91 @@
                         <td class="row-label">Mt Joli</td>
                         <td>21,865</td>
                         <td class="highlight">30,976</td>
-                        
                         <td class="highlight">{{ pour_plan.FY27.MTJ1|intcomma }}</td>
-                        
                         <td class="highlight">
-                          <span
-                            class="popover-demand"
-                            data-fy="FY27"
-                            data-site="MTJ1"
-                            tabindex="0"
-                            data-bs-toggle="popover"
-                            data-bs-trigger="hover focus"
-                            data-bs-html="true">
-                            {{ demand_plan.FY27.MTJ1|intcomma }}
-                          </span>
+                            <span class="demand-plan-click" data-fy="FY27" data-site="MTJ1" data-site-name="Mt Joli">
+                                {{ demand_plan.FY27.MTJ1|intcomma }}
+                            </span>
                         </td>
                     </tr>
                     <tr>
                         <td class="row-label">Coimbatore</td>
                         <td>20,763</td>
                         <td class="highlight">25,214</td>
-                        
                         <td class="highlight">{{ pour_plan.FY27.COI2|intcomma }}</td>
-                        
-                        <td class="highlight">{{ demand_plan.FY27.COI2|intcomma }}</td>
+                        <td class="highlight">
+                            <span class="demand-plan-click" data-fy="FY27" data-site="COI2" data-site-name="Coimbatore">
+                                {{ demand_plan.FY27.COI2|intcomma }}
+                            </span>
+                        </td>
                     </tr>
                     <tr>
                         <td class="row-label">Xuzhou</td>
                         <td>16,531</td>
                         <td class="highlight">21,006</td>
-                        
                         <td class="highlight">{{ pour_plan.FY27.XUZ1|intcomma }}</td>
-                        
-                        <td class="highlight">{{ demand_plan.FY27.XUZ1|intcomma }}</td>
+                        <td class="highlight">
+                            <span class="demand-plan-click" data-fy="FY27" data-site="XUZ1" data-site-name="Xuzhou">
+                                {{ demand_plan.FY27.XUZ1|intcomma }}
+                            </span>
+                        </td>
                     </tr>
                     <tr>
                         <td class="row-label">Merlimau</td>
                         <td>5,883</td>
                         <td class="highlight">6,973</td>
-                        
                         <td class="highlight">{{ pour_plan.FY27.MER1|intcomma }}</td>
-                        
-                        <td class="highlight">{{ demand_plan.FY27.MER1|intcomma }}</td>
+                        <td class="highlight">
+                            <span class="demand-plan-click" data-fy="FY27" data-site="MER1" data-site-name="Merlimau">
+                                {{ demand_plan.FY27.MER1|intcomma }}
+                            </span>
+                        </td>
                     </tr>
                     <tr>
                         <td class="row-label">Wundowie</td>
                         <td>3,754</td>
                         <td class="highlight">3,492</td>
-                        
                         <td class="highlight">{{ pour_plan.FY27.WUN1|intcomma }}</td>
-                        
-                        <td class="highlight">{{ demand_plan.FY27.WUN1|intcomma }}</td>
+                        <td class="highlight">
+                            <span class="demand-plan-click" data-fy="FY27" data-site="WUN1" data-site-name="Wundowie">
+                                {{ demand_plan.FY27.WUN1|intcomma }}
+                            </span>
+                        </td>
                     </tr>
                     <tr>
                         <td class="row-label">Wodonga</td>
                         <td>3,793</td>
                         <td class="highlight">3,717</td>
-                        
                         <td class="highlight">{{ pour_plan.FY27.WOD1|intcomma }}</td>
-                        
-                        <td class="highlight">{{ demand_plan.FY27.WOD1|intcomma }}</td>
+                        <td class="highlight">
+                            <span class="demand-plan-click" data-fy="FY27" data-site="WOD1" data-site-name="Wodonga">
+                                {{ demand_plan.FY27.WOD1|intcomma }}
+                            </span>
+                        </td>
                     </tr>
                     <tr>
                         <td class="row-label">Chilca</td>
                         <td>1,466</td>
                         <td class="highlight">900</td>
-                        
                         <td class="highlight">{{ pour_plan.FY27.CHI1|intcomma }}</td>
-                        
-                        <td class="highlight">{{ demand_plan.FY27.CHI1|intcomma }}</td>
+                        <td class="highlight">
+                            <span class="demand-plan-click" data-fy="FY27" data-site="CHI1" data-site-name="Chilca">
+                                {{ demand_plan.FY27.CHI1|intcomma }}
+                            </span>
+                        </td>
                     </tr>
                     <tr class="total-row">
                         <td>Total Castings</td>
                         <td>74,055</td>
                         <td>92,278</td>
-                        
                         <td>72,254</td>
-                        
                         <td>65,534</td>
                     </tr>
                     <tr>
                         <td class="row-label">Outsource</td>
                         <td>8,672</td>
                         <td></td>
-                        
                         <td class="highlight">11,182</td>
-                        
                         <td class="highlight">11,182</td>
                     </tr>
                 </tbody>
@@ -384,40 +424,94 @@
     </div>
 </div>
 
+<!-- Modal for Monthly Breakdown -->
+<div class="modal fade" id="monthlyBreakdownModal" tabindex="-1" aria-labelledby="monthlyBreakdownModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="monthlyBreakdownModalLabel">Monthly Breakdown</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div id="modalContent">
+                    <!-- Dynamic content will be loaded here -->
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <script src="{% static 'js/bootstrap.bundle.min.js' %}"></script>
+<!-- ...existing HTML... -->
+
 <script>
-window.monthlyTableHtml = JSON.parse('{{ monthly_table_html|escapejs }}');
-</script>
-<script>
-function initPopovers() {
-  document.querySelectorAll('.popover-demand').forEach(function(el) {
-    // Dispose any existing popover to avoid duplicates
-    if (el._popoverInstance) {
-      el._popoverInstance.dispose();
+// Load the data
+window.detailedMonthlyTableHtml = {};
+try {
+    if ('{{ detailed_monthly_table_html|escapejs }}') {
+        window.detailedMonthlyTableHtml = JSON.parse('{{ detailed_monthly_table_html|escapejs }}');
+        console.log('✅ Loaded monthly breakdown data');
+        console.log('Available FYs:', Object.keys(window.detailedMonthlyTableHtml));
+        
+        // Debug: Check if data exists for Mt Joli FY25
+        if (window.detailedMonthlyTableHtml['FY25'] && window.detailedMonthlyTableHtml['FY25']['MTJ1']) {
+            console.log('✅ Found data for Mt Joli FY25');
+        } else {
+            console.log('❌ No data found for Mt Joli FY25');
+        }
     }
-    var fy = el.getAttribute('data-fy');
-    var site = el.getAttribute('data-site');
-    var tableHtml = window.monthlyTableHtml[fy][site];
-    el._popoverInstance = new bootstrap.Popover(el, {
-      html: true,
-      trigger: 'hover focus',
-      content: tableHtml
-    });
-  });
+} catch (e) {
+    console.error('❌ Error loading monthly breakdown data:', e);
 }
-document.addEventListener('DOMContentLoaded', function () {
-  initPopovers();
-  // Re-initialize popovers when a tab is shown
-  document.querySelectorAll('a[data-bs-toggle="tab"], button[data-bs-toggle="tab"]').forEach(function(tab) {
-    tab.addEventListener('shown.bs.tab', function () {
-      initPopovers();
-    });
-  });
+
+// Handle click events on demand plan numbers
+document.addEventListener('click', function(e) {
+    if (e.target.classList.contains('demand-plan-click')) {
+        const fy = e.target.getAttribute('data-fy');
+        const site = e.target.getAttribute('data-site');
+        const siteName = e.target.getAttribute('data-site-name');
+        
+        console.log(`🖱️ Clicked on ${siteName} (${site}) for ${fy}`);
+        
+        // Update modal title
+        document.getElementById('monthlyBreakdownModalLabel').textContent = 
+            `Monthly Breakdown - ${siteName} (${fy})`;
+        
+        // Get content for modal
+        let content = '';
+        if (window.detailedMonthlyTableHtml && 
+            window.detailedMonthlyTableHtml[fy] && 
+            window.detailedMonthlyTableHtml[fy][site]) {
+            content = window.detailedMonthlyTableHtml[fy][site];
+            console.log('📊 Using real data from backend - length:', content.length);
+        } else {
+            content = `
+                <div style="padding: 20px; text-align: center;">
+                    <h5>No Data Available</h5>
+                    <p>No monthly breakdown data found for ${siteName} in ${fy}.</p>
+                    <p><strong>Debug Info:</strong></p>
+                    <p>Available FYs: ${JSON.stringify(Object.keys(window.detailedMonthlyTableHtml || {}))}</p>
+                    ${window.detailedMonthlyTableHtml && window.detailedMonthlyTableHtml[fy] ? 
+                        '<p>Available sites for ' + fy + ': ' + JSON.stringify(Object.keys(window.detailedMonthlyTableHtml[fy])) + '</p>' : 
+                        '<p>No data for FY ' + fy + '</p>'}
+                </div>
+            `;
+            console.log('❌ No data available for', fy, site);
+        }
+        
+        // Load content into modal
+        document.getElementById('modalContent').innerHTML = content;
+        
+        // Show modal
+        const modal = new bootstrap.Modal(document.getElementById('monthlyBreakdownModal'));
+        modal.show();
+    }
 });
-</script>
-<script>
-console.log(Object.keys(window.monthlyTableHtml)); // Should show FY25, FY26, FY27
-console.log(Object.keys(window.monthlyTableHtml["FY25"])); // Should show MTJ1, COI2, etc.
+
+console.log('🚀 Modal click handlers initialized');
 </script>
 </body>
 </html>

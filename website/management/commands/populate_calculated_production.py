@@ -15,8 +15,6 @@ import pandas as pd
 class Command(BaseCommand):
     help = "Populate data in CalculatedProductionModel from CalcualtedReplenishmentModel (fast pandas version)"
 
-    
-
     def add_arguments(self, parser):
         parser.add_argument(
             'scenario_version',
@@ -37,6 +35,17 @@ class Command(BaseCommand):
             return
 
         CalculatedProductionModel.objects.filter(version=scenario).delete()
+
+        # Get the first inventory snapshot date and calculate the threshold date
+        first_inventory = MasterDataInventory.objects.filter(version=scenario).order_by('date_of_snapshot').first()
+        if first_inventory:
+            # Add one day to the first snapshot date
+            inventory_threshold_date = first_inventory.date_of_snapshot + timedelta(days=1)
+            # Set to first day of that month
+            inventory_start_date = inventory_threshold_date.replace(day=1)
+        else:
+            inventory_threshold_date = None
+            inventory_start_date = None
 
         # Load replenishments in bulk
         replenishments = pd.DataFrame(list(
@@ -106,6 +115,8 @@ class Command(BaseCommand):
         wip_lookup = {(row['product'], row['site_id']): row['total_wip'] for _, row in wip_df.iterrows()}
         onhand_lookup = {(row['product'], row['site_id']): row['total_onhand'] for _, row in onhand_df.iterrows()}
 
+
+
         calculated_productions = []
 
         for _, replenishment in replenishments.iterrows():
@@ -116,31 +127,15 @@ class Command(BaseCommand):
 
             cast_to_despatch_days = cast_to_despatch.get((site, scenario.version), 0)
             pouring_date = shipping_date - timedelta(days=cast_to_despatch_days)
-            product_row = product_map.get(product)
-            site_row = site_map.get(site)
 
-            key = (str(scenario.version), str(product_row['Product']), str(site_row['SiteName']))
-            cost = cost_lookup.get(key)
-
-            if cost is not None:
-                cogs_aud = cost * production_quantity
-            else:
-                cogs_aud = 0
-
-            # Get inventory snapshot date (if any)
-            inv_snapshots = MasterDataInventory.objects.filter(
-                version=scenario,
-                product=product,
-                site__SiteName=site
-            ).order_by('date_of_snapshot')
-            if inv_snapshots.exists():
-                snapshot_date = inv_snapshots.first().date_of_snapshot
-                if pouring_date < snapshot_date:
-                    pouring_date = snapshot_date
+            # Apply inventory date logic
+            if inventory_threshold_date and pouring_date < inventory_threshold_date:
+                pouring_date = inventory_start_date
 
             product_row = product_map.get(product)
             site_row = site_map.get(site)
-            if product_row is None or site_row is None or product_row.empty or site_row.empty:
+
+            if product_row is None or site_row is None:
                 continue
 
             # Remove from onhand stock first
@@ -192,8 +187,8 @@ class Command(BaseCommand):
                 production_quantity=production_quantity,
                 tonnes=tonnes,
                 product_group=product_row['ProductGroup'],
-                parent_product_group=product_row.get('ParentProductGroupDescription', ''),  # <-- Add this line
-                cogs_aud=cogs_aud,  # <-- Add this line
+                parent_product_group=product_row.get('ParentProductGroupDescription', ''),
+                cogs_aud=cogs_aud,
             ))
 
             wip_lookup[(product, site)] = wip_stock
@@ -202,4 +197,4 @@ class Command(BaseCommand):
         if calculated_productions:
             CalculatedProductionModel.objects.bulk_create(calculated_productions, batch_size=1000)
 
-        self.stdout.write(self.style.SUCCESS(f"CalculatedProductionModel populated for version {version} (fast pandas version)."))
+        self.stdout.write(self.style.SUCCESS(f"CalculatedProductionModel populated for version {version} with inventory date logic applied."))
