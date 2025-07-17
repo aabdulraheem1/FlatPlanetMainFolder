@@ -1,0 +1,175 @@
+{% extends 'website/base.html' %}
+
+{% block content %}
+<div class="container mt-4">
+    <!-- Display Scenario Version -->
+    <div class="alert alert-info" role="alert">
+        <strong>Scenario Version:</strong> {{ version }}
+    </div>
+    
+    <h2>Update Revenue Conversion Modifiers (Revenue Sites)</h2>
+    
+    {% if is_revenue_forecast %}
+    <div class="alert alert-warning" role="alert">
+        <strong>Note:</strong> This shows Revenue Forecast products automatically assigned to revenue sites (XUZ1, MER1, WOD1, COI2).
+        Products are populated from your Revenue Forecast upload.
+    </div>
+    {% endif %}
+    
+    <!-- Filter Form -->
+    <form method="get" class="form-inline mb-3">
+        <div class="form-group">
+            <label for="product" class="mr-2">Filter by Product:</label>
+            <input type="text" id="product" name="product" value="{{ product_filter }}" class="form-control mr-2">
+        </div>
+        <div class="form-group">
+            <label for="site" class="mr-2">Filter by Site:</label>
+            <select id="site" name="site" class="form-control mr-2">
+                <option value="">All Sites</option>
+                <option value="XUZ1" {% if site_filter == 'XUZ1' %}selected{% endif %}>XUZ1</option>
+                <option value="MER1" {% if site_filter == 'MER1' %}selected{% endif %}>MER1</option>
+                <option value="WOD1" {% if site_filter == 'WOD1' %}selected{% endif %}>WOD1</option>
+                <option value="COI2" {% if site_filter == 'COI2' %}selected{% endif %}>COI2</option>
+            </select>
+        </div>
+        <button type="submit" class="btn btn-primary">Filter</button>
+    </form>
+    
+    <form method="post">
+        {% csrf_token %}
+        {{ formset.management_form }}
+        <input type="hidden" name="version" value="{{ version }}">
+        
+        <div class="table-responsive">
+            <table class="table table-bordered">
+                <thead>
+                    <tr>
+                        <th style="min-width: 150px;">Product & Site</th>
+                        <!-- Removed Region column -->
+                        <th style="min-width: 120px;">Gross Margin</th>
+                        <th style="min-width: 140px;">In House Production</th>
+                        <th style="min-width: 140px;">Cost AUD Per KG</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for form in formset %}
+                    <tr>
+                        <!-- Show product and site name as read-only text -->
+                        <td style="vertical-align: middle;">
+                            <strong>{{ form.instance.Product.Product }}</strong>
+                            <br><small class="text-muted">Site: {{ form.instance.Site.SiteName }}</small>
+                            <!-- Hidden fields to maintain the instance ID -->
+                            {% for hidden in form.hidden_fields %}
+                                {{ hidden }}
+                            {% endfor %}
+                        </td>
+                        <!-- Show only the editable fields (removed Region) -->
+                        <td>
+                            {{ form.GrossMargin }}
+                            {% if form.GrossMargin.errors %}
+                                <div class="text-danger small">{{ form.GrossMargin.errors }}</div>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {{ form.InHouseProduction }}
+                            {% if form.InHouseProduction.errors %}
+                                <div class="text-danger small">{{ form.InHouseProduction.errors }}</div>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {{ form.CostAUDPerKG }}
+                            {% if form.CostAUDPerKG.errors %}
+                                <div class="text-danger small">{{ form.CostAUDPerKG.errors }}</div>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="4" class="text-center">  <!-- Changed from 5 to 4 columns -->
+                            <div class="alert alert-warning">
+                                No Revenue Forecast products found. Please upload Revenue Forecast data first.
+                            </div>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        
+        {% if formset.errors %}
+            <div class="alert alert-danger">
+                <strong>Please correct the following errors:</strong>
+                <ul>
+                    {% for error in formset.errors %}
+                        {% if error %}
+                            <li>{{ error }}</li>
+                        {% endif %}
+                    {% endfor %}
+                </ul>
+            </div>
+        {% endif %}
+        
+        {% if formset %}
+            <button type="submit" class="btn btn-primary">Save Changes</button>
+        {% endif %}
+        <a href="{% url 'edit_scenario' version %}" class="btn btn-secondary">Cancel</a>
+    </form>
+    
+    <!-- Pagination -->
+    {% if page_obj.has_other_pages %}
+    <div class="pagination mt-3">
+        <span class="step-links">
+            {% if page_obj.has_previous %}
+                <a href="?page=1&product={{ product_filter }}&site={{ site_filter }}" class="btn btn-outline-primary btn-sm">&laquo; first</a>
+                <a href="?page={{ page_obj.previous_page_number }}&product={{ product_filter }}&site={{ site_filter }}" class="btn btn-outline-primary btn-sm">previous</a>
+            {% endif %}
+
+            <span class="current btn btn-primary btn-sm disabled">
+                Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }}
+            </span>
+
+            {% if page_obj.has_next %}
+                <a href="?page={{ page_obj.next_page_number }}&product={{ product_filter }}&site={{ site_filter }}" class="btn btn-outline-primary btn-sm">next</a>
+                <a href="?page={{ page_obj.paginator.num_pages }}&product={{ product_filter }}&site={{ site_filter }}" class="btn btn-outline-primary btn-sm">last &raquo;</a>
+            {% endif %}
+        </span>
+    </div>
+    {% endif %}
+</div>
+
+<style>
+/* Custom CSS to improve table layout */
+.table input[type="number"], 
+.table input[type="text"],
+.table select {
+    width: 100%;
+    min-width: 80px;
+    padding: 4px 6px;
+    font-size: 12px;
+}
+
+.table th {
+    background-color: #f8f9fa;
+    font-weight: 600;
+    text-align: center;
+    padding: 10px 8px;
+}
+
+.table td {
+    padding: 8px;
+    vertical-align: middle;
+}
+
+.table-responsive {
+    overflow-x: auto;
+}
+
+@media (max-width: 768px) {
+    .table th,
+    .table td {
+        padding: 6px 4px;
+        font-size: 11px;
+    }
+}
+</style>
+{% endblock %}

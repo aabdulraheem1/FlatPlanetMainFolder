@@ -1,6 +1,23 @@
 <!-- Section 1: Forecast Analysis -->
 <div class="container mt-5">
     <h2>Forecast Analysis</h2>
+    
+    <!-- Add data source filter -->
+    <div class="row mb-3">
+        <div class="col-md-6">
+            <label for="dataSourceFilter" class="form-label">Filter by Data Source:</label>
+            <select id="dataSourceFilter" class="form-control" onchange="updateCharts()">
+                <option value="all">All Data Sources</option>
+                <option value="Fixed Plant">Fixed Plant Only</option>
+                <option value="Revenue Forecast">Revenue Forecast Only</option>
+                <option value="Regular">Regular Forecast Only</option>
+            </select>
+        </div>
+        <div class="col-md-6">
+            <label class="form-label">Total Tonnes: <span id="totalTonnes">0</span></label>
+        </div>
+    </div>
+    
     <ul class="nav nav-tabs" id="forecastTabs" role="tablist">
         <li class="nav-item">
             <a class="nav-link active" id="product-group-tab" data-toggle="tab" href="#product-group" role="tab"
@@ -18,71 +35,132 @@
             <a class="nav-link" id="customer-tab" data-toggle="tab" href="#customer" role="tab" aria-controls="customer"
                 aria-selected="false">By Customer</a>
         </li>
+        <li class="nav-item">
+            <a class="nav-link" id="data-source-tab" data-toggle="tab" href="#data-source" role="tab" aria-controls="data-source"
+                aria-selected="false">By Data Source</a>
+        </li>
     </ul>
 
     <div class="tab-content" id="forecastTabsContent">
+        <!-- Product Group Tab -->
         <div class="tab-pane fade show active" id="product-group" role="tabpanel" aria-labelledby="product-group-tab">
-    <canvas id="productGroupChart" width="400" height="200"></canvas>
-    <script>
-    // Product Group Chart
-    const productGroupData = {{ chart_data_product_group|safe }};
-    const ctxProductGroup = document.getElementById('productGroupChart').getContext('2d');
-    const productGroupDatasets = Object.keys(productGroupData).map(group => ({
-        label: group,
-        data: productGroupData[group].tons,
-        backgroundColor: `rgba(${Math.floor(Math.random() * 255)}, ${Math.floor(Math.random() * 255)}, ${Math.floor(Math.random() * 255)}, 0.6)`,
-        borderColor: `rgba(${Math.floor(Math.random() * 255)}, ${Math.floor(Math.random() * 255)}, ${Math.floor(Math.random() * 255)}, 1)`,
-        borderWidth: 1
-    }));
-    const productGroupLabels = productGroupData[Object.keys(productGroupData)[0]].labels;
-
-    new Chart(ctxProductGroup, {
-        type: 'bar',
-        data: {
-            labels: productGroupLabels,
-            datasets: productGroupDatasets
-        },
-        options: {
-            responsive: true,
-            scales: {
-                x: { stacked: true },
-                y: { stacked: true }
-            }
-        }
-    });
-</script>
-</div>
+            <canvas id="productGroupChart" width="400" height="200"></canvas>
+        </div>
+        
+        <!-- Parent Product Group Tab -->
         <div class="tab-pane fade" id="parent-product-group" role="tabpanel" aria-labelledby="parent-product-group-tab">
             <canvas id="ParentGroupChart" width="400" height="200"></canvas>
-            <script>
-    // Parent Product Group Chart
-    const parentProductGroupData = {{ chart_data_parent_product_group|safe }};
-    const ctxParentGroup = document.getElementById('ParentGroupChart').getContext('2d');
-    const parentGroupDatasets = Object.keys(parentProductGroupData).map(group => ({
-        label: group,
-        data: parentProductGroupData[group].tons,
-        backgroundColor: `rgba(${Math.floor(Math.random() * 255)}, ${Math.floor(Math.random() * 255)}, ${Math.floor(Math.random() * 255)}, 0.6)`,
-        borderColor: `rgba(${Math.floor(Math.random() * 255)}, ${Math.floor(Math.random() * 255)}, ${Math.floor(Math.random() * 255)}, 1)`,
-        borderWidth: 1
-    }));
-    const parentGroupLabels = parentProductGroupData[Object.keys(parentProductGroupData)[0]].labels;
+        </div>
+        
+        <!-- Region Tab -->
+        <div class="tab-pane fade" id="region" role="tabpanel" aria-labelledby="region-tab">
+            <canvas id="regionChart" width="400" height="200"></canvas>
+        </div>
+        
+        <!-- Customer Tab -->
+        <div class="tab-pane fade" id="customer" role="tabpanel" aria-labelledby="customer-tab">
+            <canvas id="customerChart" width="400" height="200"></canvas>
+        </div>
+        
+        <!-- Data Source Tab -->
+        <div class="tab-pane fade" id="data-source" role="tabpanel" aria-labelledby="data-source-tab">
+            <canvas id="dataSourceChart" width="400" height="200"></canvas>
+        </div>
+    </div>
+</div>
 
-    new Chart(ctxParentGroup, {
+<script>
+// Define consistent color palette for better visibility
+const colorPalette = [
+    'rgba(255, 99, 132, 0.8)',   // Red
+    'rgba(54, 162, 235, 0.8)',   // Blue
+    'rgba(255, 206, 86, 0.8)',   // Yellow
+    'rgba(75, 192, 192, 0.8)',   // Green
+    'rgba(153, 102, 255, 0.8)',  // Purple
+    'rgba(255, 159, 64, 0.8)',   // Orange
+    'rgba(199, 199, 199, 0.8)',  // Grey
+    'rgba(83, 102, 255, 0.8)',   // Indigo
+    'rgba(255, 99, 255, 0.8)',   // Pink
+    'rgba(99, 255, 132, 0.8)',   // Light Green
+    'rgba(255, 132, 99, 0.8)',   // Coral
+    'rgba(132, 99, 255, 0.8)'    // Light Purple
+];
+
+const borderColors = colorPalette.map(color => color.replace('0.8', '1'));
+
+// Store chart instances
+let charts = {};
+
+// Raw data from Django
+const rawData = {
+    productGroup: {{ chart_data_product_group|safe }},
+    parentProductGroup: {{ chart_data_parent_product_group|safe }},
+    region: {{ chart_data_region|safe }},
+    customer: {{ chart_data_customer|safe }},
+    dataSource: {{ chart_data_data_source|safe }}
+};
+
+function getColorForIndex(index) {
+    return {
+        backgroundColor: colorPalette[index % colorPalette.length],
+        borderColor: borderColors[index % borderColors.length]
+    };
+}
+
+function createChart(canvasId, data, title) {
+    const ctx = document.getElementById(canvasId).getContext('2d');
+    
+    // Destroy existing chart if it exists
+    if (charts[canvasId]) {
+        charts[canvasId].destroy();
+    }
+    
+    const datasets = Object.keys(data).map((key, index) => {
+        const colors = getColorForIndex(index);
+        return {
+            label: key,
+            data: data[key].tons,
+            backgroundColor: colors.backgroundColor,
+            borderColor: colors.borderColor,
+            borderWidth: 1
+        };
+    });
+    
+    const labels = data[Object.keys(data)[0]]?.labels || [];
+    
+    charts[canvasId] = new Chart(ctx, {
         type: 'bar',
         data: {
-            labels: parentGroupLabels,
-            datasets: parentGroupDatasets
+            labels: labels,
+            datasets: datasets
         },
         options: {
             responsive: true,
             plugins: {
                 title: {
                     display: true,
-                    text: 'Forecast by Parent Product Group (Stacked)'
+                    text: title
                 },
                 tooltip: {
                     mode: 'index',
-                    intersect: false
+                    intersect: false,
+                    callbacks: {
+                        footer: function(tooltipItems) {
+                            let total = 0;
+                            tooltipItems.forEach(function(tooltipItem) {
+                                total += tooltipItem.parsed.y;
+                            });
+                            return 'Total: ' + total.toFixed(2) + ' tonnes';
+                        }
+                    }
+                },
+                legend: {
+                    display: true,
+                    position: 'top',
+                    labels: {
+                        usePointStyle: true,
+                        padding: 20
+                    }
                 }
             },
             scales: {
@@ -97,47 +175,108 @@
                     stacked: true,
                     title: {
                         display: true,
-                        text: 'Tons'
+                        text: 'Tonnes'
                     },
-                    beginAtZero: true
+                    beginAtZero: true,
+                    ticks: {
+                        callback: function(value) {
+                            return value.toLocaleString() + 't';
+                        }
+                    }
                 }
+            },
+            interaction: {
+                mode: 'nearest',
+                axis: 'x',
+                intersect: false
             }
         }
     });
-</script>
-        </div>
-        <div class="tab-pane fade" id="region" role="tabpanel" aria-labelledby="region-tab">
-    <canvas id="regionChart" width="400" height="200"></canvas>
-    <script>
-        const regionData = {{ chart_data_region|safe }};
-        const ctxRegion = document.getElementById('regionChart').getContext('2d');
-        const regionDatasets = Object.keys(regionData).map(region => ({
-            label: region,
-            data: regionData[region].tons,
-            backgroundColor: `rgba(${Math.floor(Math.random() * 255)}, ${Math.floor(Math.random() * 255)}, ${Math.floor(Math.random() * 255)}, 0.6)`,
-            borderColor: `rgba(${Math.floor(Math.random() * 255)}, ${Math.floor(Math.random() * 255)}, ${Math.floor(Math.random() * 255)}, 1)`,
-            borderWidth: 1
-        }));
-        const regionLabels = regionData[Object.keys(regionData)[0]].labels;
+}
 
-        new Chart(ctxRegion, {
-            type: 'bar',
-            data: {
-                labels: regionLabels,
-                datasets: regionDatasets
-            },
-            options: {
-                responsive: true,
-                scales: {
-                    x: { stacked: true },
-                    y: { stacked: true }
-                }
+function updateCharts() {
+    const filter = document.getElementById('dataSourceFilter').value;
+    
+    // Filter data based on selection
+    let filteredData = rawData;
+    if (filter !== 'all') {
+        // Apply filtering logic here if needed
+        // This would require the view to pass data source information
+    }
+    
+    // Create all charts
+    createChart('productGroupChart', filteredData.productGroup, 'Forecast by Product Group (Stacked)');
+    createChart('ParentGroupChart', filteredData.parentProductGroup, 'Forecast by Parent Product Group (Stacked)');
+    createChart('regionChart', filteredData.region, 'Forecast by Region (Stacked)');
+    createChart('customerChart', filteredData.customer, 'Forecast by Customer (Stacked)');
+    createChart('dataSourceChart', filteredData.dataSource, 'Forecast by Data Source (Stacked)');
+    
+    // Update total tonnes
+    updateTotalTonnes();
+}
+
+function updateTotalTonnes() {
+    let total = 0;
+    const data = rawData.productGroup;
+    Object.keys(data).forEach(group => {
+        data[group].tons.forEach(value => {
+            total += value || 0;
+        });
+    });
+    document.getElementById('totalTonnes').textContent = total.toLocaleString() + 't';
+}
+
+// Initialize charts when page loads
+document.addEventListener('DOMContentLoaded', function() {
+    updateCharts();
+});
+
+// Update charts when tab is shown (Chart.js needs this for proper rendering)
+document.querySelectorAll('[data-toggle="tab"]').forEach(tab => {
+    tab.addEventListener('shown.bs.tab', function(e) {
+        Object.values(charts).forEach(chart => {
+            if (chart) {
+                chart.resize();
             }
         });
-    </script>
-</div>
-        <div class="tab-pane fade" id="customer" role="tabpanel" aria-labelledby="customer-tab">
-            <canvas id="customerChart" width="400" height="200"></canvas>
-        </div>
-    </div>
-</div>
+    });
+});
+</script>
+
+<style>
+.nav-tabs .nav-link {
+    color: #495057;
+    background-color: transparent;
+    border: 1px solid transparent;
+    border-top-left-radius: 0.25rem;
+    border-top-right-radius: 0.25rem;
+}
+
+.nav-tabs .nav-link:hover {
+    border-color: #e9ecef #e9ecef #dee2e6;
+    isolation: isolate;
+}
+
+.nav-tabs .nav-link.active {
+    color: #495057;
+    background-color: #fff;
+    border-color: #dee2e6 #dee2e6 #fff;
+}
+
+.tab-content {
+    border: 1px solid #dee2e6;
+    border-top: none;
+    padding: 20px;
+    background-color: #fff;
+}
+
+canvas {
+    max-height: 500px !important;
+}
+
+#totalTonnes {
+    font-weight: bold;
+    font-size: 1.2em;
+    color: #28a745;
+}
+</style>

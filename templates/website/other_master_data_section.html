@@ -1,5 +1,4 @@
 <head>
-
     <style>
         .table th,
         .table td {
@@ -44,9 +43,7 @@
             /* Add spacing between buttons */
         }
     </style>
-
 </head>
-
 
 <!-- Other Master Data -->
 <h3>Other Master Data</h3>
@@ -221,5 +218,85 @@
                 </a>
             </td>
         </tr>
+        <tr>
+            <td>Fixed Plant Conversion Modifiers</td>
+            <td>
+                <input type="checkbox" {% if fixed_plant_conversion_modifiers_has_data %}checked{% endif %} disabled>
+            </td>
+            <td>
+                <!-- Update Button -->
+                <a href="{% url 'update_fixed_plant_conversion_modifiers' scenario.version %}" class="btn btn-warning btn-sm">
+                    <img src="/static/icons/update.png" alt="Update">
+                </a>
+                <!-- Delete Button -->
+                <a href="{% url 'delete_fixed_plant_conversion_modifiers' scenario.version %}" class="btn btn-danger btn-sm"
+                    onclick="return confirm('Are you sure you want to delete all Fixed Plant Conversion Modifiers for this scenario?');">
+                    <img src="/static/icons/delete.png" alt="Delete">
+                </a>
+                <!-- Upload Button -->
+                <a href="{% url 'upload_fixed_plant_conversion_modifiers' scenario.version %}" class="btn btn-info btn-sm">
+                    <img src="/static/icons/upload.png" alt="Upload">
+                </a>
+                <!-- Copy Button -->
+                <a href="{% url 'copy_fixed_plant_conversion_modifiers' scenario.version %}" class="btn btn-info btn-sm">
+                    <img src="/static/icons/copy.png" alt="Copy">
+                </a>
+            </td>
+        </tr>
+        
+        <!-- Revenue to COGS Conversion -->
+        <tr>
+            <td>Revenue to COGS Conversion</td>
+            <td>
+                <input type="checkbox" {% if revenue_to_cogs_conversion_has_data %}checked{% endif %} disabled>
+            </td>
+            <td>
+                <!-- Update Button -->
+                <a href="{% url 'update_revenue_to_cogs_conversion' scenario.version %}" class="btn btn-warning btn-sm">
+                    <img src="/static/icons/update.png" alt="Update">
+                </a>
+                <!-- Delete Button -->
+                <a href="{% url 'delete_revenue_to_cogs_conversion' scenario.version %}" class="btn btn-danger btn-sm"
+                    onclick="return confirm('Are you sure you want to delete all Revenue to COGS Conversion records for this scenario?');">
+                    <img src="/static/icons/delete.png" alt="Delete">
+                </a>
+                <!-- Upload Button -->
+                <a href="{% url 'upload_revenue_to_cogs_conversion' scenario.version %}" class="btn btn-info btn-sm">
+                    <img src="/static/icons/upload.png" alt="Upload">
+                </a>
+                <!-- Copy Button -->
+                <a href="{% url 'copy_revenue_to_cogs_conversion' scenario.version %}" class="btn btn-info btn-sm">
+                    <img src="/static/icons/copy.png" alt="Copy">
+                </a>
+            </td>
+        </tr>
+
+        <!-- Site Allocation -->
+        <tr>
+            <td>Site Allocation</td>
+            <td>
+                <input type="checkbox" {% if site_allocation_has_data %}checked{% endif %} disabled>
+            </td>
+            <td>
+                <!-- Update Button -->
+                <a href="{% url 'update_site_allocation' scenario.version %}" class="btn btn-warning btn-sm">
+                    <img src="/static/icons/update.png" alt="Update">
+                </a>
+                <!-- Delete Button -->
+                <a href="{% url 'delete_site_allocation' scenario.version %}" class="btn btn-danger btn-sm"
+                    onclick="return confirm('Are you sure you want to delete all Site Allocation records for this scenario?');">
+                    <img src="/static/icons/delete.png" alt="Delete">
+                </a>
+                <!-- Upload Button -->
+                <a href="{% url 'upload_site_allocation' scenario.version %}" class="btn btn-info btn-sm">
+                    <img src="/static/icons/upload.png" alt="Upload">
+                </a>
+                <!-- Copy Button -->
+                <a href="{% url 'copy_site_allocation' scenario.version %}" class="btn btn-info btn-sm">
+                    <img src="/static/icons/copy.png" alt="Copy">
+                </a>
+            </td>
+        </tr>
+
     </tbody>
 </table>

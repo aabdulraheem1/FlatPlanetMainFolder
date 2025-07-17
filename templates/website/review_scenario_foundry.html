@@ -282,15 +282,14 @@
     </script>
 </div>
 <!-- WUN1 Chart -->
+<!-- WUN1 Chart - simplified since data now contains product names -->
 <div class="tab-pane fade" id="wun1" role="tabpanel" aria-labelledby="wun1-tab">
     <canvas id="wun1Chart" width="400" height="200"></canvas>
-    <script id="wun1-top-products-data" type="application/json">
-        {{ wun1_top_products_json|safe }}
-    </script>
     <script>
         const wun1Data = {{ wun1_chart_data|safe }};
-        const wun1TopProducts = JSON.parse(document.getElementById('wun1-top-products-data').textContent);
         const wun1PourPlan = {{ wun1_monthly_pour_plan|safe }};
+        
+        // Add pour plan line
         wun1Data.datasets.push({
             type: 'line',
             label: 'Pour Plan',
@@ -301,31 +300,29 @@
             pointRadius: 0,
             order: 0
         });
+        
         const ctxWun1 = document.getElementById('wun1Chart').getContext('2d');
         new Chart(ctxWun1, {
             type: 'bar',
             data: wun1Data,
             options: {
                 responsive: true,
-                plugins: {
-                    legend: { display: true },
-                    tooltip: {
-                        callbacks: {
-                            afterBody: function (context) {
-                                const group = context[0].dataset.label;
-                                const month = context[0].label;
-                                const topByGroup = wun1TopProducts[month] && wun1TopProducts[month][group];
-                                if (!topByGroup || topByGroup.length === 0) return '';
-                                return 'Top 10 Products in ' + group + ':\n' + topByGroup.map(
-                                    (p, i) => `${i + 1}. ${p[0]}: ${parseInt(p[1])}`
-                                ).join('\n');
-                            }
-                        }
+                scales: {
+                    x: { stacked: true },
+                    y: { 
+                        stacked: true,
+                        title: { display: true, text: 'Tonnes' }
                     }
                 },
-                scales: {
-                    x: { title: { display: true, text: 'Month' } },
-                    y: { title: { display: true, text: 'Tonnes / Dress Mass' }, beginAtZero: true }
+                plugins: {
+                    title: {
+                        display: true,
+                        text: 'WUN1 - Production Data by Product'
+                    },
+                    legend: {
+                        display: true,
+                        position: 'right'  // Products in legend on the right
+                    }
                 }
             }
         });

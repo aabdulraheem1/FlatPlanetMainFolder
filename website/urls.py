@@ -136,6 +136,29 @@ urlpatterns = [
     path('upload_products_cost/<str:version>/', views.upload_products_cost, name='upload_products_cost'),
     path('copy_products_cost/<str:version>/', views.copy_products_cost, name='copy_products_cost'),
 
+    path('update_fixed_plant_conversion_modifiers/<str:version>/', views.update_fixed_plant_conversion_modifiers, name='update_fixed_plant_conversion_modifiers'),
+    path('delete_fixed_plant_conversion_modifiers/<str:version>/', views.delete_fixed_plant_conversion_modifiers, name='delete_fixed_plant_conversion_modifiers'),
+    path('upload_fixed_plant_conversion_modifiers/<str:version>/', views.upload_fixed_plant_conversion_modifiers, name='upload_fixed_plant_conversion_modifiers'),
+    path('copy_fixed_plant_conversion_modifiers/<str:version>/', views.copy_fixed_plant_conversion_modifiers, name='copy_fixed_plant_conversion_modifiers'),
+    
+    # Revenue Conversion Modifiers URLs
+    path('update_revenue_conversion_modifiers/<str:version>/', views.update_revenue_conversion_modifiers, name='update_revenue_conversion_modifiers'),
+    path('delete_revenue_conversion_modifiers/<str:version>/', views.delete_revenue_conversion_modifiers, name='delete_revenue_conversion_modifiers'),
+    path('upload_revenue_conversion_modifiers/<str:version>/', views.upload_revenue_conversion_modifiers, name='upload_revenue_conversion_modifiers'),
+    path('copy_revenue_conversion_modifiers/<str:version>/', views.copy_revenue_conversion_modifiers, name='copy_revenue_conversion_modifiers'),
+
+    # Revenue to COGS Conversion URLs
+    path('scenario/<str:version>/update-revenue-to-cogs-conversion/', views.update_revenue_to_cogs_conversion, name='update_revenue_to_cogs_conversion'),
+    path('scenario/<str:version>/upload-revenue-to-cogs-conversion/', views.upload_revenue_to_cogs_conversion, name='upload_revenue_to_cogs_conversion'),
+    path('scenario/<str:version>/delete-revenue-to-cogs-conversion/', views.delete_revenue_to_cogs_conversion, name='delete_revenue_to_cogs_conversion'),
+    path('scenario/<str:version>/copy-revenue-to-cogs-conversion/', views.copy_revenue_to_cogs_conversion, name='copy_revenue_to_cogs_conversion'),
+    
+    # Site Allocation URLs
+    path('scenario/<str:version>/update-site-allocation/', views.update_site_allocation, name='update_site_allocation'),
+    path('scenario/<str:version>/upload-site-allocation/', views.upload_site_allocation, name='upload_site_allocation'),
+    path('scenario/<str:version>/delete-site-allocation/', views.delete_site_allocation, name='delete_site_allocation'),
+    path('scenario/<str:version>/copy-site-allocation/', views.copy_site_allocation, name='copy_site_allocation'),
+
 
 
 

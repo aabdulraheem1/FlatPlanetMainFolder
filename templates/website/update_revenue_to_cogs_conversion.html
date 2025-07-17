@@ -1,0 +1,100 @@
+{% extends 'website/base.html' %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="alert alert-info" role="alert">
+        <strong>Scenario Version:</strong> {{ version }}
+    </div>
+    
+    <h2>Update Revenue to COGS Conversion</h2>
+    
+    <div class="alert alert-warning" role="alert">
+        <strong>Note:</strong> This shows Revenue Forecast products with conversion factors to convert revenue to COGS and tonnes.
+        Products are populated from your Revenue Forecast upload.
+    </div>
+    
+    <!-- Filter Form -->
+    <form method="get" class="form-inline mb-3">
+        <div class="form-group">
+            <label for="product" class="mr-2">Filter by Product:</label>
+            <input type="text" id="product" name="product" value="{{ product_filter }}" class="form-control mr-2">
+        </div>
+        <button type="submit" class="btn btn-primary">Filter</button>
+    </form>
+    
+    <form method="post">
+        {% csrf_token %}
+        {{ formset.management_form }}
+        <input type="hidden" name="version" value="{{ version }}">
+        
+        <div class="table-responsive">
+            <table class="table table-bordered">
+                <thead>
+                    <tr>
+                        <th style="min-width: 150px;">Product</th>
+                        <th style="min-width: 120px;">Gross Margin (%)</th>
+                        <th style="min-width: 140px;">In House Production (%)</th>
+                        <th style="min-width: 140px;">Cost AUD Per KG</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for form in formset %}
+                    <tr>
+                        <td style="vertical-align: middle;">
+                            <strong>{{ form.instance.Product.Product }}</strong>
+                            {% for hidden in form.hidden_fields %}
+                                {{ hidden }}
+                            {% endfor %}
+                        </td>
+                        <td>
+                            {{ form.GrossMargin }}
+                            {% if form.GrossMargin.errors %}
+                                <div class="text-danger small">{{ form.GrossMargin.errors }}</div>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {{ form.InHouseProduction }}
+                            {% if form.InHouseProduction.errors %}
+                                <div class="text-danger small">{{ form.InHouseProduction.errors }}</div>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {{ form.CostAUDPerKG }}
+                            {% if form.CostAUDPerKG.errors %}
+                                <div class="text-danger small">{{ form.CostAUDPerKG.errors }}</div>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="4" class="text-center">
+                            <div class="alert alert-warning">
+                                No Revenue Forecast products found. Please upload Revenue Forecast data first.
+                            </div>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        
+        {% if formset.errors %}
+            <div class="alert alert-danger">
+                <strong>Please correct the following errors:</strong>
+                <ul>
+                    {% for error in formset.errors %}
+                        {% if error %}
+                            <li>{{ error }}</li>
+                        {% endif %}
+                    {% endfor %}
+                </ul>
+            </div>
+        {% endif %}
+        
+        {% if formset %}
+            <button type="submit" class="btn btn-primary">Save Changes</button>
+        {% endif %}
+        <a href="{% url 'edit_scenario' version %}" class="btn btn-secondary">Cancel</a>
+    </form>
+</div>
+{% endblock %}

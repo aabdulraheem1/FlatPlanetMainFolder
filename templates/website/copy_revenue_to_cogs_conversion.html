@@ -1,0 +1,31 @@
+{% extends 'website/base.html' %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="alert alert-info" role="alert">
+        <strong>Target Scenario:</strong> {{ scenario.version }}
+    </div>
+    
+    <h2>Copy Revenue to COGS Conversion</h2>
+    
+    <div class="alert alert-warning" role="alert">
+        <strong>Note:</strong> This will copy Revenue to COGS Conversion records from another scenario to {{ scenario.version }}.
+        Existing records in the target scenario will be replaced.
+    </div>
+    
+    <form method="post">
+        {% csrf_token %}
+        <div class="form-group">
+            <label for="source_version">Select Source Scenario:</label>
+            <select name="source_version" id="source_version" class="form-control" required>
+                <option value="">-- Select a scenario --</option>
+                {% for scenario_option in available_scenarios %}
+                    <option value="{{ scenario_option.version }}">{{ scenario_option.version }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <button type="submit" class="btn btn-primary">Copy Records</button>
+        <a href="{% url 'edit_scenario' scenario.version %}" class="btn btn-secondary">Cancel</a>
+    </form>
+</div>
+{% endblock %}

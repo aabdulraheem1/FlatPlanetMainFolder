@@ -487,3 +487,49 @@ class ProductSiteCostModel(models.Model):
 
     def __str__(self):
         return f"{self.version.version} - {self.product.Product} - {self.site.SiteName}"
+    
+
+class FixedPlantConversionModifiersModel(models.Model):
+    version = models.ForeignKey(scenarios, on_delete=models.CASCADE)
+    Product = models.ForeignKey(MasterDataProductModel, on_delete=models.CASCADE)
+    Site = models.ForeignKey(MasterDataPlantModel, on_delete=models.CASCADE)
+    GrossMargin = models.FloatField(default=0.0, null=True, blank=True)  # New field for GrossMargin
+    ManHourCost = models.FloatField(default=0.0, null=True, blank=True)  # New field for ManHourCost
+    ExternalMaterialComponents = models.FloatField(default=0.0, null=True, blank=True)  # New field for ExternalMaterialComponents
+    FreightPercentage = models.FloatField(default=0.0, null=True, blank=True)  # New field for FreightPercentage
+    MaterialCostPercentage = models.FloatField(default=0.0, null=True, blank=True)  # New field for MaterialCostPercentage
+    CostPerHourAUD = models.FloatField(default=0.0, null=True, blank=True)  # New field for CostPerHourAUD
+    CostPerSQMorKgAUD = models.FloatField(default=0.0, null=True, blank=True)  # New field for CostPerKgAUD
+    
+    class Meta:
+        unique_together = ('version', 'Product', 'Site')
+    
+    def __str__(self):
+        return f"{self.Product.Product} - {self.Site.SiteName} - GM:{self.GrossMargin}"
+
+class RevenueToCogsConversionModel(models.Model):
+    """Model to convert Revenue Forecast to COGS and Tonnes"""
+    version = models.ForeignKey(scenarios, on_delete=models.CASCADE)
+    Product = models.ForeignKey(MasterDataProductModel, on_delete=models.CASCADE)
+    GrossMargin = models.FloatField(default=0.0, null=True, blank=True)  # Percentage
+    InHouseProduction = models.FloatField(default=0.0, null=True, blank=True)  # Percentage
+    CostAUDPerKG = models.FloatField(default=0.0, null=True, blank=True)  # Cost per KG
+
+    class Meta:
+        unique_together = ('version', 'Product')
+    
+    def __str__(self):
+        return f"{self.Product.Product} - GM:{self.GrossMargin}% - Cost:{self.CostAUDPerKG}"
+
+class SiteAllocationModel(models.Model):
+    """Model to allocate converted revenue data to specific sites"""
+    version = models.ForeignKey(scenarios, on_delete=models.CASCADE)
+    Product = models.ForeignKey(MasterDataProductModel, on_delete=models.CASCADE)
+    Site = models.ForeignKey(MasterDataPlantModel, on_delete=models.CASCADE)
+    AllocationPercentage = models.FloatField(default=0.0, null=True, blank=True)  # Percentage of total to allocate to this site
+
+    class Meta:
+        unique_together = ('version', 'Product', 'Site')
+    
+    def __str__(self):
+        return f"{self.Product.Product} - {self.Site.SiteName} - {self.AllocationPercentage}%"

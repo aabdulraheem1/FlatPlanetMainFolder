@@ -1,0 +1,63 @@
+{% extends 'website/base.html' %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="alert alert-info" role="alert">
+        <strong>Scenario Version:</strong> {{ scenario.version }}
+    </div>
+    
+    <h2>Upload Revenue Conversion Modifiers</h2>
+    
+    <div class="alert alert-warning" role="alert">
+        <strong>Note:</strong> This will upload modifiers for Revenue Forecast products (XUZ1, MER1, WOD1, COI2 sites only).
+        Make sure your Excel file has the correct column headers.
+    </div>
+    
+    <form method="post" enctype="multipart/form-data">
+        {% csrf_token %}
+        <div class="form-group">
+            <label for="file">Choose Excel File:</label>
+            <input type="file" name="file" id="file" class="form-control" accept=".xlsx,.xls" required>
+            <small class="form-text text-muted">
+                <strong>Required columns:</strong> Product, Site, GrossMargin, InHouseProduction, CostAUDPerKG
+            </small>
+        </div>
+        <button type="submit" class="btn btn-primary">Upload</button>
+        <a href="{% url 'edit_scenario' scenario.version %}" class="btn btn-secondary">Cancel</a>
+    </form>
+    
+    <div class="mt-4">
+        <h5>Excel File Format Example:</h5>
+        <table class="table table-bordered table-sm">
+            <thead>
+                <tr>
+                    <th>Product</th>
+                    <th>Site</th>
+                    <!-- Removed Region column -->
+                    <th>GrossMargin</th>
+                    <th>InHouseProduction</th>
+                    <th>CostAUDPerKG</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td>PROD001</td>
+                    <td>XUZ1</td>
+                    <!-- Removed Region value -->
+                    <td>0.25</td>
+                    <td>0.80</td>
+                    <td>12.50</td>
+                </tr>
+                <tr>
+                    <td>PROD002</td>
+                    <td>MER1</td>
+                    <!-- Removed Region value -->
+                    <td>0.30</td>
+                    <td>0.75</td>
+                    <td>15.00</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

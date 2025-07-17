@@ -1,0 +1,247 @@
+{% extends 'website/base.html' %}
+
+{% block content %}
+<div class="container mt-4">
+    <!-- Display Scenario Version -->
+    <div class="alert alert-info" role="alert">
+        <strong>Scenario Version:</strong> {{ version }}
+    </div>
+    
+    <h2>Update Fixed Plant Conversion Modifiers (BAS1)</h2>
+    
+    {% if is_fixed_plant %}
+    <div class="alert alert-warning" role="alert">
+        <strong>Note:</strong> This shows Fixed Plant products automatically assigned to BAS1 site.
+        Products are populated from your Fixed Plant forecast upload. Enter percentages as numbers (e.g., 25 for 25%).
+    </div>
+    {% endif %}
+    
+    <!-- Filter Form - Only show product filter for Fixed Plant -->
+    <form method="get" class="form-inline mb-3">
+        <div class="form-group">
+            <label for="product" class="mr-2">Filter by Product:</label>
+            <input type="text" id="product" name="product" value="{{ product_filter }}" class="form-control mr-2">
+        </div>
+        <button type="submit" class="btn btn-primary">Filter</button>
+    </form>
+    
+    <form method="post">
+        {% csrf_token %}
+        {{ formset.management_form }}
+        <input type="hidden" name="version" value="{{ version }}">
+        
+        <div class="table-responsive">
+            <table class="table table-bordered">
+                <thead>
+                    <tr>
+                        <th style="min-width: 150px;">Product (BAS1)</th>
+                        <th style="min-width: 120px;">Gross Margin (%)</th>
+                        <th style="min-width: 120px;">Man Hour Cost</th>
+                        <th style="min-width: 140px;">External Material Components (%)</th>
+                        <th style="min-width: 120px;">Freight Percentage (%)</th>
+                        <th style="min-width: 140px;">Material Cost Percentage (%)</th>
+                        <th style="min-width: 120px;">Cost Per Hour AUD</th>
+                        <th style="min-width: 140px;">Cost Per SQM or Kg AUD</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for form in formset %}
+                    <tr>
+                        <!-- Show product name as read-only text -->
+                        <td style="vertical-align: middle;">
+                            <strong>{{ form.instance.Product.Product }}</strong>
+                            <br><small class="text-muted">Site: BAS1</small>
+                            <!-- Hidden fields to maintain the instance ID -->
+                            {% for hidden in form.hidden_fields %}
+                                {{ hidden }}
+                            {% endfor %}
+                        </td>
+                        <!-- Show only the editable fields -->
+                        <td>
+                            <div class="input-group">
+                                {{ form.GrossMargin }}
+                                <div class="input-group-append">
+                                    <span class="input-group-text">%</span>
+                                </div>
+                            </div>
+                            {% if form.GrossMargin.errors %}
+                                <div class="text-danger small">{{ form.GrossMargin.errors }}</div>
+                            {% endif %}
+                        </td>
+                        <td>
+                            <div class="input-group">
+                                {{ form.ManHourCost }}
+                                <div class="input-group-append">
+                                    <span class="input-group-text">AUD</span>
+                                </div>
+                            </div>
+                            {% if form.ManHourCost.errors %}
+                                <div class="text-danger small">{{ form.ManHourCost.errors }}</div>
+                            {% endif %}
+                        </td>
+                        <td>
+                            <div class="input-group">
+                                {{ form.ExternalMaterialComponents }}
+                                <div class="input-group-append">
+                                    <span class="input-group-text">%</span>
+                                </div>
+                            </div>
+                            {% if form.ExternalMaterialComponents.errors %}
+                                <div class="text-danger small">{{ form.ExternalMaterialComponents.errors }}</div>
+                            {% endif %}
+                        </td>
+                        <td>
+                            <div class="input-group">
+                                {{ form.FreightPercentage }}
+                                <div class="input-group-append">
+                                    <span class="input-group-text">%</span>
+                                </div>
+                            </div>
+                            {% if form.FreightPercentage.errors %}
+                                <div class="text-danger small">{{ form.FreightPercentage.errors }}</div>
+                            {% endif %}
+                        </td>
+                        <td>
+                            <div class="input-group">
+                                {{ form.MaterialCostPercentage }}
+                                <div class="input-group-append">
+                                    <span class="input-group-text">%</span>
+                                </div>
+                            </div>
+                            {% if form.MaterialCostPercentage.errors %}
+                                <div class="text-danger small">{{ form.MaterialCostPercentage.errors }}</div>
+                            {% endif %}
+                        </td>
+                        <td>
+                            <div class="input-group">
+                                {{ form.CostPerHourAUD }}
+                                <div class="input-group-append">
+                                    <span class="input-group-text">AUD/hr</span>
+                                </div>
+                            </div>
+                            {% if form.CostPerHourAUD.errors %}
+                                <div class="text-danger small">{{ form.CostPerHourAUD.errors }}</div>
+                            {% endif %}
+                        </td>
+                        <td>
+                            <div class="input-group">
+                                {{ form.CostPerSQMorKgAUD }}
+                                <div class="input-group-append">
+                                    <span class="input-group-text">AUD/kg</span>
+                                </div>
+                            </div>
+                            {% if form.CostPerSQMorKgAUD.errors %}
+                                <div class="text-danger small">{{ form.CostPerSQMorKgAUD.errors }}</div>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="8" class="text-center">
+                            <div class="alert alert-warning">
+                                No Fixed Plant products found. Please upload Fixed Plant forecast data first.
+                            </div>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        
+        {% if formset.errors %}
+            <div class="alert alert-danger">
+                <strong>Please correct the following errors:</strong>
+                <ul>
+                    {% for error in formset.errors %}
+                        {% if error %}
+                            <li>{{ error }}</li>
+                        {% endif %}
+                    {% endfor %}
+                </ul>
+            </div>
+        {% endif %}
+        
+        {% if formset %}
+            <button type="submit" class="btn btn-primary">Save Changes</button>
+        {% endif %}
+        <a href="{% url 'edit_scenario' version %}" class="btn btn-secondary">Cancel</a>
+    </form>
+    
+    <!-- Pagination -->
+    {% if page_obj.has_other_pages %}
+    <div class="pagination mt-3">
+        <span class="step-links">
+            {% if page_obj.has_previous %}
+                <a href="?page=1&product={{ product_filter }}" class="btn btn-outline-primary btn-sm">&laquo; first</a>
+                <a href="?page={{ page_obj.previous_page_number }}&product={{ product_filter }}" class="btn btn-outline-primary btn-sm">previous</a>
+            {% endif %}
+
+            <span class="current btn btn-primary btn-sm disabled">
+                Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }}
+            </span>
+
+            {% if page_obj.has_next %}
+                <a href="?page={{ page_obj.next_page_number }}&product={{ product_filter }}" class="btn btn-outline-primary btn-sm">next</a>
+                <a href="?page={{ page_obj.paginator.num_pages }}&product={{ product_filter }}" class="btn btn-outline-primary btn-sm">last &raquo;</a>
+            {% endif %}
+        </span>
+    </div>
+    {% endif %}
+</div>
+
+<style>
+/* Custom CSS to improve table layout */
+.table input[type="number"], 
+.table input[type="text"] {
+    width: 100%;
+    min-width: 80px;
+    padding: 4px 6px;
+    font-size: 12px;
+}
+
+.table th {
+    background-color: #f8f9fa;
+    font-weight: 600;
+    text-align: center;
+    padding: 10px 8px;
+}
+
+.table td {
+    padding: 8px;
+    vertical-align: middle;
+}
+
+.table-responsive {
+    overflow-x: auto;
+}
+
+/* Input group styling for percentage fields */
+.input-group {
+    width: 100%;
+}
+
+.input-group-text {
+    font-size: 11px;
+    padding: 4px 6px;
+    background-color: #e9ecef;
+    border-left: 0;
+}
+
+.input-group .form-control {
+    border-right: 0;
+}
+
+@media (max-width: 768px) {
+    .table th,
+    .table td {
+        padding: 6px 4px;
+        font-size: 11px;
+    }
+    
+    .input-group-text {
+        font-size: 10px;
+        padding: 3px 4px;
+    }
+}
+</style>
+{% endblock %}

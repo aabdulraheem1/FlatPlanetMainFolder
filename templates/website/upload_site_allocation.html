@@ -1,0 +1,60 @@
+{% extends 'website/base.html' %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="alert alert-info" role="alert">
+        <strong>Scenario Version:</strong> {{ scenario.version }}
+    </div>
+    
+    <h2>Upload Site Allocation</h2>
+    
+    <div class="alert alert-warning" role="alert">
+        <strong>Note:</strong> This will upload allocation percentages for Revenue Forecast products across revenue sites (XUZ1, MER1, WOD1, COI2).
+        Make sure your Excel file has the correct column headers.
+    </div>
+    
+    <form method="post" enctype="multipart/form-data">
+        {% csrf_token %}
+        <div class="form-group">
+            <label for="file">Choose Excel File:</label>
+            <input type="file" name="file" id="file" class="form-control" accept=".xlsx,.xls" required>
+            <small class="form-text text-muted">
+                <strong>Required columns:</strong> Product, Site, AllocationPercentage
+            </small>
+        </div>
+        <button type="submit" class="btn btn-primary">Upload</button>
+        <a href="{% url 'edit_scenario' scenario.version %}" class="btn btn-secondary">Cancel</a>
+    </form>
+    
+    <div class="mt-4">
+        <h5>Excel File Format Example:</h5>
+        <table class="table table-bordered table-sm">
+            <thead>
+                <tr>
+                    <th>Product</th>
+                    <th>Site</th>
+                    <th>AllocationPercentage</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td>PROD001</td>
+                    <td>XUZ1</td>
+                    <td>40.0</td>
+                </tr>
+                <tr>
+                    <td>PROD001</td>
+                    <td>MER1</td>
+                    <td>35.0</td>
+                </tr>
+                <tr>
+                    <td>PROD001</td>
+                    <td>WOD1</td>
+                    <td>25.0</td>
+                </tr>
+            </tbody>
+        </table>
+        <small class="text-muted">Note: Allocation percentages for each product should sum to 100%</small>
+    </div>
+</div>
+{% endblock %}

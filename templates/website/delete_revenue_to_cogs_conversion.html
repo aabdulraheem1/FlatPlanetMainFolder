@@ -1,0 +1,22 @@
+{% extends 'website/base.html' %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="alert alert-info" role="alert">
+        <strong>Scenario Version:</strong> {{ scenario.version }}
+    </div>
+    
+    <h2>Delete Revenue to COGS Conversion</h2>
+    
+    <div class="alert alert-warning" role="alert">
+        <strong>Warning:</strong> This action will permanently delete {{ record_count }} Revenue to COGS Conversion records for this scenario.
+        This action cannot be undone.
+    </div>
+    
+    <form method="post">
+        {% csrf_token %}
+        <button type="submit" class="btn btn-danger">Confirm Delete</button>
+        <a href="{% url 'edit_scenario' scenario.version %}" class="btn btn-secondary">Cancel</a>
+    </form>
+</div>
+{% endblock %}

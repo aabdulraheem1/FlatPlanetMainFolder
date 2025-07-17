@@ -31,11 +31,14 @@ from django.shortcuts import render, get_object_or_404, redirect
 import sys
 import subprocess
 from django.conf import settings
-from .models import AggregatedForecast
+from .models import (AggregatedForecast, RevenueToCogsConversionModel,  SiteAllocationModel, FixedPlantConversionModifiersModel,)
 from website.customized_function import (get_monthly_cogs_and_revenue, get_forecast_data_by_parent_product_group, get_monthly_production_cogs,
 get_monthly_production_cogs_by_group, get_monthly_production_cogs_by_parent_group, get_combined_demand_and_poured_data, get_production_data_by_group,    get_top_products_per_month_by_group,
     get_dress_mass_data, get_forecast_data_by_product_group, get_forecast_data_by_region, get_monthly_pour_plan_for_site, calculate_control_tower_data,
-    get_inventory_data_with_start_date, get_foundry_chart_data)
+    get_inventory_data_with_start_date, get_foundry_chart_data, get_forecast_data_by_data_source, get_forecast_data_by_customer, )
+
+from . models import (RevenueToCogsConversionModel, FixedPlantConversionModifiersModel)
+
 
 def run_management_command(command, *args):
     import os
@@ -445,6 +448,12 @@ def edit_scenario(request, version):
     # Check if there is data for MasterDataPlan
     pour_plan_data_has_data = MasterDataPlan.objects.filter( version=scenario).exists()
 
+    # Check if there is data for the new modifiers
+    fixed_plant_conversion_modifiers_has_data = FixedPlantConversionModifiersModel.objects.filter(version=scenario).exists()
+    revenue_conversion_modifiers_has_data = RevenueToCogsConversionModel.objects.filter(version=scenario).exists()
+    revenue_to_cogs_conversion_has_data = RevenueToCogsConversionModel.objects.filter(version=scenario).exists()
+    site_allocation_has_data = SiteAllocationModel.objects.filter(version=scenario).exists()
+
     # Retrieve missing regions from the session
     missing_regions = request.session.pop('missing_regions', None)
 
@@ -478,6 +487,10 @@ def edit_scenario(request, version):
         'production_allocation_epicor_master_data': production_allocation_epicor_master_data,
         'pour_plan_data_has_data': pour_plan_data_has_data,
         'products_cost_from_epicor': products_cost_from_epicor,
+        'fixed_plant_conversion_modifiers_has_data': fixed_plant_conversion_modifiers_has_data,
+        'revenue_conversion_modifiers_has_data': revenue_conversion_modifiers_has_data,
+        'revenue_to_cogs_conversion_has_data': revenue_to_cogs_conversion_has_data,
+        'site_allocation_has_data': site_allocation_has_data,
     })
 
 
@@ -521,7 +534,6 @@ def upload_forecast(request, forecast_type):
                 'version': version_value
             })
 
-        
         # Set the data source based on the forecast type
         if forecast_type == 'SMART':
             data_source = 'SMART'
@@ -540,34 +552,38 @@ def upload_forecast(request, forecast_type):
         df = pd.read_excel(file_path)
         print("Excel DataFrame head:", df.head())
 
-          
+        # Track unique products for Fixed Plant data source
+        fixed_plant_products = set()
+        revenue_forecast_products = set()  # Add this line
+
         for idx, row in df.iterrows():
             try:
-                
                 period_au = row.get('Period_AU')
                 if pd.notna(period_au):
                     # Try to parse common formats
                     try:
-                        # If it's already a datetime, just use .date()
-                        if isinstance(period_au, datetime):
-                            period_au = period_au.date()
-                        else:
-                            # Try parsing as day/month/year
-                            period_au = datetime.strptime(str(period_au), "%d/%m/%Y").date()
+                        period_au = pd.to_datetime(period_au).date()
                     except ValueError:
-                        try:
-                            # Try parsing as year-month-day
-                            period_au = datetime.strptime(str(period_au), "%Y-%m-%d").date()
-                        except ValueError:
-                            raise ValueError(f"{row.get('Period_AU')} value has an invalid date format. It must be in YYYY-MM-DD or DD/MM/YYYY format.")
+                        period_au = None
                 else:
                     period_au = None
+
+                product_code = row.get('Product') if pd.notna(row.get('Product')) else None
+                
+                # Track products for Fixed Plant data source
+                if data_source == 'Fixed Plant' and product_code:
+                    fixed_plant_products.add(product_code)
+
+                # Track products for Revenue Forecast data source
+                if data_source == 'Revenue Forecast' and product_code:  # Add this block
+                    revenue_forecast_products.add(product_code)
+
                 SMART_Forecast_Model.objects.create(
                     version=version,
                     Data_Source=data_source,
                     Forecast_Region=row.get('Forecast_Region') if pd.notna(row.get('Forecast_Region')) else None,
                     Product_Group=row.get('Product_Group') if pd.notna(row.get('Product_Group')) else None,
-                    Product=row.get('Product') if pd.notna(row.get('Product')) else None,
+                    Product=product_code,
                     ProductFamilyDescription=row.get('ProductFamilyDescription') if pd.notna(row.get('ProductFamilyDescription')) else None,
                     Customer_code=row.get('Customer_code') if pd.notna(row.get('Customer_code')) else None,
                     Location=row.get('Location') if pd.notna(row.get('Location')) else None,
@@ -576,12 +592,137 @@ def upload_forecast(request, forecast_type):
                     DP_Cycle=row.get('DP_Cycle') if pd.notna(row.get('DP_Cycle')) else None,
                     Period_AU=period_au,  
                     Qty=row.get('Qty') if pd.notna(row.get('Qty')) else None,
-                   
                 )
             except Exception as e:
                 print(f"Row {idx} failed: {e}")
 
-           
+        # --- Populate FixedPlantConversionModifiersModel for Fixed Plant data source ---
+        if data_source == 'Fixed Plant' and fixed_plant_products:
+            # Get or create BAS1 site
+            try:
+                bas1_site = MasterDataPlantModel.objects.get(SiteName='BAS1')
+            except MasterDataPlantModel.DoesNotExist:
+                # Create BAS1 site if it doesn't exist
+                bas1_site = MasterDataPlantModel.objects.create(
+                    SiteName='BAS1',
+                    InhouseOrOutsource='Inhouse',
+                    TradingName='Fixed Plant BAS1',
+                    PlantRegion='Fixed Plant',
+                    SiteType='Manufacturing'
+                )
+                messages.success(request, "BAS1 site created automatically for Fixed Plant data.")
+
+            # Create FixedPlantConversionModifiersModel records
+            bulk_modifiers = []
+            for product_code in fixed_plant_products:
+                try:
+                    product_obj = MasterDataProductModel.objects.get(Product=product_code)
+                    
+                    # Check if record already exists
+                    existing_modifier = FixedPlantConversionModifiersModel.objects.filter(
+                        version=version,
+                        Product=product_obj,
+                        Site=bas1_site
+                    ).first()
+                    
+                    if not existing_modifier:
+                        bulk_modifiers.append(
+                            FixedPlantConversionModifiersModel(
+                                version=version,
+                                Product=product_obj,
+                                Site=bas1_site,
+                                GrossMargin=0.0,  # Default values
+                                ManHourCost=0.0,
+                                ExternalMaterialComponents=0.0,
+                                FreightPercentage=0.0,
+                                MaterialCostPercentage=0.0,
+                                CostPerHourAUD=0.0,
+                                CostPerSQMorKgAUD=0.0,
+                            )
+                        )
+                except MasterDataProductModel.DoesNotExist:
+                    print(f"Product {product_code} not found in MasterDataProductModel")
+                    continue
+            
+            if bulk_modifiers:
+                FixedPlantConversionModifiersModel.objects.bulk_create(bulk_modifiers)
+                messages.success(request, f"Created {len(bulk_modifiers)} Fixed Plant Conversion Modifier records for BAS1.")
+
+        # --- Populate RevenueToCogsConversionModel for Revenue Forecast data source ---
+        if data_source == 'Revenue Forecast' and revenue_forecast_products:
+            # Create RevenueToCogsConversionModel records (one per product, no site)
+            bulk_revenue_modifiers = []
+            for product_code in revenue_forecast_products:
+                try:
+                    product_obj = MasterDataProductModel.objects.get(Product=product_code)
+                    
+                    # Check if record already exists
+                    existing_modifier = RevenueToCogsConversionModel.objects.filter(
+                        version=version,
+                        Product=product_obj
+                    ).first()
+                    
+                    if not existing_modifier:
+                        bulk_revenue_modifiers.append(
+                            RevenueToCogsConversionModel(
+                                version=version,
+                                Product=product_obj,
+                                GrossMargin=0.0,  # Default values
+                                InHouseProduction=0.0,
+                                CostAUDPerKG=0.0,
+                            )
+                        )
+                except MasterDataProductModel.DoesNotExist:
+                    print(f"Product {product_code} not found in MasterDataProductModel")
+                    continue
+            
+            if bulk_revenue_modifiers:
+                RevenueToCogsConversionModel.objects.bulk_create(bulk_revenue_modifiers)
+                messages.success(request, f"Created {len(bulk_revenue_modifiers)} Revenue to COGS Conversion records.")
+
+            # --- Populate SiteAllocationModel for Revenue Forecast data source ---
+            revenue_sites = ['XUZ1', 'MER1', 'WOD1', 'COI2']
+            bulk_site_allocations = []
+            
+            for product_code in revenue_forecast_products:
+                try:
+                    product_obj = MasterDataProductModel.objects.get(Product=product_code)
+                    
+                    for site_name in revenue_sites:
+                        try:
+                            site_obj = MasterDataPlantModel.objects.get(SiteName=site_name)
+                            
+                            # Check if record already exists
+                            existing_allocation = SiteAllocationModel.objects.filter(
+                                version=version,
+                                Product=product_obj,
+                                Site=site_obj
+                            ).first()
+                            
+                            if not existing_allocation:
+                                # Default allocation: equal distribution across sites
+                                default_percentage = 100.0 / len(revenue_sites)  # e.g., 25% each for 4 sites
+                                
+                                bulk_site_allocations.append(
+                                    SiteAllocationModel(
+                                        version=version,
+                                        Product=product_obj,
+                                        Site=site_obj,
+                                        AllocationPercentage=default_percentage,
+                                    )
+                                )
+                        except MasterDataPlantModel.DoesNotExist:
+                            print(f"Revenue site {site_name} not found in MasterDataPlantModel")
+                            continue
+                            
+                except MasterDataProductModel.DoesNotExist:
+                    print(f"Product {product_code} not found in MasterDataProductModel")
+                    continue
+            
+            if bulk_site_allocations:
+                SiteAllocationModel.objects.bulk_create(bulk_site_allocations)
+                messages.success(request, f"Created {len(bulk_site_allocations)} Site Allocation records with equal distribution.")
+        
 
         return redirect('edit_scenario', version=version.version)
 
@@ -814,6 +955,10 @@ def review_scenario(request, version):
     chart_data_product_group = get_forecast_data_by_product_group(scenario)
     chart_data_region = get_forecast_data_by_region(scenario)
     
+    # ADD THESE NEW LINES FOR CUSTOMER AND DATA SOURCE CHARTS:
+    chart_data_customer = get_forecast_data_by_customer(scenario)
+    chart_data_data_source = get_forecast_data_by_data_source(scenario)
+    
     # Get control tower data
     control_tower_data = calculate_control_tower_data(scenario)
     
@@ -864,6 +1009,10 @@ def review_scenario(request, version):
         'chart_data_product_group': json.dumps(chart_data_product_group),
         'chart_data_region': json.dumps(chart_data_region),
         
+        # ADD THESE NEW CONTEXT VARIABLES:
+        'chart_data_customer': json.dumps(chart_data_customer),
+        'chart_data_data_source': json.dumps(chart_data_data_source),
+        
         # Inventory data
         'inventory_months': inventory_data['inventory_months'],
         'inventory_cogs': inventory_data['inventory_cogs'],
@@ -872,6 +1021,9 @@ def review_scenario(request, version):
         'production_cogs_group_chart': json.dumps(inventory_data['production_cogs_group_chart']),
         'parent_product_groups': inventory_data['parent_product_groups'],
         'cogs_data_by_group': json.dumps(inventory_data['cogs_data_by_group']),
+
+        
+
     }
     
     return render(request, 'website/review_scenario.html', context)
@@ -3287,3 +3439,640 @@ def copy_products_cost(request, version):
         'scenario': scenario,
         'all_versions': all_versions,
     })
+
+# Fixed Plant Conversion Modifiers Views
+@login_required
+def update_fixed_plant_conversion_modifiers(request, version):
+    user_name = request.user.username
+    scenario = get_object_or_404(scenarios, version=version)
+    
+    # Get filter values from GET
+    product_filter = request.GET.get('product', '').strip()
+    
+    # Get products from Fixed Plant forecast data for this scenario
+    fixed_plant_products = SMART_Forecast_Model.objects.filter(
+        version=scenario, 
+        Data_Source='Fixed Plant'
+    ).values_list('Product', flat=True).distinct()
+    
+    # Filter records for Fixed Plant products and BAS1 site only
+    records = FixedPlantConversionModifiersModel.objects.filter(
+        version=scenario,
+        Site__SiteName='BAS1',
+        Product__Product__in=fixed_plant_products
+    )
+    
+    # Apply additional filters if provided
+    if product_filter:
+        records = records.filter(Product__Product__icontains=product_filter)
+    
+    # Always order before paginating!
+    records = records.order_by('Product__Product')
+    
+    paginator = Paginator(records, 10)
+    page_number = request.GET.get('page')
+    page_obj = paginator.get_page(page_number)
+    
+    # Create formset WITHOUT Product and Site fields (much faster)
+    ModifiersFormSet = modelformset_factory(
+        FixedPlantConversionModifiersModel,
+        fields=['GrossMargin', 'ManHourCost', 'ExternalMaterialComponents', 
+                'FreightPercentage', 'MaterialCostPercentage', 'CostPerHourAUD', 'CostPerSQMorKgAUD'],
+        extra=0
+    )
+    
+    if request.method == 'POST':
+        formset = ModifiersFormSet(request.POST, queryset=page_obj.object_list)
+        if formset.is_valid():
+            instances = formset.save(commit=False)
+            for instance in instances:
+                # Ensure version is set
+                instance.version = scenario
+                instance.save()
+            messages.success(request, "Fixed Plant Conversion Modifiers updated successfully!")
+            return redirect('edit_scenario', version=version)
+        else:
+            messages.error(request, "Please correct the errors below.")
+    else:
+        formset = ModifiersFormSet(queryset=page_obj.object_list)
+    
+    return render(request, 'website/update_fixed_plant_conversion_modifiers.html', {
+        'formset': formset,
+        'version': version,
+        'product_filter': product_filter,
+        'page_obj': page_obj,
+        'user_name': user_name,
+        'scenario': scenario,
+        'is_fixed_plant': True,
+    })
+
+@login_required
+def upload_fixed_plant_conversion_modifiers(request, version):
+    scenario = get_object_or_404(scenarios, version=version)
+    
+    if request.method == 'POST' and request.FILES.get('file'):
+        excel_file = request.FILES['file']
+        try:
+            df = pd.read_excel(excel_file)
+            required_columns = ['Product', 'Site', 'GrossMargin', 'ManHourCost', 'ExternalMaterialComponents', 
+                              'FreightPercentage', 'MaterialCostPercentage', 'CostPerHourAUD', 'CostPerSQMorKgAUD']
+            if not all(column in df.columns for column in required_columns):
+                messages.error(request, f"Invalid file format. Required columns: {', '.join(required_columns)}.")
+                return redirect('edit_scenario', version=version)
+            
+            for _, row in df.iterrows():
+                try:
+                    product = MasterDataProductModel.objects.get(Product=row['Product'])
+                    site = MasterDataPlantModel.objects.get(SiteName=row['Site'])
+                    
+                    FixedPlantConversionModifiersModel.objects.update_or_create(
+                        version=scenario,
+                        Product=product,
+                        Site=site,
+                        defaults={
+                            'GrossMargin': row.get('GrossMargin', 0.0),
+                            'ManHourCost': row.get('ManHourCost', 0.0),
+                            'ExternalMaterialComponents': row.get('ExternalMaterialComponents', 0.0),
+                            'FreightPercentage': row.get('FreightPercentage', 0.0),
+                            'MaterialCostPercentage': row.get('MaterialCostPercentage', 0.0),
+                            'CostPerHourAUD': row.get('CostPerHourAUD', 0.0),
+                            'CostPerSQMorKgAUD': row.get('CostPerSQMorKgAUD', 0.0),
+                        }
+                    )
+                except (MasterDataProductModel.DoesNotExist, MasterDataPlantModel.DoesNotExist) as e:
+                    messages.warning(request, f"Skipped row: {e}")
+                    continue
+            
+            messages.success(request, "Fixed Plant Conversion Modifiers uploaded successfully!")
+        except Exception as e:
+            messages.error(request, f"Error uploading file: {e}")
+        
+        return redirect('edit_scenario', version=version)
+    
+    return render(request, 'website/upload_fixed_plant_conversion_modifiers.html', {
+        'scenario': scenario
+    })
+
+# Revenue Conversion Modifiers Views
+@login_required
+def update_revenue_conversion_modifiers(request, version):
+    user_name = request.user.username
+    scenario = get_object_or_404(scenarios, version=version)
+    
+    # Get filter values from GET
+    product_filter = request.GET.get('product', '').strip()
+    site_filter = request.GET.get('site', '').strip()
+    
+    # Get products from Revenue Forecast data for this scenario
+    revenue_forecast_products = SMART_Forecast_Model.objects.filter(
+        version=scenario, 
+        Data_Source='Revenue Forecast'
+    ).values_list('Product', flat=True).distinct()
+    
+    # Filter records for Revenue products and revenue sites only
+    revenue_sites = ['XUZ1', 'MER1', 'WOD1', 'COI2']
+    records = RevenueToCogsConversionModel.objects.filter(
+        version=scenario,
+        Site__SiteName__in=revenue_sites,
+        Product__Product__in=revenue_forecast_products
+    )
+    
+    # Apply additional filters if provided
+    if product_filter:
+        records = records.filter(Product__Product__icontains=product_filter)
+    if site_filter:
+        records = records.filter(Site__SiteName__icontains=site_filter)
+    
+    # Always order before paginating!
+    records = records.order_by('Product__Product', 'Site__SiteName')
+    
+    paginator = Paginator(records, 10)
+    page_number = request.GET.get('page')
+    page_obj = paginator.get_page(page_number)
+    
+    # Create formset WITHOUT Product, Site, and Region fields (much faster)
+    ModifiersFormSet = modelformset_factory(
+        RevenueToCogsConversionModel,
+        fields=['GrossMargin', 'InHouseProduction', 'CostAUDPerKG'],  # Removed Region
+        extra=0
+    )
+    
+    if request.method == 'POST':
+        formset = ModifiersFormSet(request.POST, queryset=page_obj.object_list)
+        if formset.is_valid():
+            instances = formset.save(commit=False)
+            for instance in instances:
+                # Ensure version is set
+                instance.version = scenario
+                instance.save()
+            messages.success(request, "Revenue Conversion Modifiers updated successfully!")
+            return redirect('edit_scenario', version=version)
+        else:
+            messages.error(request, "Please correct the errors below.")
+    else:
+        formset = ModifiersFormSet(queryset=page_obj.object_list)
+    
+    return render(request, 'website/update_revenue_conversion_modifiers.html', {
+        'formset': formset,
+        'version': version,
+        'product_filter': product_filter,
+        'site_filter': site_filter,
+        'page_obj': page_obj,
+        'user_name': user_name,
+        'scenario': scenario,
+        'is_revenue_forecast': True,
+    })
+
+@login_required
+def upload_revenue_conversion_modifiers(request, version):
+    scenario = get_object_or_404(scenarios, version=version)
+    
+    if request.method == 'POST' and request.FILES.get('file'):
+        excel_file = request.FILES['file']
+        try:
+            df = pd.read_excel(excel_file)
+            required_columns = ['Product', 'Site', 'GrossMargin', 'InHouseProduction', 'CostAUDPerKG']  # Removed Region
+            if not all(column in df.columns for column in required_columns):
+                messages.error(request, f"Invalid file format. Required columns: {', '.join(required_columns)}.")
+                return redirect('edit_scenario', version=version)
+            
+            # Validate that site is one of the allowed revenue sites
+            allowed_sites = ['XUZ1', 'MER1', 'WOD1', 'COI2']
+            
+            for _, row in df.iterrows():
+                try:
+                    if row['Site'] not in allowed_sites:
+                        messages.warning(request, f"Skipped row: Site {row['Site']} is not a valid revenue site. Must be one of: {', '.join(allowed_sites)}")
+                        continue
+                        
+                    product = MasterDataProductModel.objects.get(Product=row['Product'])
+                    site = MasterDataPlantModel.objects.get(SiteName=row['Site'])
+                    
+                    RevenueToCogsConversionModel.objects.update_or_create(
+                        version=scenario,
+                        Product=product,
+                        Site=site,
+                        defaults={
+                            # 'Region': row.get('Region', 'Revenue'),  # Remove this line
+                            'GrossMargin': row.get('GrossMargin', 0.0),
+                            'InHouseProduction': row.get('InHouseProduction', 0.0),
+                            'CostAUDPerKG': row.get('CostAUDPerKG', 0.0),
+                        }
+                    )
+                except (MasterDataProductModel.DoesNotExist, MasterDataPlantModel.DoesNotExist) as e:
+                    messages.warning(request, f"Skipped row: {e}")
+                    continue
+            
+            messages.success(request, "Revenue Conversion Modifiers uploaded successfully!")
+        except Exception as e:
+            messages.error(request, f"Error uploading file: {e}")
+        
+        return redirect('edit_scenario', version=version)
+    
+    return render(request, 'website/upload_revenue_conversion_modifiers.html', {
+        'scenario': scenario
+    })
+
+@login_required
+def copy_revenue_conversion_modifiers(request, version):
+    target_scenario = get_object_or_404(scenarios, version=version)
+    
+    if request.method == 'POST':
+        source_version = request.POST.get('source_version')
+        source_scenario = get_object_or_404(scenarios, version=source_version)
+        
+        source_records = RevenueToCogsConversionModel.objects.filter(version=source_scenario)
+        if not source_records.exists():
+            messages.warning(request, "No Revenue Conversion Modifiers available to copy from the selected scenario.")
+        else:
+            # Delete existing records and copy new ones
+            RevenueToCogsConversionModel.objects.filter(version=target_scenario).delete()
+            for record in source_records:
+                RevenueToCogsConversionModel.objects.create(
+                    version=target_scenario,
+                    Product=record.Product,
+                    Region=record.Region,
+                    ConversionModifier=record.ConversionModifier
+                )
+            messages.success(request, "Revenue Conversion Modifiers copied successfully!")
+        
+        return redirect('edit_scenario', version=version)
+    
+    all_scenarios = scenarios.objects.exclude(version=version)
+    return render(request, 'website/copy_revenue_conversion_modifiers.html', {
+        'target_scenario': target_scenario,
+        'all_scenarios': all_scenarios,
+    })
+
+@login_required
+def delete_fixed_plant_conversion_modifiers(request, version):
+    scenario = get_object_or_404(scenarios, version=version)
+    if request.method == 'POST':
+        FixedPlantConversionModifiersModel.objects.filter(version=scenario).delete()
+        messages.success(request, "All Fixed Plant Conversion Modifiers deleted successfully!")
+        return redirect('edit_scenario', version=version)
+    return render(request, 'website/delete_fixed_plant_conversion_modifiers.html', {
+        'version': version,
+        'scenario': scenario
+    })
+
+@login_required
+def copy_fixed_plant_conversion_modifiers(request, version):
+    target_scenario = get_object_or_404(scenarios, version=version)
+    
+    if request.method == 'POST':
+        source_version = request.POST.get('source_version')
+        source_scenario = get_object_or_404(scenarios, version=source_version)
+        
+        source_records = FixedPlantConversionModifiersModel.objects.filter(version=source_scenario)
+        if not source_records.exists():
+            messages.warning(request, "No Fixed Plant Conversion Modifiers available to copy from the selected scenario.")
+        else:
+            # Delete existing records and copy new ones
+            FixedPlantConversionModifiersModel.objects.filter(version=target_scenario).delete()
+            for record in source_records:
+                FixedPlantConversionModifiersModel.objects.create(
+                    version=target_scenario,
+                    Product=record.Product,
+                    Site=record.Site,
+                    ConversionModifier=record.ConversionModifier
+                )
+            messages.success(request, "Fixed Plant Conversion Modifiers copied successfully!")
+        
+        return redirect('edit_scenario', version=version)
+    
+    all_scenarios = scenarios.objects.exclude(version=version)
+    return render(request, 'website/copy_fixed_plant_conversion_modifiers.html', {
+        'target_scenario': target_scenario,
+        'all_scenarios': all_scenarios,
+    })
+
+@login_required
+def delete_revenue_conversion_modifiers(request, version):
+    scenario = get_object_or_404(scenarios, version=version)
+    if request.method == 'POST':
+        RevenueToCogsConversionModel.objects.filter(version=scenario).delete()
+        messages.success(request, "All Revenue Conversion Modifiers deleted successfully!")
+        return redirect('edit_scenario', version=version)
+    return render(request, 'website/delete_revenue_conversion_modifiers.html', {
+        'version': version,
+        'scenario': scenario
+    })
+
+@login_required
+def update_revenue_to_cogs_conversion(request, version):
+    user_name = request.user.username
+    scenario = get_object_or_404(scenarios, version=version)
+    
+    # Get filter values from GET
+    product_filter = request.GET.get('product', '').strip()
+    
+    # Get products from Revenue Forecast data for this scenario
+    revenue_forecast_products = SMART_Forecast_Model.objects.filter(
+        version=scenario, 
+        Data_Source='Revenue Forecast'
+    ).values_list('Product', flat=True).distinct()
+    
+    # Filter records for Revenue products only
+    records = RevenueToCogsConversionModel.objects.filter(
+        version=scenario,
+        Product__Product__in=revenue_forecast_products
+    )
+    
+    # Apply additional filters if provided
+    if product_filter:
+        records = records.filter(Product__Product__icontains=product_filter)
+    
+    # Always order before paginating!
+    records = records.order_by('Product__Product')
+    
+    paginator = Paginator(records, 10)
+    page_number = request.GET.get('page')
+    page_obj = paginator.get_page(page_number)
+    
+    # Create formset WITHOUT Product field (much faster)
+    ModifiersFormSet = modelformset_factory(
+        RevenueToCogsConversionModel,
+        fields=['GrossMargin', 'InHouseProduction', 'CostAUDPerKG'],
+        extra=0
+    )
+    
+    if request.method == 'POST':
+        formset = ModifiersFormSet(request.POST, queryset=page_obj.object_list)
+        if formset.is_valid():
+            instances = formset.save(commit=False)
+            for instance in instances:
+                # Ensure version is set
+                instance.version = scenario
+                instance.save()
+            messages.success(request, "Revenue to COGS Conversion updated successfully!")
+            return redirect('edit_scenario', version=version)
+        else:
+            messages.error(request, "Please correct the errors below.")
+    else:
+        formset = ModifiersFormSet(queryset=page_obj.object_list)
+    
+    return render(request, 'website/update_revenue_to_cogs_conversion.html', {
+        'formset': formset,
+        'version': version,
+        'product_filter': product_filter,
+        'page_obj': page_obj,
+        'user_name': user_name,
+        'scenario': scenario,
+    })
+
+@login_required
+def upload_revenue_to_cogs_conversion(request, version):
+    scenario = get_object_or_404(scenarios, version=version)
+    
+    if request.method == 'POST' and request.FILES.get('file'):
+        excel_file = request.FILES['file']
+        try:
+            df = pd.read_excel(excel_file)
+            required_columns = ['Product', 'GrossMargin', 'InHouseProduction', 'CostAUDPerKG']
+            if not all(column in df.columns for column in required_columns):
+                messages.error(request, f"Invalid file format. Required columns: {', '.join(required_columns)}.")
+                return redirect('edit_scenario', version=version)
+            
+            for _, row in df.iterrows():
+                try:
+                    product = MasterDataProductModel.objects.get(Product=row['Product'])
+                    
+                    RevenueToCogsConversionModel.objects.update_or_create(
+                        version=scenario,
+                        Product=product,
+                        defaults={
+                            'GrossMargin': row.get('GrossMargin', 0.0),
+                            'InHouseProduction': row.get('InHouseProduction', 0.0),
+                            'CostAUDPerKG': row.get('CostAUDPerKG', 0.0),
+                        }
+                    )
+                except MasterDataProductModel.DoesNotExist:
+                    messages.warning(request, f"Skipped row: Product {row['Product']} not found")
+                    continue
+            
+            messages.success(request, "Revenue to COGS Conversion uploaded successfully!")
+        except Exception as e:
+            messages.error(request, f"Error uploading file: {e}")
+        
+        return redirect('edit_scenario', version=version)
+    
+    return render(request, 'website/upload_revenue_to_cogs_conversion.html', {
+        'scenario': scenario
+    })
+
+@login_required
+def delete_revenue_to_cogs_conversion(request, version):
+    scenario = get_object_or_404(scenarios, version=version)
+    
+    if request.method == 'POST':
+        RevenueToCogsConversionModel.objects.filter(version=scenario).delete()
+        messages.success(request, "All Revenue to COGS Conversion records deleted successfully!")
+        return redirect('edit_scenario', version=version)
+    
+    record_count = RevenueToCogsConversionModel.objects.filter(version=scenario).count()
+    return render(request, 'website/delete_revenue_to_cogs_conversion.html', {
+        'scenario': scenario,
+        'record_count': record_count
+    })
+
+@login_required
+def copy_revenue_to_cogs_conversion(request, version):
+    scenario = get_object_or_404(scenarios, version=version)
+    
+    if request.method == 'POST':
+        source_version = request.POST.get('source_version')
+        try:
+            source_scenario = scenarios.objects.get(version=source_version)
+            source_records = RevenueToCogsConversionModel.objects.filter(version=source_scenario)
+            
+            copied_count = 0
+            for record in source_records:
+                RevenueToCogsConversionModel.objects.update_or_create(
+                    version=scenario,
+                    Product=record.Product,
+                    defaults={
+                        'GrossMargin': record.GrossMargin,
+                        'InHouseProduction': record.InHouseProduction,
+                        'CostAUDPerKG': record.CostAUDPerKG,
+                    }
+                )
+                copied_count += 1
+            
+            messages.success(request, f"Copied {copied_count} Revenue to COGS Conversion records from {source_version}!")
+            return redirect('edit_scenario', version=version)
+        except scenarios.DoesNotExist:
+            messages.error(request, f"Source scenario '{source_version}' not found.")
+    
+    available_scenarios = scenarios.objects.exclude(version=version)
+    return render(request, 'website/copy_revenue_to_cogs_conversion.html', {
+        'scenario': scenario,
+        'available_scenarios': available_scenarios
+    })
+
+# ==================== SITE ALLOCATION VIEWS ====================
+
+@login_required
+def update_site_allocation(request, version):
+    user_name = request.user.username
+    scenario = get_object_or_404(scenarios, version=version)
+    
+    # Get filter values from GET
+    product_filter = request.GET.get('product', '').strip()
+    site_filter = request.GET.get('site', '').strip()
+    
+    # Get products from Revenue Forecast data for this scenario
+    revenue_forecast_products = SMART_Forecast_Model.objects.filter(
+        version=scenario, 
+        Data_Source='Revenue Forecast'
+    ).values_list('Product', flat=True).distinct()
+    
+    # Filter records for Revenue products and revenue sites only
+    revenue_sites = ['XUZ1', 'MER1', 'WOD1', 'COI2']
+    records = SiteAllocationModel.objects.filter(
+        version=scenario,
+        Site__SiteName__in=revenue_sites,
+        Product__Product__in=revenue_forecast_products
+    )
+    
+    # Apply additional filters if provided
+    if product_filter:
+        records = records.filter(Product__Product__icontains=product_filter)
+    if site_filter:
+        records = records.filter(Site__SiteName__icontains=site_filter)
+    
+    # Always order before paginating!
+    records = records.order_by('Product__Product', 'Site__SiteName')
+    
+    paginator = Paginator(records, 10)
+    page_number = request.GET.get('page')
+    page_obj = paginator.get_page(page_number)
+    
+    # Create formset WITHOUT Product and Site fields (much faster)
+    ModifiersFormSet = modelformset_factory(
+        SiteAllocationModel,
+        fields=['AllocationPercentage'],
+        extra=0
+    )
+    
+    if request.method == 'POST':
+        formset = ModifiersFormSet(request.POST, queryset=page_obj.object_list)
+        if formset.is_valid():
+            instances = formset.save(commit=False)
+            for instance in instances:
+                # Ensure version is set
+                instance.version = scenario
+                instance.save()
+            messages.success(request, "Site Allocation updated successfully!")
+            return redirect('edit_scenario', version=version)
+        else:
+            messages.error(request, "Please correct the errors below.")
+    else:
+        formset = ModifiersFormSet(queryset=page_obj.object_list)
+    
+    return render(request, 'website/update_site_allocation.html', {
+        'formset': formset,
+        'version': version,
+        'product_filter': product_filter,
+        'site_filter': site_filter,
+        'page_obj': page_obj,
+        'user_name': user_name,
+        'scenario': scenario,
+    })
+
+@login_required
+def upload_site_allocation(request, version):
+    scenario = get_object_or_404(scenarios, version=version)
+    
+    if request.method == 'POST' and request.FILES.get('file'):
+        excel_file = request.FILES['file']
+        try:
+            df = pd.read_excel(excel_file)
+            required_columns = ['Product', 'Site', 'AllocationPercentage']
+            if not all(column in df.columns for column in required_columns):
+                messages.error(request, f"Invalid file format. Required columns: {', '.join(required_columns)}.")
+                return redirect('edit_scenario', version=version)
+            
+            # Validate that site is one of the allowed revenue sites
+            allowed_sites = ['XUZ1', 'MER1', 'WOD1', 'COI2']
+            
+            for _, row in df.iterrows():
+                try:
+                    if row['Site'] not in allowed_sites:
+                        messages.warning(request, f"Skipped row: Site {row['Site']} is not a valid revenue site. Must be one of: {', '.join(allowed_sites)}")
+                        continue
+                        
+                    product = MasterDataProductModel.objects.get(Product=row['Product'])
+                    site = MasterDataPlantModel.objects.get(SiteName=row['Site'])
+                    
+                    SiteAllocationModel.objects.update_or_create(
+                        version=scenario,
+                        Product=product,
+                        Site=site,
+                        defaults={
+                            'AllocationPercentage': row.get('AllocationPercentage', 0.0),
+                        }
+                    )
+                except (MasterDataProductModel.DoesNotExist, MasterDataPlantModel.DoesNotExist) as e:
+                    messages.warning(request, f"Skipped row: {e}")
+                    continue
+            
+            messages.success(request, "Site Allocation uploaded successfully!")
+        except Exception as e:
+            messages.error(request, f"Error uploading file: {e}")
+        
+        return redirect('edit_scenario', version=version)
+    
+    return render(request, 'website/upload_site_allocation.html', {
+        'scenario': scenario
+    })
+
+@login_required
+def delete_site_allocation(request, version):
+    scenario = get_object_or_404(scenarios, version=version)
+    
+    if request.method == 'POST':
+        SiteAllocationModel.objects.filter(version=scenario).delete()
+        messages.success(request, "All Site Allocation records deleted successfully!")
+        return redirect('edit_scenario', version=version)
+    
+    record_count = SiteAllocationModel.objects.filter(version=scenario).count()
+    return render(request, 'website/delete_site_allocation.html', {
+        'scenario': scenario,
+        'record_count': record_count
+    })
+
+@login_required
+def copy_site_allocation(request, version):
+    scenario = get_object_or_404(scenarios, version=version)
+    
+    if request.method == 'POST':
+        source_version = request.POST.get('source_version')
+        try:
+            source_scenario = scenarios.objects.get(version=source_version)
+            source_records = SiteAllocationModel.objects.filter(version=source_scenario)
+            
+            copied_count = 0
+            for record in source_records:
+                SiteAllocationModel.objects.update_or_create(
+                    version=scenario,
+                    Product=record.Product,
+                    Site=record.Site,
+                    defaults={
+                        'AllocationPercentage': record.AllocationPercentage,
+                    }
+                )
+                copied_count += 1
+            
+            messages.success(request, f"Copied {copied_count} Site Allocation records from {source_version}!")
+            return redirect('edit_scenario', version=version)
+        except scenarios.DoesNotExist:
+            messages.error(request, f"Source scenario '{source_version}' not found.")
+    
+    available_scenarios = scenarios.objects.exclude(version=version)
+    return render(request, 'website/copy_site_allocation.html', {
+        'scenario': scenario,
+        'available_scenarios': available_scenarios
+    })
+
+

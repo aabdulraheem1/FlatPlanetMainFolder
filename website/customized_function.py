@@ -1022,8 +1022,15 @@ def get_foundry_chart_data(scenario_version):
     foundry_data = {}
     
     for foundry in foundries:
-        chart_data = get_production_data_by_group(foundry, scenario_version)
-        top_products = get_top_products_per_month_by_group(foundry, scenario_version)
+        # Special handling for WUN1 to show products instead of product groups
+        if foundry == 'WUN1':
+            chart_data = get_production_data_by_product_for_wun1(foundry, scenario_version)
+            # For WUN1, top_products should just be the product names from the chart
+            top_products = [dataset['label'] for dataset in chart_data['datasets']]
+        else:
+            chart_data = get_production_data_by_group(foundry, scenario_version)
+            top_products = get_top_products_per_month_by_group(foundry, scenario_version)
+        
         monthly_pour_plan = get_monthly_pour_plan_for_site(foundry, scenario_version, chart_data['labels'])
         
         foundry_data[foundry] = {
@@ -1035,3 +1042,163 @@ def get_foundry_chart_data(scenario_version):
     return foundry_data
 
 # ...existing code...
+
+
+
+def get_forecast_data_by_customer(scenario_version):
+    """Get forecast data grouped by customer code."""
+    print(f"DEBUG: Getting customer data for scenario: {scenario_version}")
+    
+    # Try AggregatedForecast first
+    queryset = (
+        AggregatedForecast.objects
+        .filter(version=scenario_version)
+        .values('customer_code', 'period')
+        .annotate(total_tonnes=Sum('tonnes'))
+        .order_by('customer_code', 'period')
+    )
+    
+    print(f"DEBUG: AggregatedForecast customer query returned {queryset.count()} records")
+    
+    if queryset.exists():
+        # Build data structure from AggregatedForecast
+        data = {}
+        labels_set = set()
+        for entry in queryset:
+            customer = entry['customer_code'] or 'Unknown'
+            period = entry['period'].strftime('%Y-%m')
+            labels_set.add(period)
+            data.setdefault(customer, {})[period] = entry['total_tonnes']
+        
+        labels = sorted(labels_set)
+        chart_data = {}
+        for customer, period_dict in data.items():
+            chart_data[customer] = {
+                'labels': labels,
+                'tons': [period_dict.get(label, 0) for label in labels]
+            }
+    else:
+        print(f"DEBUG: No data in AggregatedForecast, trying SMART_Forecast_Model")
+        
+        # Fall back to SMART_Forecast_Model
+        queryset = (
+            SMART_Forecast_Model.objects
+            .filter(version=scenario_version)
+            .values('Customer_code', 'Period_AU')
+            .annotate(total_qty=Sum('Qty'))
+            .order_by('Customer_code', 'Period_AU')
+        )
+        
+        print(f"DEBUG: SMART_Forecast_Model customer query returned {queryset.count()} records")
+        
+        data = {}
+        labels_set = set()
+        for entry in queryset:
+            customer = entry['Customer_code'] or 'Unknown'
+            period = entry['Period_AU'].strftime('%Y-%m') if entry['Period_AU'] else 'Unknown'
+            qty = entry['total_qty'] or 0
+            labels_set.add(period)
+            data.setdefault(customer, {})[period] = qty
+        
+        labels = sorted(labels_set)
+        chart_data = {}
+        for customer, period_dict in data.items():
+            chart_data[customer] = {
+                'labels': labels,
+                'tons': [period_dict.get(label, 0) for label in labels]
+            }
+    
+    print(f"DEBUG: Customer chart data: {len(chart_data)} customers, {len(labels) if 'labels' in locals() else 0} periods")
+    for customer, customer_data in list(chart_data.items())[:3]:  # Show first 3
+        total_tons = sum(customer_data['tons'])
+        print(f"DEBUG: Customer '{customer}': {total_tons} total tons")
+    
+    return chart_data
+
+def get_forecast_data_by_data_source(scenario_version):
+    """Get forecast data grouped by data source."""
+    print(f"DEBUG: Getting data source data for scenario: {scenario_version}")
+    
+    # Get data from SMART_Forecast_Model grouped by Data_Source
+    queryset = (
+        SMART_Forecast_Model.objects
+        .filter(version=scenario_version)
+        .values('Data_Source', 'Period_AU')
+        .annotate(total_qty=Sum('Qty'))
+        .order_by('Data_Source', 'Period_AU')
+    )
+    
+    print(f"DEBUG: SMART_Forecast_Model data source query returned {queryset.count()} records")
+    
+    data = {}
+    labels_set = set()
+    for entry in queryset:
+        data_source = entry['Data_Source'] or 'Unknown'
+        period = entry['Period_AU'].strftime('%Y-%m') if entry['Period_AU'] else 'Unknown'
+        qty = entry['total_qty'] or 0
+        labels_set.add(period)
+        data.setdefault(data_source, {})[period] = qty
+    
+    labels = sorted(labels_set)
+    chart_data = {}
+    for data_source, period_dict in data.items():
+        chart_data[data_source] = {
+            'labels': labels,
+            'tons': [period_dict.get(label, 0) for label in labels]
+        }
+    
+    print(f"DEBUG: Data source chart data: {len(chart_data)} data sources, {len(labels)} periods")
+    for data_source, ds_data in chart_data.items():
+        total_tons = sum(ds_data['tons'])
+        print(f"DEBUG: Data Source '{data_source}': {total_tons} total tons")
+    
+    return chart_data
+
+
+
+def get_production_data_by_product_for_wun1(site_name, scenario_version):
+    """Get production data grouped by individual products for WUN1 only."""
+    queryset = (
+        CalculatedProductionModel.objects
+        .filter(site__SiteName=site_name, version=scenario_version)
+        .annotate(month=TruncMonth('pouring_date'))
+        .values('month', 'product__Product')  # Group by individual product
+        .annotate(total_tonnes=Sum('tonnes'))
+        .order_by('month', 'product__Product')
+    )
+    
+    # Build data structure: {product: {month: total}}, labels: [months]
+    data = {}
+    labels_set = set()
+    for entry in queryset:
+        month = entry['month'].strftime('%Y-%m')
+        product = entry['product__Product'] or 'Unknown'
+        labels_set.add(month)
+        data.setdefault(product, {})[month] = entry['total_tonnes']
+    labels = sorted(labels_set)
+    
+    # Filter out products with all zero totals
+    filtered_data = {}
+    for product, month_dict in data.items():
+        values = [month_dict.get(label, 0) for label in labels]
+        if any(v != 0 for v in values):
+            filtered_data[product] = month_dict
+    
+    # Convert to chart.js format
+    datasets = []
+    colors = [
+        'rgba(75,192,192,0.6)', 'rgba(255,99,132,0.6)', 'rgba(255,206,86,0.6)',
+        'rgba(54,162,235,0.6)', 'rgba(153,102,255,0.6)', 'rgba(255,159,64,0.6)',
+        'rgba(255,159,64,0.6)', 'rgba(201,203,207,0.6)', 'rgba(75,192,192,0.6)'
+    ]
+    for idx, (product, month_dict) in enumerate(filtered_data.items()):
+        datasets.append({
+            'label': product,  # Individual product name
+            'data': [month_dict.get(label, 0) for label in labels],
+            'backgroundColor': colors[idx % len(colors)],
+            'borderColor': colors[idx % len(colors)],
+            'borderWidth': 1,
+            'stack': 'tonnes'
+        })
+    
+    return {'labels': labels, 'datasets': datasets}

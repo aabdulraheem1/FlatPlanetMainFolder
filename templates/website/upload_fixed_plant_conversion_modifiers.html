@@ -1,0 +1,72 @@
+{% extends 'website/base.html' %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="alert alert-info" role="alert">
+        <strong>Scenario Version:</strong> {{ scenario.version }}
+    </div>
+    
+    <h2>Upload Fixed Plant Conversion Modifiers</h2>
+    
+    <div class="alert alert-warning" role="alert">
+        <strong>Note:</strong> This will upload modifiers for Fixed Plant products (BAS1 site only).
+        Make sure your Excel file has the correct column headers.
+    </div>
+    
+    <form method="post" enctype="multipart/form-data">
+        {% csrf_token %}
+        <div class="form-group">
+            <label for="file">Choose Excel File:</label>
+            <input type="file" name="file" id="file" class="form-control" accept=".xlsx,.xls" required>
+            <small class="form-text text-muted">
+                <strong>Required columns:</strong> Product, Site, GrossMargin, ManHourCost, ExternalMaterialComponents, FreightPercentage, MaterialCostPercentage, CostPerHourAUD, CostPerSQMorKgAUD
+            </small>
+        </div>
+        <button type="submit" class="btn btn-primary">Upload</button>
+        <a href="{% url 'edit_scenario' scenario.version %}" class="btn btn-secondary">Cancel</a>
+    </form>
+    
+    <div class="mt-4">
+        <h5>Excel File Format Example:</h5>
+        <table class="table table-bordered table-sm">
+            <thead>
+                <tr>
+                    <th>Product</th>
+                    <th>Site</th>
+                    <th>GrossMargin</th>
+                    <th>ManHourCost</th>
+                    <th>ExternalMaterialComponents</th>
+                    <th>FreightPercentage</th>
+                    <th>MaterialCostPercentage</th>
+                    <th>CostPerHourAUD</th>
+                    <th>CostPerSQMorKgAUD</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td>PROD001</td>
+                    <td>BAS1</td>
+                    <td>0.25</td>
+                    <td>45.50</td>
+                    <td>120.75</td>
+                    <td>0.15</td>
+                    <td>0.35</td>
+                    <td>75.00</td>
+                    <td>12.50</td>
+                </tr>
+                <tr>
+                    <td>PROD002</td>
+                    <td>BAS1</td>
+                    <td>0.30</td>
+                    <td>50.00</td>
+                    <td>110.25</td>
+                    <td>0.12</td>
+                    <td>0.40</td>
+                    <td>80.00</td>
+                    <td>15.00</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}
