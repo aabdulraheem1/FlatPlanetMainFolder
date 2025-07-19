@@ -533,3 +533,19 @@ class SiteAllocationModel(models.Model):
     
     def __str__(self):
         return f"{self.Product.Product} - {self.Site.SiteName} - {self.AllocationPercentage}%"
+    
+class MasterDataEpicorMethodOfManufacturingModel(models.Model):
+    Company = models.CharField(max_length=50, null=True, blank=True)
+    Plant = models.CharField(max_length=50, null=True, blank=True)
+    ProductKey = models.CharField(max_length=100, null=True, blank=True)
+    SiteName = models.CharField(max_length=100, null=True, blank=True)
+    OperationSequence = models.IntegerField(null=True, blank=True)
+    OperationDesc = models.CharField(max_length=255, null=True, blank=True)
+    WorkCentre = models.CharField(max_length=100, null=True, blank=True)
+    
+    class Meta:
+        db_table = 'website_masterdataepicormethodofmanufacturingmodel'
+        unique_together = ('Plant', 'ProductKey', 'OperationSequence')  # Prevent duplicates
+        
+    def __str__(self):
+        return f"{self.ProductKey} - {self.SiteName} - {self.OperationSequence}"

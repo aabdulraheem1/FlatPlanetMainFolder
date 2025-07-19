@@ -35,7 +35,7 @@ from .models import (AggregatedForecast, RevenueToCogsConversionModel,  SiteAllo
 from website.customized_function import (get_monthly_cogs_and_revenue, get_forecast_data_by_parent_product_group, get_monthly_production_cogs,
 get_monthly_production_cogs_by_group, get_monthly_production_cogs_by_parent_group, get_combined_demand_and_poured_data, get_production_data_by_group,    get_top_products_per_month_by_group,
     get_dress_mass_data, get_forecast_data_by_product_group, get_forecast_data_by_region, get_monthly_pour_plan_for_site, calculate_control_tower_data,
-    get_inventory_data_with_start_date, get_foundry_chart_data, get_forecast_data_by_data_source, get_forecast_data_by_customer, )
+    get_inventory_data_with_start_date, get_foundry_chart_data, get_forecast_data_by_data_source, get_forecast_data_by_customer, translate_to_english_cached,)
 
 from . models import (RevenueToCogsConversionModel, FixedPlantConversionModifiersModel)
 
@@ -1349,6 +1349,7 @@ from django.core.paginator import Paginator
 
 @login_required
 def update_production_history(request, version):
+    user_name = request.user.username
     scenario = get_object_or_404(scenarios, version=version)
     queryset = MasterDataHistoryOfProductionModel.objects.filter(version=scenario)
 
@@ -1386,6 +1387,7 @@ def update_production_history(request, version):
             'formset': formset,
             'page_obj': page_obj,
             'request': request,
+            'user_name': user_name,
         }
     )
 
@@ -1462,7 +1464,7 @@ def update_on_hand_stock(request, version):
             # Also save any deleted objects
             for obj in formset.deleted_objects:
                 obj.delete()
-            return redirect('update_on_hand_stock', version=version)
+            return redirect('edit_scenario', version=version)
         else:
             print("DEBUG: Formset errors:", formset.errors)
             print("DEBUG: Formset non-form errors:", formset.non_form_errors())
@@ -2121,24 +2123,75 @@ def incoterm_upload(request):
 
 from django.shortcuts import render, redirect, get_object_or_404
 from django.forms import modelformset_factory
+from django.core.paginator import Paginator
 from .models import MasterdataIncoTermsModel, scenarios
 from .forms import MasterdataIncoTermsForm
 
 def master_data_inco_terms_update_formset(request, version):
     user_name = request.user.username
     scenario = get_object_or_404(scenarios, version=version)
-    IncoTermsFormSet = modelformset_factory(MasterdataIncoTermsModel, form=MasterdataIncoTermsForm, extra=0)
+    
+    # Get filter values from GET parameters
+    customer_filter = request.GET.get('customer', '').strip()
+    
+    # Filter records based on version and customer code
+    queryset = MasterdataIncoTermsModel.objects.filter(version=scenario)
+    
+    # Debug: Print the count for this specific version
+    total_count = queryset.count()
+    print(f"DEBUG: Found {total_count} records for version '{version}' (scenario pk: {scenario.pk})")
+    
+    if customer_filter:
+        queryset = queryset.filter(CustomerCode__icontains=customer_filter)
+        filtered_count = queryset.count()
+        print(f"DEBUG: After customer filter '{customer_filter}': {filtered_count} records")
+    
+    # Always order before paginating!
+    queryset = queryset.order_by('CustomerCode')
+    
+    # Paginate the queryset
+    paginator = Paginator(queryset, 20)  # Show 20 records per page
+    page_number = request.GET.get('page')
+    page_obj = paginator.get_page(page_number)
+    
+    # Debug: Print sample records to verify version
+    if page_obj.object_list:
+        sample_record = page_obj.object_list[0]
+        print(f"DEBUG: Sample record version: '{sample_record.version.version}' (should be '{version}')")
+    
+    # Create formset for current page only
+    IncoTermsFormSet = modelformset_factory(
+        MasterdataIncoTermsModel, 
+        form=MasterdataIncoTermsForm, 
+        extra=0
+    )
 
     if request.method == 'POST':
-        formset = IncoTermsFormSet(request.POST, queryset=MasterdataIncoTermsModel.objects.filter(version=scenario))
+        formset = IncoTermsFormSet(request.POST, queryset=page_obj.object_list)
         if formset.is_valid():
             formset.save()
-            return redirect('edit_scenario', version=version)
+            # Redirect to the same page with current filters and page number
+            redirect_url = request.path
+            params = []
+            if page_number:
+                params.append(f"page={page_number}")
+            if customer_filter:
+                params.append(f"customer={customer_filter}")
+            if params:
+                redirect_url += "?" + "&".join(params)
+            return redirect(redirect_url)
     else:
-        formset = IncoTermsFormSet(queryset=MasterdataIncoTermsModel.objects.filter(version=scenario))
+        formset = IncoTermsFormSet(queryset=page_obj.object_list)
 
-    return render(request, 'website/master_data_inco_terms_formset.html', {'formset': formset, 'scenario': scenario,
-                                                                           'user_name': user_name, 'version': version})
+    return render(request, 'website/master_data_inco_terms_formset.html', {
+        'formset': formset, 
+        'scenario': scenario,
+        'user_name': user_name, 
+        'version': version,
+        'page_obj': page_obj,
+        'customer_filter': customer_filter,
+        'total_count': total_count,
+    })
 
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib import messages
@@ -3134,7 +3187,7 @@ def update_manually_assign_production_requirement(request, version):
                             Percentage=percentage
                         )
                 if not errors:
-                    return redirect('update_manually_assign_production_requirement', version=version)
+                    return redirect('edit_scenario', version=version)
         else:
             errors.append("Please correct the errors in the form.")
     else:
@@ -3210,7 +3263,7 @@ def add_manually_assign_production_requirement(request, version):
                         Percentage=percentage
                     )
             if not errors:
-                return redirect('update_manually_assign_production_requirement', version=version)
+                return redirect('edit_scenario', version=version)
     else:
         formset = ManualAssignFormSet()
 
@@ -4075,4 +4128,181 @@ def copy_site_allocation(request, version):
         'available_scenarios': available_scenarios
     })
 
+from .models import MasterDataEpicorMethodOfManufacturingModel
 
+@login_required
+def method_of_manufacturing_fetch_data_from_mssql(request):
+    if request.method == 'POST':  # Only run on POST (refresh)
+        Server = 'bknew-sql02'
+        Database = 'Bradken_Data_Warehouse'
+        Driver = 'ODBC Driver 17 for SQL Server'
+        Database_Con = f'mssql+pyodbc://@{Server}/{Database}?driver={Driver}'
+        engine = create_engine(Database_Con)
+
+        try:
+            # FIRST: Delete all existing Method of Manufacturing records
+            deleted_count = MasterDataEpicorMethodOfManufacturingModel.objects.all().delete()[0]
+            print(f"Deleted {deleted_count} existing Method of Manufacturing records")
+            
+            try:
+                # Use context manager to ensure connection is closed
+                with engine.connect() as connection:
+                    try:
+                        # First, discover what columns exist in the Operation table
+                        operation_check_query = text("SELECT TOP 1 * FROM PowerBI.Operation")
+                        operation_result = connection.execute(operation_check_query)
+                        operation_columns = list(operation_result.keys())
+                        
+                        # IMPORTANT: Consume all rows from the first result to free the connection
+                        for row in operation_result:
+                            pass  # Just consume the result
+                        
+                        print("Operation table columns:", operation_columns)
+                        
+                        # Now execute the main query
+                        query = text("""
+                            SELECT 
+                                Route.skOperationId,
+                                Route.OperationSequence,
+                                Products.ProductKey,
+                                Products.Company,
+                                Site.SiteName,
+                                Operation.OperationDesc AS OperationDesc,
+                                Operation.WorkCentre AS WorkCentre
+                            FROM PowerBI.Route AS Route
+                            LEFT JOIN PowerBI.Products AS Products
+                                ON Route.skProductId = Products.skProductId
+                            LEFT JOIN PowerBI.Site AS Site
+                                ON Route.skSiteId = Site.skSiteId
+                            LEFT JOIN PowerBI.Operation AS Operation
+                                ON Route.skOperationId = Operation.skOperationId
+                            WHERE Route.OperationSequence IS NOT NULL
+                                AND Products.ProductKey IS NOT NULL
+                                AND Site.SiteName IS NOT NULL
+                        """)
+                        
+                        result = connection.execute(query)
+                        rows = list(result)  # This consumes all rows immediately
+                        
+                        print(f"Found {len(rows)} method of manufacturing records from server")
+                        
+                        # Use a set to track unique combinations and avoid duplicates
+                        seen_combinations = set()
+                        new_records = []
+                        duplicates_skipped = 0
+                        
+                        for row in rows:
+                            # Use the actual data from the query
+                            product_key = row.ProductKey
+                            site_name = row.SiteName
+                            operation_sequence = row.OperationSequence
+                            work_centre = getattr(row, 'WorkCentre', f'WC_{operation_sequence}')
+                            company = getattr(row, 'Company', 'Unknown')
+                            operation_desc_raw = getattr(row, 'OperationDesc', f'Operation {operation_sequence}')
+                            
+                            # NEW: Translate operation description from French to English
+                            operation_description = translate_to_english_cached(operation_desc_raw)
+                            print(f"Translated '{operation_desc_raw}' to '{operation_description}'")
+
+                            # Skip if any key fields are None
+                            if not all([product_key, site_name, operation_sequence]):
+                                continue
+                            
+                            # Create unique key for deduplication
+                            unique_key = (site_name, product_key, operation_sequence)
+                            
+                            # Skip if we've already seen this combination
+                            if unique_key in seen_combinations:
+                                duplicates_skipped += 1
+                                continue
+                            
+                            # Add to seen combinations
+                            seen_combinations.add(unique_key)
+                                
+                            new_records.append(
+                                MasterDataEpicorMethodOfManufacturingModel(
+                                    Company=company,
+                                    Plant=site_name,  # Using SiteName as Plant
+                                    ProductKey=product_key,
+                                    SiteName=site_name,
+                                    OperationSequence=operation_sequence,
+                                    OperationDesc=operation_description,  # Use translated description
+                                    WorkCentre=work_centre,
+                                )
+                            )
+
+                        if new_records:
+                            # Use regular bulk_create without ignore_conflicts for SQLite compatibility
+                            MasterDataEpicorMethodOfManufacturingModel.objects.bulk_create(
+                                new_records, 
+                                batch_size=1000
+                            )
+                            messages.success(request, f'Successfully refreshed Method of Manufacturing data! Deleted {deleted_count} old records, added {len(new_records)} new records, and skipped {duplicates_skipped} duplicates. Operation descriptions translated from French to English.')
+                        else:
+                            messages.warning(request, f'No valid Method of Manufacturing records found on server. Deleted {deleted_count} old records.')
+
+                    except Exception as e:
+                        print(f"Error executing query: {e}")
+                        messages.error(request, f'Error executing query: {str(e)}')
+                        
+            except Exception as e:
+                print(f"Database connection error: {e}")
+                messages.error(request, f'Database connection error: {str(e)}')
+        
+        except Exception as e:
+            print(f"Database connection error: {e}")
+            messages.error(request, f'Database connection error: {str(e)}')
+
+    return redirect('method_of_manufacturing_list')
+
+@login_required
+def method_of_manufacturing_list(request):
+    user_name = request.user.username
+    methods = MasterDataEpicorMethodOfManufacturingModel.objects.all().order_by('Plant', 'ProductKey', 'OperationSequence')
+
+    # Filtering logic
+    def filter_field(qs, field, value):
+        if value:
+            if value.startswith('*') or value.endswith('*'):
+                # Remove * and use icontains
+                qs = qs.filter(**{f"{field}__icontains": value.replace('*', '')})
+            else:
+                qs = qs.filter(**{f"{field}__exact": value})
+        return qs
+
+    Company_filter = request.GET.get('Company', '')
+    Plant_filter = request.GET.get('Plant', '')
+    ProductKey_filter = request.GET.get('ProductKey', '')
+    SiteName_filter = request.GET.get('SiteName', '')
+    OperationSequence_filter = request.GET.get('OperationSequence', '')
+    OperationDesc_filter = request.GET.get('OperationDesc', '')
+    WorkCentre_filter = request.GET.get('WorkCentre', '')
+
+    methods = filter_field(methods, 'Company', Company_filter)
+    methods = filter_field(methods, 'Plant', Plant_filter)
+    methods = filter_field(methods, 'ProductKey', ProductKey_filter)
+    methods = filter_field(methods, 'SiteName', SiteName_filter)
+    methods = filter_field(methods, 'OperationSequence', OperationSequence_filter)
+    methods = filter_field(methods, 'OperationDesc', OperationDesc_filter)
+    methods = filter_field(methods, 'WorkCentre', WorkCentre_filter)
+
+    # Sort by Plant, then ProductKey, then OperationSequence
+    methods = methods.order_by('Plant', 'ProductKey', 'OperationSequence')
+
+    # Pagination logic
+    paginator = Paginator(methods, 50)
+    page_number = request.GET.get('page')
+    page_obj = paginator.get_page(page_number)
+
+    context = {
+        'page_obj': page_obj,
+        'Company_filter': Company_filter,
+        'Plant_filter': Plant_filter,
+        'ProductKey_filter': ProductKey_filter,
+        'SiteName_filter': SiteName_filter,
+        'OperationSequence_filter': OperationSequence_filter,
+        'OperationDesc_filter': OperationDesc_filter,
+        'WorkCentre_filter': WorkCentre_filter,
+        'user_name': user_name,
+    }
+    return render(request, 'website/method_of_manufacturing_list.html', context)

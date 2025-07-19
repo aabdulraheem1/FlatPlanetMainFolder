@@ -41,9 +41,23 @@
         </tbody>
     </table>
     <button type="submit" class="btn btn-primary">Save Changes</button>
+    <a href="{% url 'edit_scenario' scenario.version %}" class="btn btn-primary ml-2">Back to Edit Scenario</a>
 </form>
 
 <script>
+    // Auto-redirect after form submission
+    document.addEventListener('DOMContentLoaded', function() {
+        const form = document.querySelector('form[method="post"]');
+        if (form) {
+            form.addEventListener('submit', function(e) {
+                // Allow form submission to continue
+                setTimeout(function() {
+                    window.location.href = "{% url 'edit_scenario' scenario.version %}";
+                }, 500);
+            });
+        }
+    });
+
     function filterTable(inputId, columnIndex) {
         const input = document.getElementById(inputId);
         const filter = input.value.toUpperCase();

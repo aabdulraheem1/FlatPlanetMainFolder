@@ -15,6 +15,38 @@ from sqlalchemy import create_engine
 from django.db.models import Sum
 from django.db.models.functions import TruncMonth
 from django.utils.safestring import mark_safe
+from googletrans import Translator
+import langdetect
+
+TRANSLATION_CACHE = {}
+
+MANUAL_TRANSLATIONS = {
+    'Coulée': 'Casting',
+    'Usinage': 'Machining',
+    'Fonderie': 'Foundry',
+    'Assemblage': 'Assembly',
+    'Contrôle qualité': 'Quality Control',
+    'Finition': 'Finishing',
+    'Nettoyage': 'Cleaning',
+    'Inspection': 'Inspection',
+    'Polissage': 'Polishing',
+    'Soudage': 'Welding',
+    'Découpage': 'Cutting',
+    'Perçage': 'Drilling',
+    'Tournage': 'Turning',
+    'Fraisage': 'Milling',
+    'Grenaillage': 'Shot Blasting',
+    'Traitement thermique': 'Heat Treatment',
+    'Meulage': 'Grinding',
+    'Ébavurage': 'Deburring',
+    'Prêt à expédier': 'Ready to ship',
+    'Noyaux Cold Box': 'Cold Box Cores',
+    'Passage à la couche': 'Coating Application',
+    'Moulage': 'Molding',
+    'Ajustage des noyaux': 'Core Fitting',
+    'Démoulage': 'Mold Release',
+    'Marteaupiqueur': 'Hammering',
+}
 
 def fetch_cost_for_product_site(product_key, site_name):
     # Set up your SQL Server connection
@@ -1202,3 +1234,45 @@ def get_production_data_by_product_for_wun1(site_name, scenario_version):
         })
     
     return {'labels': labels, 'datasets': datasets}
+
+def translate_to_english_cached(text):
+    """
+    Translate text to English with caching and manual translations.
+    """
+    if not text or str(text).strip() == '':
+        return text
+    
+    # Convert to string and strip
+    text_str = str(text).strip()
+    
+    # Check manual translations first
+    if text_str in MANUAL_TRANSLATIONS:
+        print(f"DEBUG: Manual translation: '{text_str}' -> '{MANUAL_TRANSLATIONS[text_str]}'")
+        return MANUAL_TRANSLATIONS[text_str]
+    
+    # Check cache
+    if text_str in TRANSLATION_CACHE:
+        return TRANSLATION_CACHE[text_str]
+    
+    try:
+        # Detect the language
+        detected_lang = langdetect.detect(text_str)
+        
+        # If it's French, translate to English
+        if detected_lang == 'fr':
+            translator = Translator()
+            translated = translator.translate(text_str, src='fr', dest='en')
+            result = translated.text
+        else:
+            # Return original text if not French
+            result = text_str
+            
+        # Cache the result
+        TRANSLATION_CACHE[text_str] = result
+        return result
+        
+    except Exception as e:
+        print(f"Translation error for '{text_str}': {e}")
+        # Cache the original text as fallback
+        TRANSLATION_CACHE[text_str] = text_str
+        return text_str

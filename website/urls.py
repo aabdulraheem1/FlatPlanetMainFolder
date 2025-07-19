@@ -159,6 +159,10 @@ urlpatterns = [
     path('scenario/<str:version>/delete-site-allocation/', views.delete_site_allocation, name='delete_site_allocation'),
     path('scenario/<str:version>/copy-site-allocation/', views.copy_site_allocation, name='copy_site_allocation'),
 
+    # Method of Manufacturing URLs
+    path('method-of-manufacturing/', views.method_of_manufacturing_list, name='method_of_manufacturing_list'),
+    path('method-of-manufacturing/fetch/', views.method_of_manufacturing_fetch_data_from_mssql, name='method_of_manufacturing_fetch_data_from_mssql'),
+
 
 
 

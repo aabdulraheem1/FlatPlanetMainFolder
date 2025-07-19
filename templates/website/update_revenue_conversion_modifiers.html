@@ -113,7 +113,22 @@
             <button type="submit" class="btn btn-primary">Save Changes</button>
         {% endif %}
         <a href="{% url 'edit_scenario' version %}" class="btn btn-secondary">Cancel</a>
+        <a href="{% url 'edit_scenario' version %}" class="btn btn-primary ml-2">Back to Edit Scenario</a>
     </form>
+    
+    <script>
+    document.addEventListener('DOMContentLoaded', function() {
+        const form = document.querySelector('form[method="post"]');
+        if (form) {
+            form.addEventListener('submit', function(e) {
+                // Allow form submission to continue
+                setTimeout(function() {
+                    window.location.href = "{% url 'edit_scenario' version %}";
+                }, 500);
+            });
+        }
+    });
+    </script>
     
     <!-- Pagination -->
     {% if page_obj.has_other_pages %}

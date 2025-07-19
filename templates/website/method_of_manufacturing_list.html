@@ -1,0 +1,132 @@
+{% extends 'website/base.html' %}
+
+{% block title %}Method of Manufacturing List{% endblock %}
+
+{% block content %}
+<div class="container mt-5">
+    <h2>Method of Manufacturing</h2>
+    
+    <!-- Refresh Button -->
+    <div class="mb-3">
+        <form method="post" action="{% url 'method_of_manufacturing_fetch_data_from_mssql' %}" style="display: inline;">
+            {% csrf_token %}
+            <button type="submit" class="btn btn-primary">
+                <i class="fas fa-sync-alt"></i> Refresh Data from Server
+            </button>
+        </form>
+        <span class="text-muted ml-2">Fetches latest data from Bradken Data Warehouse</span>
+    </div>
+
+    <!-- Filters -->
+    <form method="get" class="mb-4">
+        <div class="row">
+            <div class="col-md-2">
+                <input type="text" name="Company" class="form-control form-control-sm" placeholder="Company" value="{{ Company_filter }}">
+            </div>
+            <div class="col-md-2">
+                <input type="text" name="Plant" class="form-control form-control-sm" placeholder="Plant" value="{{ Plant_filter }}">
+            </div>
+            <div class="col-md-2">
+                <input type="text" name="ProductKey" class="form-control form-control-sm" placeholder="Product Key" value="{{ ProductKey_filter }}">
+            </div>
+            <div class="col-md-2">
+                <input type="text" name="SiteName" class="form-control form-control-sm" placeholder="Site Name" value="{{ SiteName_filter }}">
+            </div>
+            <div class="col-md-1">
+                <input type="text" name="OperationSequence" class="form-control form-control-sm" placeholder="Op Seq" value="{{ OperationSequence_filter }}">
+            </div>
+            <div class="col-md-2">
+                <input type="text" name="OperationDesc" class="form-control form-control-sm" placeholder="Operation Desc" value="{{ OperationDesc_filter }}">
+            </div>
+            <div class="col-md-1">
+                <button type="submit" class="btn btn-secondary btn-sm">Filter</button>
+            </div>
+        </div>
+        <div class="row mt-2">
+            <div class="col-md-2">
+                <input type="text" name="WorkCentre" class="form-control form-control-sm" placeholder="Work Centre" value="{{ WorkCentre_filter }}">
+            </div>
+            <div class="col-md-2">
+                <a href="{% url 'method_of_manufacturing_list' %}" class="btn btn-outline-secondary btn-sm">Clear Filters</a>
+            </div>
+        </div>
+    </form>
+
+    <!-- Help Text -->
+    <div class="alert alert-info">
+        <small>
+            <strong>Filter Tips:</strong> Use exact matches or add * for partial matches (e.g., *CAST* for contains, CAST* for starts with)
+        </small>
+    </div>
+
+    <!-- Results Table -->
+    <div class="table-responsive">
+        <table class="table table-striped table-hover table-sm">
+            <thead class="thead-dark">
+                <tr>
+                    <th>Company</th>
+                    <th>Plant</th>
+                    <th>Product Key</th>
+                    <th>Site Name</th>
+                    <th>Op Sequence</th>
+                    <th>Operation Description</th>
+                    <th>Work Centre</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for method in page_obj %}
+                <tr>
+                    <td>{{ method.Company|default:"-" }}</td>
+                    <td>{{ method.Plant|default:"-" }}</td>
+                    <td>{{ method.ProductKey|default:"-" }}</td>
+                    <td>{{ method.SiteName|default:"-" }}</td>
+                    <td>{{ method.OperationSequence|default:"-" }}</td>
+                    <td>{{ method.OperationDesc|default:"-" }}</td>
+                    <td>{{ method.WorkCentre|default:"-" }}</td>
+                </tr>
+                {% empty %}
+                <tr>
+                    <td colspan="7" class="text-center text-muted">No method of manufacturing records found.</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <!-- Pagination -->
+    {% if page_obj.has_other_pages %}
+    <nav aria-label="Method of Manufacturing pagination">
+        <ul class="pagination justify-content-center">
+            {% if page_obj.has_previous %}
+                <li class="page-item">
+                    <a class="page-link" href="?page=1{% if Company_filter %}&Company={{ Company_filter }}{% endif %}{% if Plant_filter %}&Plant={{ Plant_filter }}{% endif %}{% if ProductKey_filter %}&ProductKey={{ ProductKey_filter }}{% endif %}{% if SiteName_filter %}&SiteName={{ SiteName_filter }}{% endif %}{% if OperationSequence_filter %}&OperationSequence={{ OperationSequence_filter }}{% endif %}{% if OperationDesc_filter %}&OperationDesc={{ OperationDesc_filter }}{% endif %}{% if WorkCentre_filter %}&WorkCentre={{ WorkCentre_filter }}{% endif %}">First</a>
+                </li>
+                <li class="page-item">
+                    <a class="page-link" href="?page={{ page_obj.previous_page_number }}{% if Company_filter %}&Company={{ Company_filter }}{% endif %}{% if Plant_filter %}&Plant={{ Plant_filter }}{% endif %}{% if ProductKey_filter %}&ProductKey={{ ProductKey_filter }}{% endif %}{% if SiteName_filter %}&SiteName={{ SiteName_filter }}{% endif %}{% if OperationSequence_filter %}&OperationSequence={{ OperationSequence_filter }}{% endif %}{% if OperationDesc_filter %}&OperationDesc={{ OperationDesc_filter }}{% endif %}{% if WorkCentre_filter %}&WorkCentre={{ WorkCentre_filter }}{% endif %}">Previous</a>
+                </li>
+            {% endif %}
+
+            <li class="page-item active">
+                <span class="page-link">{{ page_obj.number }} of {{ page_obj.paginator.num_pages }}</span>
+            </li>
+
+            {% if page_obj.has_next %}
+                <li class="page-item">
+                    <a class="page-link" href="?page={{ page_obj.next_page_number }}{% if Company_filter %}&Company={{ Company_filter }}{% endif %}{% if Plant_filter %}&Plant={{ Plant_filter }}{% endif %}{% if ProductKey_filter %}&ProductKey={{ ProductKey_filter }}{% endif %}{% if SiteName_filter %}&SiteName={{ SiteName_filter }}{% endif %}{% if OperationSequence_filter %}&OperationSequence={{ OperationSequence_filter }}{% endif %}{% if OperationDesc_filter %}&OperationDesc={{ OperationDesc_filter }}{% endif %}{% if WorkCentre_filter %}&WorkCentre={{ WorkCentre_filter }}{% endif %}">Next</a>
+                </li>
+                <li class="page-item">
+                    <a class="page-link" href="?page={{ page_obj.paginator.num_pages }}{% if Company_filter %}&Company={{ Company_filter }}{% endif %}{% if Plant_filter %}&Plant={{ Plant_filter }}{% endif %}{% if ProductKey_filter %}&ProductKey={{ ProductKey_filter }}{% endif %}{% if SiteName_filter %}&SiteName={{ SiteName_filter }}{% endif %}{% if OperationSequence_filter %}&OperationSequence={{ OperationSequence_filter }}{% endif %}{% if OperationDesc_filter %}&OperationDesc={{ OperationDesc_filter }}{% endif %}{% if WorkCentre_filter %}&WorkCentre={{ WorkCentre_filter }}{% endif %}">Last</a>
+                </li>
+            {% endif %}
+        </ul>
+    </nav>
+    {% endif %}
+
+    <!-- Summary -->
+    <div class="mt-3">
+        <small class="text-muted">
+            Showing {{ page_obj.start_index }} to {{ page_obj.end_index }} of {{ page_obj.paginator.count }} method of manufacturing records
+        </small>
+    </div>
+</div>
+{% endblock %}

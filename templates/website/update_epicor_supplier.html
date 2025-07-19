@@ -14,7 +14,22 @@
         </div>
         <button type="submit" class="btn btn-primary">Update</button>
         <a href="{% url 'suppliers_list' %}" class="btn btn-secondary">Cancel</a>
+        <a href="{% url 'edit_scenario' scenario.version %}" class="btn btn-primary ml-2">Back to Edit Scenario</a>
     </form>
+    
+    <script>
+    document.addEventListener('DOMContentLoaded', function() {
+        const form = document.querySelector('form[method="post"]');
+        if (form) {
+            form.addEventListener('submit', function(e) {
+                // Allow form submission to continue
+                setTimeout(function() {
+                    window.location.href = "{% url 'edit_scenario' scenario.version %}";
+                }, 500);
+            });
+        }
+    });
+    </script>
 </div>
 {% endblock %}
 
