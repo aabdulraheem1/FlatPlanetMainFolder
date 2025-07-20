@@ -1,0 +1,64 @@
+<table class="table table-sm table-bordered">
+    <tbody>
+        {% for item in detailed_production_data %}
+            <!-- Production Site Information Row -->
+            <tr style="background-color: #ffff00; font-weight: bold;">
+                <td colspan="5">
+                    Production Site: {{ item.site }}
+                    {% if item.cast_to_despatch_days %}
+                        | Cast to Despatch: {{ item.cast_to_despatch_days }} days
+                    {% endif %}
+                </td>
+            </tr>
+            
+            <!-- Product and Stock Information Row -->
+            <tr style="background-color: #ffff00; font-weight: bold;">
+                <td colspan="5">
+                    Product: {{ item.product }} | 
+                    Opening Stock on Hand: <span class="badge badge-success">{{ item.opening_onhand|floatformat:0 }}</span> | 
+                    Opening Stock in Transit: <span class="badge badge-info">{{ item.opening_intransit|floatformat:0 }}</span> | 
+                    WIP: <span class="badge badge-warning">{{ item.opening_wip|floatformat:0 }}</span>
+                </td>
+            </tr>
+            
+            <!-- Table Headers Row -->
+            <tr style="background-color: #f8f9fa; font-weight: bold;">
+                <th style="border: 1px solid #dee2e6;">Date</th>
+                <th style="border: 1px solid #dee2e6;">Source Location</th>
+                <th style="border: 1px solid #dee2e6;">Replenishment</th>
+                <th style="border: 1px solid #dee2e6;">Production Reqmt</th>
+                <th style="border: 1px solid #dee2e6;">Balance Qty</th>
+            </tr>
+            
+            <!-- Data Rows -->
+            {% if item.periods %}
+                {% for period in item.periods %}
+                    <tr>
+                        <td style="border: 1px solid #dee2e6;">{{ period.date|date:"d-M-y" }}</td>
+                        <td style="border: 1px solid #dee2e6; font-weight: bold; color: #6c757d;">{{ period.source_location }}</td>
+                        <td style="border: 1px solid #dee2e6; color: #dc3545; font-weight: bold;">{{ period.requested_replenishment|floatformat:0 }}</td>
+                        <td style="border: 1px solid #dee2e6; color: #007bff; font-weight: bold;">{{ period.production_reqmt|floatformat:0 }}</td>
+                        <td style="border: 1px solid #dee2e6; {% if period.balance > 0 %}background-color: #d4edda; color: #155724;{% elif period.balance < 0 %}background-color: #f8d7da; color: #721c24;{% else %}background-color: #fff3cd; color: #856404;{% endif %}">
+                            {{ period.balance|floatformat:0 }}
+                        </td>
+                    </tr>
+                {% endfor %}
+            {% else %}
+                <tr>
+                    <td style="border: 1px solid #dee2e6;">No production periods</td>
+                    <td style="border: 1px solid #dee2e6;">-</td>
+                    <td style="border: 1px solid #dee2e6;">0</td>
+                    <td style="border: 1px solid #dee2e6;">0</td>
+                    <td style="border: 1px solid #dee2e6; background-color: #fff3cd; color: #856404;">0</td>
+                </tr>
+            {% endif %}
+            
+            <!-- Separator Row (optional - adds space between different production sites) -->
+            {% if not forloop.last %}
+                <tr>
+                    <td colspan="5" style="border: none; height: 10px; background-color: #ffffff;"></td>
+                </tr>
+            {% endif %}
+        {% endfor %}
+    </tbody>
+</table>

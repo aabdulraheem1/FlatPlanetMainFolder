@@ -163,7 +163,10 @@ urlpatterns = [
     path('method-of-manufacturing/', views.method_of_manufacturing_list, name='method_of_manufacturing_list'),
     path('method-of-manufacturing/fetch/', views.method_of_manufacturing_fetch_data_from_mssql, name='method_of_manufacturing_fetch_data_from_mssql'),
 
+     # ... existing patterns ...
+    path('detailed-view-inventory/', views.detailed_view_scenario_inventory, name='detailed_view_scenario_inventory'),
 
+    path('search-detailed-inventory/', views.search_detailed_inventory, name='search_detailed_inventory'),
 
 
 

@@ -1276,3 +1276,524 @@ def translate_to_english_cached(text):
         # Cache the original text as fallback
         TRANSLATION_CACHE[text_str] = text_str
         return text_str
+    
+def search_detailed_view_data(scenario_version, product=None, location=None, site=None):
+    """
+    Search for specific detailed inventory and production data based on filters.
+    Uses ACTUAL production data from CalculatedProductionModel and replenishment data from CalcualtedReplenishmentModel
+    """
+    from website.models import (
+        MasterDataInventory, SMART_Forecast_Model, CalcualtedReplenishmentModel,
+        CalculatedProductionModel, MasterDataProductModel, MasterDataPlantModel,
+        MasterdataIncoTermsModel, MasterDataFreightModel, MasterDataCustomersModel,
+        MasterDataCastToDespatchModel, MasterDataOrderBook, MasterDataHistoryOfProductionModel,
+        MasterDataEpicorSupplierMasterDataModel, MasterDataEpicorMethodOfManufacturingModel
+    )
+    from django.db.models import Sum, Q
+    from collections import defaultdict
+    from datetime import timedelta
+    
+    print(f"DEBUG: Starting OPTIMIZED search with scenario_version: {scenario_version}")
+    
+    inventory_data = []
+    production_data = []
+    
+    # Early exit if no search criteria
+    if not product and not location:
+        print("DEBUG: No search criteria provided, returning empty results")
+        return {'inventory_data': inventory_data, 'production_data': production_data}
+    
+    # Define location transformation function
+    def _transform_location(location):
+        """Transform location strings by extracting the site code."""
+        if location:
+            if "_" in location:
+                return location.split("_", 1)[1][:4]
+            elif "-" in location:
+                return location.split("-", 1)[1][:4]
+        return location
+    
+    # SIMPLIFIED site assignment - just get the specific product we're searching for
+    def _get_assigned_site_for_product(product):
+        """Get assigned site for ONE specific product only."""
+        print(f"DEBUG: Getting site assignment for {product}")
+        
+        try:
+            # Check Order Book first
+            order_book = MasterDataOrderBook.objects.filter(
+                version=scenario_version,
+                productkey=product
+            ).exclude(site__isnull=True).exclude(site__exact='').first()
+            
+            if order_book:
+                print(f"DEBUG: Found in order book: {order_book.site}")
+                return order_book.site
+            
+            # Check Production History
+            production = MasterDataHistoryOfProductionModel.objects.filter(
+                version=scenario_version,
+                Product=product
+            ).exclude(Foundry__isnull=True).exclude(Foundry__exact='').first()
+            
+            if production:
+                print(f"DEBUG: Found in production history: {production.Foundry}")
+                return production.Foundry
+            
+            # Check Supplier
+            supplier = MasterDataEpicorSupplierMasterDataModel.objects.filter(
+                version=scenario_version,
+                PartNum=product
+            ).exclude(VendorID__isnull=True).exclude(VendorID__exact='').first()
+            
+            if supplier:
+                print(f"DEBUG: Found in supplier: {supplier.VendorID}")
+                return supplier.VendorID
+            
+            print(f"DEBUG: No site assignment found for {product}")
+            return None
+            
+        except Exception as e:
+            print(f"DEBUG ERROR: Site assignment failed for {product}: {e}")
+            return None
+    
+    # Build inventory data with filters (ONLY if location is specified)
+    if product and location:
+        try:
+            # Get forecast data - FILTERED BY PRODUCT AND LOCATION
+            forecast_query = SMART_Forecast_Model.objects.filter(version=scenario_version)
+            forecast_query = forecast_query.exclude(Data_Source__in=['Fixed Plant', 'Revenue Forecast'])
+            forecast_query = forecast_query.filter(Product=product)
+            forecast_query = forecast_query.filter(Location__icontains=location)
+            
+            forecast_data = forecast_query.values('Product', 'Location', 'Period_AU', 'Forecast_Region', 'Customer_code', 'Qty')[:100]
+            print(f"DEBUG: Found {len(forecast_data)} forecast records for {product} at {location}")
+            
+            if forecast_data:
+                # Get the specific assigned site for the product
+                assigned_site = _get_assigned_site_for_product(product)
+                print(f"DEBUG: Assigned site: {assigned_site}")
+                
+                # [SAME FORECAST PROCESSING LOGIC AS BEFORE FOR INVENTORY TABLE...]
+                # Load freight and incoterm data
+                forecast_regions = [f['Forecast_Region'] for f in forecast_data if f['Forecast_Region']]
+                unique_regions = list(set(forecast_regions))
+                
+                freight_data = {}
+                if assigned_site and unique_regions:
+                    try:
+                        freight_models = MasterDataFreightModel.objects.filter(
+                            version=scenario_version,
+                            ForecastRegion__Forecast_region__in=unique_regions,
+                            ManufacturingSite__SiteName=assigned_site
+                        )
+                        
+                        for freight in freight_models:
+                            key = (scenario_version.version, freight.ForecastRegion.Forecast_region, freight.ManufacturingSite.SiteName)
+                            freight_data[key] = freight
+                        
+                        print(f"DEBUG: Loaded {len(freight_data)} freight mappings for site {assigned_site}")
+                    except Exception as freight_error:
+                        print(f"DEBUG ERROR: Freight data loading failed: {freight_error}")
+                
+                customer_codes = [f['Customer_code'] for f in forecast_data if f['Customer_code']]
+                unique_customers = list(set(customer_codes))
+                
+                incoterm_data = {}
+                if unique_customers:
+                    try:
+                        incoterm_models = MasterdataIncoTermsModel.objects.filter(
+                            version=scenario_version,
+                            CustomerCode__in=unique_customers
+                        ).exclude(Incoterm__isnull=True)
+                        
+                        for incoterm in incoterm_models:
+                            key = (scenario_version.version, incoterm.CustomerCode)
+                            incoterm_data[key] = incoterm
+                        
+                        print(f"DEBUG: Loaded {len(incoterm_data)} incoterm mappings")
+                    except Exception as incoterm_error:
+                        print(f"DEBUG ERROR: Incoterm data loading failed: {incoterm_error}")
+                
+                # Process forecast data for inventory table
+                product_locations = {}
+                adjusted_shipping_by_product_location = {}
+                
+                for forecast in forecast_data:
+                    prod = forecast['Product']
+                    orig_loc = forecast['Location']
+                    customer_code = forecast['Customer_code']
+                    period_au = forecast['Period_AU']
+                    forecast_region = forecast['Forecast_Region']
+                    qty = forecast['Qty'] or 0
+                    
+                    # Transform location
+                    transformed_loc = _transform_location(orig_loc)
+                    
+                    # Calculate adjusted shipping date
+                    adjusted_shipping_date = period_au
+                    
+                    # Get freight lead time
+                    freight_info = {
+                        'total_days': 0,
+                        'plant_to_port': 0,
+                        'ocean_freight': 0,
+                        'port_to_customer': 0,
+                        'manufacturing_site': assigned_site or 'Unknown'
+                    }
+                    
+                    if assigned_site and customer_code and forecast_region:
+                        # Get incoterm
+                        incoterm_key = (scenario_version.version, customer_code)
+                        incoterm_obj = incoterm_data.get(incoterm_key)
+                        
+                        if incoterm_obj:
+                            incoterm_category = incoterm_obj.Incoterm.IncoTermCaregory
+                            
+                            # Get freight data
+                            freight_key = (scenario_version.version, forecast_region, assigned_site)
+                            freight_obj = freight_data.get(freight_key)
+                            
+                            if freight_obj:
+                                lead_time_days = 0
+                                
+                                if incoterm_category == "NO FREIGHT":
+                                    lead_time_days = 0
+                                elif incoterm_category == "PLANT TO DOMESTIC PORT":
+                                    lead_time_days = freight_obj.PlantToDomesticPortDays or 0
+                                elif incoterm_category == "PLANT TO DOMESTIC PORT + INT FREIGHT":
+                                    lead_time_days = (freight_obj.PlantToDomesticPortDays or 0) + (freight_obj.OceanFreightDays or 0)
+                                elif incoterm_category == "PLANT TO DOMESTIC PORT + INT FREIGHT + DOM FREIGHT":
+                                    lead_time_days = ((freight_obj.PlantToDomesticPortDays or 0) + 
+                                                    (freight_obj.OceanFreightDays or 0) + 
+                                                    (freight_obj.PortToCustomerDays or 0))
+                                
+                                if lead_time_days > 0:
+                                    adjusted_shipping_date = period_au - timedelta(days=lead_time_days)
+                                
+                                freight_info = {
+                                    'total_days': lead_time_days,
+                                    'plant_to_port': freight_obj.PlantToDomesticPortDays or 0,
+                                    'ocean_freight': freight_obj.OceanFreightDays or 0,
+                                    'port_to_customer': freight_obj.PortToCustomerDays or 0,
+                                    'manufacturing_site': assigned_site
+                                }
+                    
+                    # Store the data
+                    if prod not in product_locations:
+                        product_locations[prod] = {}
+                    if transformed_loc not in product_locations[prod]:
+                        product_locations[prod][transformed_loc] = {
+                            'customer_codes': set(),
+                            'original_locations': set(),
+                            'freight_info': freight_info
+                        }
+                    product_locations[prod][transformed_loc]['customer_codes'].add(customer_code)
+                    product_locations[prod][transformed_loc]['original_locations'].add(orig_loc)
+                    
+                    # Store adjusted shipping quantities
+                    key = (prod, transformed_loc)
+                    if key not in adjusted_shipping_by_product_location:
+                        adjusted_shipping_by_product_location[key] = {}
+                    if adjusted_shipping_date not in adjusted_shipping_by_product_location[key]:
+                        adjusted_shipping_by_product_location[key][adjusted_shipping_date] = 0
+                    adjusted_shipping_by_product_location[key][adjusted_shipping_date] += qty
+                
+                # Get replenishment data for THIS SPECIFIC LOCATION
+                replenishment_query = CalcualtedReplenishmentModel.objects.filter(
+                    version=scenario_version,
+                    Product__Product=product,
+                    Location=location
+                )
+                
+                replenishment_data = replenishment_query.values(
+                    'Product__Product', 'Location', 'ShippingDate', 'Site__SiteName', 'ReplenishmentQty'
+                )
+                
+                # Get cast to despatch data
+                sites_needed = [repl['Site__SiteName'] for repl in replenishment_data if repl['Site__SiteName']]
+                unique_sites = list(set(sites_needed))
+                
+                cast_to_despatch_lookup = {}
+                if unique_sites:
+                    cast_entries = MasterDataCastToDespatchModel.objects.filter(
+                        version=scenario_version,
+                        Foundry__SiteName__in=unique_sites
+                    )
+                    for entry in cast_entries:
+                        cast_to_despatch_lookup[entry.Foundry.SiteName] = entry.CastToDespatchDays
+                
+                # Build inventory table data
+                for prod, locations in product_locations.items():
+                    for loc, loc_info in locations.items():
+                        # Get opening stock
+                        opening_stock = MasterDataInventory.objects.filter(
+                            version=scenario_version,
+                            product=prod,
+                            site_id=loc
+                        ).aggregate(
+                            onhand=Sum('onhandstock_qty'),
+                            intransit=Sum('intransitstock_qty'),
+                            wip=Sum('wip_stock_qty')
+                        )
+                        
+                        # Get adjusted shipping quantities
+                        key = (prod, loc)
+                        adjusted_shipping_periods = adjusted_shipping_by_product_location.get(key, {})
+                        
+                        # Get replenishment data for this location
+                        replenishment_by_shipping_date = {}
+                        for repl in replenishment_data:
+                            if repl['Product__Product'] == prod and repl['Location'] == loc:
+                                shipping_date = repl['ShippingDate']
+                                site_name = repl['Site__SiteName']
+                                
+                                cast_to_despatch_days = cast_to_despatch_lookup.get(site_name, 0)
+                                pouring_date = shipping_date - timedelta(days=cast_to_despatch_days)
+                                
+                                if shipping_date not in replenishment_by_shipping_date:
+                                    replenishment_by_shipping_date[shipping_date] = []
+                                replenishment_by_shipping_date[shipping_date].append({
+                                    'site': site_name,
+                                    'qty': repl['ReplenishmentQty'],
+                                    'shipping_date': shipping_date,
+                                    'pouring_date': pouring_date,
+                                    'cast_to_despatch_days': cast_to_despatch_days,
+                                    'source_location': loc
+                                })
+
+                        # Build period data for inventory
+                        all_shipping_dates = set(adjusted_shipping_periods.keys()) | set(replenishment_by_shipping_date.keys())
+                        period_data = []
+                        running_balance = (opening_stock['onhand'] or 0) + (opening_stock['intransit'] or 0)
+
+                        for shipping_date in sorted(all_shipping_dates):
+                            original_shipping_qty = adjusted_shipping_periods.get(shipping_date, 0)
+                            replenishment_list = replenishment_by_shipping_date.get(shipping_date, [])
+                            total_replenishment = sum(r['qty'] for r in replenishment_list)
+                            running_balance = running_balance + total_replenishment - original_shipping_qty
+                            
+                            if original_shipping_qty > 0 or total_replenishment > 0:
+                                # GROUP REPLENISHMENTS BY SITE AND SUM QUANTITIES
+                                replenishment_summary = {}
+                                for r in replenishment_list:
+                                    site = r['site']
+                                    if site not in replenishment_summary:
+                                        replenishment_summary[site] = 0
+                                    replenishment_summary[site] += r['qty']
+                                
+                                # CREATE SUMMARIZED REPLENISHMENT TEXT
+                                replenishment_text = ""
+                                if replenishment_summary:
+                                    site_summaries = []
+                                    for site, total_qty in replenishment_summary.items():
+                                        site_summaries.append(f"{total_qty} → {site}")
+                                    replenishment_text = " | ".join(site_summaries)
+                                
+                                period_data.append({
+                                    'date': shipping_date,
+                                    'original_shipping_qty': original_shipping_qty,
+                                    'stock_used': max(0, original_shipping_qty - total_replenishment),
+                                    'replenishments': replenishment_list,
+                                    'total_replenishment': total_replenishment,
+                                    'replenishment_summary': replenishment_text,
+                                    'balance': running_balance
+                                })
+                        
+                        # ADD INVENTORY DATA TO RESULTS
+                        if period_data or opening_stock['onhand'] or opening_stock['intransit'] or opening_stock['wip']:
+                            inventory_data.append({
+                                'product': prod,
+                                'location': loc,
+                                'opening_onhand': opening_stock['onhand'] or 0,
+                                'opening_intransit': opening_stock['intransit'] or 0,
+                                'opening_wip': opening_stock['wip'] or 0,
+                                'periods': period_data,
+                                'incoterm': None,
+                                'freight_info': loc_info['freight_info']
+                            })
+                            print(f"DEBUG: Added inventory data for {prod} at {loc}: {len(period_data)} periods")
+            
+        except Exception as main_error:
+            print(f"DEBUG ERROR: Inventory processing failed: {main_error}")
+            import traceback
+            print(f"DEBUG ERROR: Full traceback: {traceback.format_exc()}")
+    
+    # BUILD PRODUCTION DATA - ALWAYS SHOW FOR THE PRODUCT (not filtered by location)
+    if product:
+        assigned_site = _get_assigned_site_for_product(product)
+        
+        if assigned_site:
+            print(f"DEBUG: Building production data for {product} at {assigned_site}")
+            
+            try:
+                # Get cast-to-despatch days for this site
+                cast_to_despatch_days = 0
+                try:
+                    cast_to_despatch = MasterDataCastToDespatchModel.objects.filter(
+                        version=scenario_version,
+                        Foundry__SiteName=assigned_site
+                    ).first()
+                    
+                    if cast_to_despatch:
+                        cast_to_despatch_days = cast_to_despatch.CastToDespatchDays or 0
+                        print(f"DEBUG: Cast to despatch days for {assigned_site}: {cast_to_despatch_days}")
+                    else:
+                        print(f"DEBUG: No cast to despatch data found for {assigned_site}, using 0 days")
+                except Exception as cast_error:
+                    print(f"DEBUG ERROR: Failed to get cast to despatch days: {cast_error}")
+                
+                # Get opening stock for this product at this site
+                opening_stock = MasterDataInventory.objects.filter(
+                    version=scenario_version,
+                    product=product,
+                    site_id=assigned_site
+                ).aggregate(
+                    onhand=Sum('onhandstock_qty'),
+                    intransit=Sum('intransitstock_qty'),
+                    wip=Sum('wip_stock_qty')
+                )
+                
+                opening_onhand = opening_stock['onhand'] or 0
+                opening_intransit = opening_stock['intransit'] or 0
+                opening_wip = opening_stock['wip'] or 0
+                
+                print(f"DEBUG: Opening stock - OnHand: {opening_onhand}, InTransit: {opening_intransit}, WIP: {opening_wip}")
+                
+                # GET ALL REPLENISHMENT DATA FOR THIS PRODUCT (FROM ALL LOCATIONS)
+                all_replenishments = CalcualtedReplenishmentModel.objects.filter(
+                    version=scenario_version,
+                    Product__Product=product,
+                    Site__SiteName=assigned_site  # Only replenishments going to this production site
+                ).values('Location', 'ShippingDate', 'ReplenishmentQty').order_by('ShippingDate')
+                
+                print(f"DEBUG: Found {len(all_replenishments)} replenishment records for {product} → {assigned_site}")
+                
+                # Convert replenishments to pouring dates and consolidate by date
+                # Convert replenishments to pouring dates and consolidate by date AND source
+                replenishment_by_pouring_date = {}
+                for repl in all_replenishments:
+                    shipping_date = repl['ShippingDate']
+                    location = repl['Location']
+                    qty = repl['ReplenishmentQty']
+                    
+                    # Convert shipping date to pouring date
+                    pouring_date = shipping_date - timedelta(days=cast_to_despatch_days)
+                    
+                    if pouring_date not in replenishment_by_pouring_date:
+                        replenishment_by_pouring_date[pouring_date] = {
+                            'total_qty': 0,
+                            'sources': {}  # CHANGED: Use dict to consolidate by source
+                        }
+                    
+                    # Consolidate quantities by source location
+                    if location not in replenishment_by_pouring_date[pouring_date]['sources']:
+                        replenishment_by_pouring_date[pouring_date]['sources'][location] = 0
+                    
+                    replenishment_by_pouring_date[pouring_date]['sources'][location] += qty
+                    replenishment_by_pouring_date[pouring_date]['total_qty'] += qty
+                    
+                    print(f"DEBUG: Replenishment {shipping_date} → {pouring_date}: {qty} from {location}")
+                
+                # GET ACTUAL PRODUCTION DATA FROM CalculatedProductionModel
+                production_query = CalculatedProductionModel.objects.filter(
+                    version=scenario_version,
+                    product_id=product,
+                    site_id=assigned_site
+                ).order_by('pouring_date')
+                
+                print(f"DEBUG: Found {production_query.count()} production records")
+                
+                # Build production periods
+                production_periods = []
+                running_balance = opening_onhand + opening_intransit + opening_wip
+                print(f"DEBUG: Starting balance: {opening_onhand} + {opening_intransit} + {opening_wip} = {running_balance}")
+                
+                # Get all dates (both replenishment and production)
+                all_pouring_dates = set(replenishment_by_pouring_date.keys())
+                
+                # Add production dates
+                for prod_record in production_query:
+                    if prod_record.pouring_date:
+                        all_pouring_dates.add(prod_record.pouring_date)
+                
+                # Process each date
+                for pouring_date in sorted(all_pouring_dates):
+                    # Get replenishment for this date
+                    replenishment_info = replenishment_by_pouring_date.get(pouring_date, {'total_qty': 0, 'sources': {}})
+                    replenishment_qty = replenishment_info['total_qty']
+                    sources_dict = replenishment_info['sources']
+                    
+                    # Get production for this date
+                    production_qty = 0
+                    prod_record = production_query.filter(pouring_date=pouring_date).first()
+                    if prod_record:
+                        production_qty = prod_record.production_quantity or 0
+                    
+                    # Calculate balance (same logic as populate_calculated_production)
+                    running_balance = running_balance + production_qty - replenishment_qty
+                    print(f"DEBUG: Balance calculation: {running_balance - production_qty + replenishment_qty} + {production_qty} - {replenishment_qty} = {running_balance}")
+                    
+                    # Create CONSOLIDATED source location description
+                    if sources_dict:
+                        # Sort sources by quantity (descending) for consistent display
+                        sorted_sources = sorted(sources_dict.items(), key=lambda x: x[1], reverse=True)
+                        source_summaries = []
+                        for location, total_qty in sorted_sources:
+                            source_summaries.append(f"{total_qty} from {location}")
+                        source_location_text = " | ".join(source_summaries)
+                    else:
+                        source_location_text = "Production Only" if production_qty > 0 else "No Activity"
+                    
+                    # Add period if there's any activity
+                    if replenishment_qty > 0 or production_qty > 0:
+                        production_periods.append({
+                            'date': pouring_date,
+                            'requested_replenishment': replenishment_qty,
+                            'production_reqmt': production_qty,
+                            'balance': running_balance,
+                            'source_location': source_location_text,
+                            'period': pouring_date.strftime('%b %Y') if pouring_date else 'Unknown'
+                        })
+                        
+                        print(f"DEBUG: Added period - Date: {pouring_date}, Repl: {replenishment_qty}, Prod: {production_qty}, Balance: {running_balance}")
+                        print(f"DEBUG: Consolidated sources: {source_location_text}")
+                # Sort periods by date
+                production_periods.sort(key=lambda x: x['date'] if x['date'] else date.min)
+                
+                # Create production data entry
+                production_data.append({
+                    'product': product,
+                    'site': assigned_site,
+                    'opening_onhand': opening_onhand,
+                    'opening_intransit': opening_intransit,
+                    'opening_wip': opening_wip,
+                    'cast_to_despatch_days': cast_to_despatch_days,
+                    'periods': production_periods,
+                    'period_count': len(production_periods)
+                })
+                
+                print(f"DEBUG: Added production site data for {product} at {assigned_site}: {len(production_periods)} periods")
+                    
+            except Exception as prod_error:
+                print(f"DEBUG ERROR: Production site data query failed: {prod_error}")
+                import traceback
+                print(f"DEBUG ERROR: Traceback: {traceback.format_exc()}")
+    
+    print(f"DEBUG: Search completed - found {len(inventory_data)} inventory records and {len(production_data)} production records")
+    
+    return {
+        'inventory_data': inventory_data,
+        'production_data': production_data,
+    }
+
+
+def detailed_view_scenario_inventory(scenario):
+    """
+    Get detailed inventory view data combining multiple models.
+    Returns empty data - use search_detailed_view_data for actual searches.
+    """
+    # Return empty data structure - don't load anything by default
+    return {
+        'inventory_data': [],
+        'production_data': [],
+    }

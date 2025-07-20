@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Detailed View - Scenario Inventory</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            background-color: #f5f5f5;
+        }
+        
+        .container {
+            max-width: 100%;
+            background-color: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        
+        .scenario-selector {
+            margin-bottom: 30px;
+            padding: 20px;
+            background-color: #f8f9fa;
+            border-radius: 5px;
+        }
+        
+        .data-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 30px;
+            font-size: 12px;
+        }
+        
+        .data-table th,
+        .data-table td {
+            border: 1px solid #ddd;
+            padding: 8px;
+            text-align: center;
+        }
+        
+        .data-table th {
+            background-color: #f2f2f2;
+            font-weight: bold;
+            position: sticky;
+            top: 0;
+            z-index: 10;
+        }
+        
+        .product-header {
+            background-color: #ffff00 !important;
+            font-weight: bold;
+        }
+        
+        .location-header {
+            background-color: #ffff00 !important;
+            font-weight: bold;
+        }
+        
+        .site-header {
+            background-color: #ffff00 !important;
+            font-weight: bold;
+        }
+        
+        .positive-balance {
+            background-color: #d4edda;
+            color: #155724;
+        }
+        
+        .negative-balance {
+            background-color: #f8d7da;
+            color: #721c24;
+        }
+        
+        .zero-balance {
+            background-color: #fff3cd;
+            color: #856404;
+        }
+        
+        .section-header {
+            background-color: #007bff;
+            color: white;
+            padding: 15px;
+            margin: 20px 0 10px 0;
+            border-radius: 5px;
+            font-size: 18px;
+            font-weight: bold;
+        }
+        
+        .table-container {
+            overflow-x: auto;
+            margin-bottom: 30px;
+        }
+        
+        .replenishment-sites {
+            font-size: 10px;
+            color: #666;
+        }
+        
+        .btn {
+            background-color: #007bff;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        
+        .btn:hover {
+            background-color: #0056b3;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Detailed View - Scenario Inventory & Production</h1>
+        
+        <div class="scenario-selector">
+            <form method="post">
+                {% csrf_token %}
+                <label for="scenario">Select Scenario:</label>
+                <select name="scenario" id="scenario" required>
+                    <option value="">Choose a scenario...</option>
+                    {% for scenario in scenarios %}
+                        <option value="{{ scenario.version }}" 
+                                {% if selected_scenario and selected_scenario.version == scenario.version %}selected{% endif %}>
+                            {{ scenario.version }}
+                        </option>
+                    {% endfor %}
+                </select>
+                <button type="submit" class="btn">Load Data</button>
+            </form>
+        </div>
+
+        {% if selected_scenario %}
+            <div class="section-header">
+                Inventory Planning View - {{ selected_scenario.version }}
+            </div>
+            
+            {% if inventory_data %}
+                <div class="table-container">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th rowspan="2">Date</th>
+                                <th rowspan="2">Opening Stock on Hand</th>
+                                <th rowspan="2">Opening Stock in Transit</th>
+                                <th rowspan="2">Forecast</th>
+                                <th rowspan="2">Generate</th>
+                                <th rowspan="2">Balance Qty</th>
+                                <th rowspan="2">Replenishment Assigned to Site</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for item in inventory_data %}
+                                <tr>
+                                    <td colspan="7" class="product-header">Product: {{ item.product }}</td>
+                                </tr>
+                                <tr>
+                                    <td colspan="7" class="location-header">Location: {{ item.location }}</td>
+                                </tr>
+                                
+                                <!-- First row with opening stock -->
+                                {% if item.periods %}
+                                    {% for period in item.periods %}
+                                        <tr>
+                                            <td>{{ period.date|date:"d-M-y" }}</td>
+                                            {% if forloop.first %}
+                                                <td>{{ item.opening_onhand }}</td>
+                                                <td>{{ item.opening_intransit }}</td>
+                                            {% else %}
+                                                <td></td>
+                                                <td></td>
+                                            {% endif %}
+                                            <td>{{ period.forecast }}</td>
+                                            <td>0</td>
+                                            <td class="{% if period.balance > 0 %}positive-balance{% elif period.balance < 0 %}negative-balance{% else %}zero-balance{% endif %}">
+                                                {{ period.balance }}
+                                            </td>
+                                            <td>
+                                                {% for repl in period.replenishments %}
+                                                    {{ repl.qty }} {{ repl.site }}{% if not forloop.last %}<br>{% endif %}
+                                                {% endfor %}
+                                            </td>
+                                        </tr>
+                                    {% endfor %}
+                                {% else %}
+                                    <tr>
+                                        <td>No forecast periods</td>
+                                        <td>{{ item.opening_onhand }}</td>
+                                        <td>{{ item.opening_intransit }}</td>
+                                        <td>0</td>
+                                        <td>0</td>
+                                        <td class="positive-balance">{{ item.opening_onhand|add:item.opening_intransit }}</td>
+                                        <td></td>
+                                    </tr>
+                                {% endif %}
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            {% endif %}
+
+            <div class="section-header">
+                Production Site View - {{ selected_scenario.version }}
+            </div>
+            
+            {% if production_data %}
+                <div class="table-container">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>Date</th>
+                                <th>Opening Stock on Hand</th>
+                                <th>Opening Stock in Transit</th>
+                                <th>WIP</th>
+                                <th>Forecast</th>
+                                <th>Requested Replenishment</th>
+                                <th>Production Reqmt</th>
+                                <th>Balance Qty</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for item in production_data %}
+                                <tr>
+                                    <td colspan="8" class="site-header">Production Site: {{ item.site }}</td>
+                                </tr>
+                                <tr>
+                                    <td colspan="8" class="product-header">Product: {{ item.product }}</td>
+                                </tr>
+                                
+                                {% if item.periods %}
+                                    {% for period in item.periods %}
+                                        <tr>
+                                            <td>{{ period.date|date:"d-M-y" }}</td>
+                                            {% if forloop.first %}
+                                                <td>{{ item.opening_onhand }}</td>
+                                                <td>{{ item.opening_intransit }}</td>
+                                                <td>{{ item.opening_wip }}</td>
+                                            {% else %}
+                                                <td></td>
+                                                <td></td>
+                                                <td></td>
+                                            {% endif %}
+                                            <td>{{ period.forecast }}</td>
+                                            <td>{{ period.requested_replenishment }}</td>
+                                            <td>{{ period.production_reqmt }}</td>
+                                            <td class="{% if period.balance > 0 %}positive-balance{% elif period.balance < 0 %}negative-balance{% else %}zero-balance{% endif %}">
+                                                {{ period.balance }}
+                                            </td>
+                                        </tr>
+                                    {% endfor %}
+                                {% else %}
+                                    <tr>
+                                        <td>No production periods</td>
+                                        <td>{{ item.opening_onhand }}</td>
+                                        <td>{{ item.opening_intransit }}</td>
+                                        <td>{{ item.opening_wip }}</td>
+                                        <td>0</td>
+                                        <td>0</td>
+                                        <td>0</td>
+                                        <td class="zero-balance">0</td>
+                                    </tr>
+                                {% endif %}
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            {% endif %}
+
+            {% if not inventory_data and not production_data %}
+                <p>No data found for the selected scenario.</p>
+            {% endif %}
+        {% endif %}
+    </div>
+</body>
+</html>

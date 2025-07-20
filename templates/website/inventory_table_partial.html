@@ -1,0 +1,63 @@
+<table class="table table-sm table-bordered">
+    <tbody>
+        {% for item in detailed_inventory_data %}
+            <!-- Product and Location Header -->
+            <tr style="background-color: #ffff00; font-weight: bold;">
+                <td colspan="5">
+                    Product: {{ item.product }} | Location: {{ item.location }} | 
+                    Opening Stock on Hand: <span class="badge badge-success">{{ item.opening_onhand|floatformat:0 }}</span> | 
+                    Opening Stock in Transit: <span class="badge badge-info">{{ item.opening_intransit|floatformat:0 }}</span>
+                    {% if item.freight_info %}
+                        | Manufacturing Site: <span class="badge badge-primary">{{ item.freight_info.manufacturing_site }}</span>
+                    {% endif %}
+                </td>
+            </tr>
+            
+            <!-- Table Headers -->
+            <tr style="background-color: #f8f9fa; font-weight: bold;">
+                <th style="border: 1px solid #dee2e6;">Date</th>
+                <th style="border: 1px solid #dee2e6;">Shipping Qty</th>
+                <th style="border: 1px solid #dee2e6;">Replenishment</th>
+                <th style="border: 1px solid #dee2e6;">Balance Qty</th>
+                <th style="border: 1px solid #dee2e6;">Replenishment Assigned to Site</th>
+            </tr>
+            
+            <!-- Data Rows -->
+            {% if item.periods %}
+                {% for period in item.periods %}
+                    <tr>
+                        <td style="border: 1px solid #dee2e6;">{{ period.date|date:"d-M-y" }}</td>
+                        <td style="border: 1px solid #dee2e6; color: #dc3545; font-weight: bold;">
+                            {{ period.original_shipping_qty|floatformat:0 }}
+                            {% if period.stock_used > 0 %}
+                                <br><small style="color: #6c757d;">(-{{ period.stock_used|floatformat:0 }} from stock)</small>
+                            {% endif %}
+                        </td>
+                        <td style="border: 1px solid #dee2e6; color: #007bff; font-weight: bold;">{{ period.total_replenishment|floatformat:0 }}</td>
+                        <td style="border: 1px solid #dee2e6; {% if period.balance > 0 %}background-color: #d4edda; color: #155724;{% elif period.balance < 0 %}background-color: #f8d7da; color: #721c24;{% else %}background-color: #fff3cd; color: #856404;{% endif %}">
+                            {{ period.balance|floatformat:0 }}
+                        </td>
+                        <td style="border: 1px solid #dee2e6; font-size: 0.9em;">
+                            {{ period.replenishment_summary }}
+                        </td>
+                    </tr>
+                {% endfor %}
+            {% else %}
+                <tr>
+                    <td style="border: 1px solid #dee2e6;">No periods</td>
+                    <td style="border: 1px solid #dee2e6;">0</td>
+                    <td style="border: 1px solid #dee2e6;">0</td>
+                    <td style="border: 1px solid #dee2e6; background-color: #fff3cd; color: #856404;">0</td>
+                    <td style="border: 1px solid #dee2e6;">-</td>
+                </tr>
+            {% endif %}
+            
+            <!-- Separator Row -->
+            {% if not forloop.last %}
+                <tr>
+                    <td colspan="5" style="border: none; height: 10px; background-color: #ffffff;"></td>
+                </tr>
+            {% endif %}
+        {% endfor %}
+    </tbody>
+</table>

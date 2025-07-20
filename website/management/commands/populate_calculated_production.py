@@ -83,7 +83,7 @@ class Command(BaseCommand):
         self.stdout.write(self.style.SUCCESS(f"CalculatedProductionModel populated for version {version}"))
 
     def process_replenishment_data(self, scenario, inventory_threshold_date, inventory_start_date, calculated_productions):
-        """Process regular replenishment data (original logic with inventory deduction)"""
+        """Process regular replenishment data - CORRECTED production calculation"""
         
         # Load replenishments in bulk
         replenishments = pd.DataFrame(list(
@@ -95,15 +95,6 @@ class Command(BaseCommand):
             self.stdout.write("No replenishment records found")
             return
 
-        inventory_df = pd.DataFrame(list(
-            MasterDataInventory.objects.filter(version=scenario)
-            .values('version_id', 'product', 'site_id', 'cost_aud')
-        ))
-
-        # Aggregate replenishments
-        replenishments = replenishments.groupby(['Product', 'Site', 'ShippingDate'], as_index=False)['ReplenishmentQty'].sum()
-        replenishments.rename(columns={'ReplenishmentQty': 'total_qty'}, inplace=True)
-
         # Load product and site data
         product_df = pd.DataFrame(list(MasterDataProductModel.objects.all().values('Product', 'DressMass', 'ProductGroup', 'ParentProductGroupDescription')))
         site_df = pd.DataFrame(list(MasterDataPlantModel.objects.all().values('SiteName')))
@@ -114,25 +105,18 @@ class Command(BaseCommand):
             for entry in MasterDataCastToDespatchModel.objects.filter(version=scenario)
         }
 
-        # Load inventory snapshots
-        wip_df = pd.DataFrame(list(
-            MasterDataInventory.objects.filter(version=scenario)
-            .values('product', 'site_id')
-            .annotate(total_wip=Sum('wip_stock_qty'))
-        ))
-        onhand_df = pd.DataFrame(list(
-            MasterDataInventory.objects.filter(version=scenario)
-            .values('product', 'site_id')
-            .annotate(total_onhand=Sum('onhandstock_qty'))
-        ))
-
-        # Load ProductSiteCostModel for cost lookups
+        # Load cost data (keeping your existing cost logic)
         cost_df = pd.DataFrame(list(
             ProductSiteCostModel.objects.filter(version=scenario)
             .values('version_id', 'product_id', 'site_id', 'cost_aud', 'revenue_cost_aud')
         ))
+        
+        inventory_df = pd.DataFrame(list(
+            MasterDataInventory.objects.filter(version=scenario)
+            .values('version_id', 'product', 'site_id', 'cost_aud')
+        ))
 
-        # Build lookup dicts
+        # Build cost lookup dicts
         cost_lookup = {
             str(row['product_id']): row['cost_aud']
             for _, row in cost_df.iterrows()
@@ -151,85 +135,143 @@ class Command(BaseCommand):
 
         product_map = {row['Product']: row for _, row in product_df.iterrows()}
         site_map = {row['SiteName']: row for _, row in site_df.iterrows()}
-        wip_lookup = {(row['product'], row['site_id']): row['total_wip'] for _, row in wip_df.iterrows()}
-        onhand_lookup = {(row['product'], row['site_id']): row['total_onhand'] for _, row in onhand_df.iterrows()}
 
-        for _, replenishment in replenishments.iterrows():
-            product = replenishment['Product']
-            site = replenishment['Site']
-            shipping_date = replenishment['ShippingDate']
-            total_qty = replenishment['total_qty']
+        # Load production site inventory (opening balances)
+        production_site_inventory = {}
+        for _, row in pd.DataFrame(list(
+            MasterDataInventory.objects.filter(version=scenario)
+            .values('product', 'site_id', 'onhandstock_qty', 'intransitstock_qty', 'wip_stock_qty')
+        )).iterrows():
+            key = (str(row['product']), str(row['site_id']))
+            production_site_inventory[key] = {
+                'onhand': row['onhandstock_qty'] or 0,
+                'intransit': row['intransitstock_qty'] or 0,
+                'wip': row['wip_stock_qty'] or 0
+            }
 
-            cast_to_despatch_days = cast_to_despatch.get((site, scenario.version), 0)
-            pouring_date = shipping_date - timedelta(days=cast_to_despatch_days)
+        print(f"DEBUG: Loaded production site inventory for {len(production_site_inventory)} product-site combinations")
 
-            # Apply inventory date logic
-            if inventory_threshold_date and pouring_date < inventory_threshold_date:
-                pouring_date = inventory_start_date
+        # Process each replenishment record individually, but aggregate by date
+        replenishments['pouring_date'] = replenishments.apply(lambda row: 
+            row['ShippingDate'] - timedelta(days=cast_to_despatch.get((row['Site'], scenario.version), 0)), axis=1)
+        
+        # Apply inventory date logic
+        if inventory_threshold_date and inventory_start_date:
+            replenishments['pouring_date'] = replenishments['pouring_date'].apply(
+                lambda x: inventory_start_date if x < inventory_threshold_date else x
+            )
 
+        # Group by product, site, and pouring_date to handle multiple shipments on same day
+        daily_replenishments = replenishments.groupby(['Product', 'Site', 'pouring_date'], as_index=False)['ReplenishmentQty'].sum()
+        
+        # Group by product-site and sort by pouring date
+        replenishment_by_product_site = {}
+        for _, row in daily_replenishments.iterrows():
+            product = row['Product']
+            site = row['Site']
+            pouring_date = row['pouring_date']
+            replenishment_qty = row['ReplenishmentQty']
+
+            product_site_key = (product, site)
+            if product_site_key not in replenishment_by_product_site:
+                replenishment_by_product_site[product_site_key] = []
+            
+            replenishment_by_product_site[product_site_key].append({
+                'pouring_date': pouring_date,
+                'replenishment_qty': replenishment_qty
+            })
+
+        # Sort replenishments by pouring date for each product-site
+        for product_site_key in replenishment_by_product_site:
+            replenishment_by_product_site[product_site_key].sort(key=lambda x: x['pouring_date'])
+
+        # Process each product-site combination
+        for (product, site), replenishments_list in replenishment_by_product_site.items():
             product_row = product_map.get(product)
             site_row = site_map.get(site)
 
             if product_row is None or site_row is None:
                 continue
 
-            # Remove from onhand stock first
-            onhand_stock = onhand_lookup.get((product, site), 0)
-            if onhand_stock > 0:
-                if total_qty <= onhand_stock:
-                    production_quantity = 0
-                    onhand_stock -= total_qty
-                    total_qty = 0
+            # Get opening inventory at production site
+            production_site_key = (str(product), str(site))
+            opening_inventory = production_site_inventory.get(production_site_key, {
+                'onhand': 0, 'intransit': 0, 'wip': 0
+            })
+            
+            # Start with opening balance - this will be consumed first
+            remaining_stock = opening_inventory['onhand'] + opening_inventory['intransit'] + opening_inventory['wip']
+            
+            print(f"DEBUG: Processing {product} at {site} - Opening balance: {remaining_stock}")
+            
+            for replenishment in replenishments_list:
+                pouring_date = replenishment['pouring_date']
+                replenishment_qty = replenishment['replenishment_qty']
+                
+                # Start with the full replenishment quantity as needed production
+                production_quantity = replenishment_qty
+                
+                # Use remaining stock to reduce production quantity
+                if remaining_stock > 0:
+                    if remaining_stock >= production_quantity:
+                        # We have enough stock to cover entire production
+                        stock_used = production_quantity
+                        production_quantity = 0
+                        remaining_stock -= stock_used
+                        print(f"DEBUG: {product} at {site} on {pouring_date}:")
+                        print(f"DEBUG: - Stock before: {remaining_stock + stock_used}")
+                        print(f"DEBUG: - Replenishment: {replenishment_qty}")
+                        print(f"DEBUG: - Stock used: {stock_used}")
+                        print(f"DEBUG: - Production: {production_quantity}")
+                        print(f"DEBUG: - Remaining stock: {remaining_stock}")
+                    else:
+                        # Use all remaining stock, still need some production
+                        stock_used = remaining_stock
+                        production_quantity -= remaining_stock
+                        remaining_stock = 0
+                        print(f"DEBUG: {product} at {site} on {pouring_date}:")
+                        print(f"DEBUG: - Stock before: {stock_used}")
+                        print(f"DEBUG: - Replenishment: {replenishment_qty}")
+                        print(f"DEBUG: - Stock used: {stock_used}")
+                        print(f"DEBUG: - Production: {production_quantity}")
+                        print(f"DEBUG: - Remaining stock: {remaining_stock}")
                 else:
-                    total_qty -= onhand_stock
-                    onhand_stock = 0
+                    # No stock left, need full production
+                    print(f"DEBUG: {product} at {site} on {pouring_date}:")
+                    print(f"DEBUG: - Stock before: 0")
+                    print(f"DEBUG: - Replenishment: {replenishment_qty}")
+                    print(f"DEBUG: - Stock used: 0")
+                    print(f"DEBUG: - Production: {production_quantity}")
+                    print(f"DEBUG: - Remaining stock: 0")
 
-            # Remove from WIP stock next
-            wip_stock = wip_lookup.get((product, site), 0)
-            if total_qty > 0 and wip_stock > 0:
-                if total_qty <= wip_stock:
-                    production_quantity = 0
-                    wip_stock -= total_qty
-                    total_qty = 0
-                else:
-                    total_qty -= wip_stock
-                    wip_stock = 0
+                # Calculate derived values
+                dress_mass = product_row['DressMass'] or 0
+                tonnes = (production_quantity * dress_mass) / 1000
 
-            if total_qty > 0:
-                production_quantity = total_qty
-            else:
-                production_quantity = 0
+                product_key = str(product_row['Product'])
+                costs = [
+                    cost_lookup.get(product_key, 0),
+                    inv_cost_lookup.get(product_key, 0),
+                    revenue_cost_lookup.get(product_key, 0)
+                ]
+                cost = max(costs) if any(costs) else 0
+                cogs_aud = cost * production_quantity
 
-            dress_mass = product_row['DressMass'] or 0
-            tonnes = (production_quantity * dress_mass) / 1000
+                # Create production record (even if production_quantity is 0)
+                calculated_productions.append(CalculatedProductionModel(
+                    version=scenario,
+                    product_id=product_row['Product'],
+                    site_id=site_row['SiteName'],
+                    pouring_date=pouring_date,
+                    production_quantity=production_quantity,
+                    tonnes=tonnes,
+                    product_group=product_row['ProductGroup'],
+                    parent_product_group=product_row.get('ParentProductGroupDescription', ''),
+                    cogs_aud=cogs_aud,
+                ))
+                print(f"DEBUG: - Created production record: {production_quantity} units")
 
-            product_key = str(product_row['Product'])
-
-            costs = [
-                cost_lookup.get(product_key, 0),
-                inv_cost_lookup.get(product_key, 0),
-                revenue_cost_lookup.get(product_key, 0)
-            ]
-            cost = max(costs) if any(costs) else 0
-
-            cogs_aud = cost * production_quantity
-
-            calculated_productions.append(CalculatedProductionModel(
-                version=scenario,
-                product_id=product_row['Product'],
-                site_id=site_row['SiteName'],
-                pouring_date=pouring_date,
-                production_quantity=production_quantity,
-                tonnes=tonnes,
-                product_group=product_row['ProductGroup'],
-                parent_product_group=product_row.get('ParentProductGroupDescription', ''),
-                cogs_aud=cogs_aud,
-            ))
-
-            wip_lookup[(product, site)] = wip_stock
-            onhand_lookup[(product, site)] = onhand_stock
-
-        self.stdout.write(f"Processed {len(replenishments)} replenishment records")
+        self.stdout.write(f"Processed {len(daily_replenishments)} daily replenishment records")
 
     def process_fixed_plant_data(self, scenario, inventory_start_date, calculated_productions):
         """Process Fixed Plant data (similar to populate_aggregated_forecast logic)"""

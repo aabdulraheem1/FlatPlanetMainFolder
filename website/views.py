@@ -35,7 +35,8 @@ from .models import (AggregatedForecast, RevenueToCogsConversionModel,  SiteAllo
 from website.customized_function import (get_monthly_cogs_and_revenue, get_forecast_data_by_parent_product_group, get_monthly_production_cogs,
 get_monthly_production_cogs_by_group, get_monthly_production_cogs_by_parent_group, get_combined_demand_and_poured_data, get_production_data_by_group,    get_top_products_per_month_by_group,
     get_dress_mass_data, get_forecast_data_by_product_group, get_forecast_data_by_region, get_monthly_pour_plan_for_site, calculate_control_tower_data,
-    get_inventory_data_with_start_date, get_foundry_chart_data, get_forecast_data_by_data_source, get_forecast_data_by_customer, translate_to_english_cached,)
+    get_inventory_data_with_start_date, get_foundry_chart_data, get_forecast_data_by_data_source, get_forecast_data_by_customer, translate_to_english_cached,
+    detailed_view_scenario_inventory, search_detailed_view_data)
 
 from . models import (RevenueToCogsConversionModel, FixedPlantConversionModifiersModel)
 
@@ -955,7 +956,7 @@ def review_scenario(request, version):
     chart_data_product_group = get_forecast_data_by_product_group(scenario)
     chart_data_region = get_forecast_data_by_region(scenario)
     
-    # ADD THESE NEW LINES FOR CUSTOMER AND DATA SOURCE CHARTS:
+    # Get customer and data source charts
     chart_data_customer = get_forecast_data_by_customer(scenario)
     chart_data_data_source = get_forecast_data_by_data_source(scenario)
     
@@ -964,6 +965,9 @@ def review_scenario(request, version):
     
     # Get inventory data with proper filtering
     inventory_data = get_inventory_data_with_start_date(scenario)
+    
+    # NEW: Get detailed view scenario inventory data
+    detailed_inventory_data = detailed_view_scenario_inventory(scenario)
 
     context = {
         'version': scenario.version,
@@ -1008,8 +1012,6 @@ def review_scenario(request, version):
         'chart_data_parent_product_group': json.dumps(chart_data_parent_product_group),
         'chart_data_product_group': json.dumps(chart_data_product_group),
         'chart_data_region': json.dumps(chart_data_region),
-        
-        # ADD THESE NEW CONTEXT VARIABLES:
         'chart_data_customer': json.dumps(chart_data_customer),
         'chart_data_data_source': json.dumps(chart_data_data_source),
         
@@ -1021,9 +1023,10 @@ def review_scenario(request, version):
         'production_cogs_group_chart': json.dumps(inventory_data['production_cogs_group_chart']),
         'parent_product_groups': inventory_data['parent_product_groups'],
         'cogs_data_by_group': json.dumps(inventory_data['cogs_data_by_group']),
-
         
-
+        # NEW: Detailed inventory view data
+        'detailed_inventory_data': detailed_inventory_data['inventory_data'],
+        'detailed_production_data': detailed_inventory_data['production_data'],
     }
     
     return render(request, 'website/review_scenario.html', context)
@@ -4306,3 +4309,52 @@ def method_of_manufacturing_list(request):
         'user_name': user_name,
     }
     return render(request, 'website/method_of_manufacturing_list.html', context)
+
+
+@login_required
+def search_detailed_inventory(request):
+    """AJAX endpoint for searching detailed inventory data"""
+    if request.method == 'GET':
+        version = request.GET.get('version')
+        product = request.GET.get('product', '').strip()
+        location = request.GET.get('location', '').strip()
+        site = request.GET.get('site', '').strip()
+        
+        if not version:
+            return JsonResponse({'error': 'Version is required'}, status=400)
+        
+        try:
+            scenario = scenarios.objects.get(version=version)
+            
+            # Get search results
+            results = search_detailed_view_data(
+                scenario, 
+                product if product else None,
+                location if location else None,
+                site if site else None
+            )
+            
+            # Render the results to HTML
+            from django.template.loader import render_to_string
+            
+            inventory_html = render_to_string('website/inventory_table_partial.html', {
+                'detailed_inventory_data': results['inventory_data']
+            })
+            
+            production_html = render_to_string('website/production_table_partial.html', {
+                'detailed_production_data': results['production_data']
+            })
+            
+            return JsonResponse({
+                'inventory_html': inventory_html,
+                'production_html': production_html,
+                'inventory_count': len(results['inventory_data']),
+                'production_count': len(results['production_data'])
+            })
+            
+        except scenarios.DoesNotExist:
+            return JsonResponse({'error': 'Scenario not found'}, status=404)
+        except Exception as e:
+            return JsonResponse({'error': str(e)}, status=500)
+    
+    return JsonResponse({'error': 'Invalid method'}, status=405)
