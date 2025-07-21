@@ -93,12 +93,45 @@ class MasterDataIncotTermTypesForm(forms.ModelForm):
         exclude = ['version']  # Exclude the version field        
 
 from django import forms
-from .models import MasterdataIncoTermsModel
+from .models import MasterdataIncoTermsModel, MasterDataIncotTermTypesModel
 
 class MasterdataIncoTermsForm(forms.ModelForm):
     class Meta:
         model = MasterdataIncoTermsModel
         exclude = ['version']  # Exclude the version field
+    
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        
+        # If we have an instance, include both current version incoterms AND the existing incoterm
+        if self.instance and self.instance.version:
+            # Get incoterms for the current version
+            current_version_incoterms = MasterDataIncotTermTypesModel.objects.filter(
+                version=self.instance.version
+            )
+            
+            # If the instance already has an incoterm assigned, ensure it's included
+            if self.instance.pk and self.instance.Incoterm:
+                # Check if the existing incoterm is already in the current version queryset
+                if not current_version_incoterms.filter(pk=self.instance.Incoterm.pk).exists():
+                    # If not, we need to create a combined queryset differently
+                    # Get all incoterm IDs we want to include
+                    current_ids = list(current_version_incoterms.values_list('pk', flat=True))
+                    current_ids.append(self.instance.Incoterm.pk)
+                    
+                    # Filter by primary keys
+                    self.fields['Incoterm'].queryset = MasterDataIncotTermTypesModel.objects.filter(
+                        pk__in=current_ids
+                    )
+                else:
+                    # Existing incoterm is already in current version, just use current version
+                    self.fields['Incoterm'].queryset = current_version_incoterms
+            else:
+                # No existing incoterm, just show current version incoterms
+                self.fields['Incoterm'].queryset = current_version_incoterms
+        else:
+            # If no instance, show empty queryset (shouldn't happen in normal usage)
+            self.fields['Incoterm'].queryset = MasterDataIncotTermTypesModel.objects.none()
 
 from django import forms
 from .models import MasterDataPlan

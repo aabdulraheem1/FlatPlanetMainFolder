@@ -66,7 +66,7 @@ urlpatterns = [
     path('incoterms/create/<str:version>/', views.incoterm_create, name='incoterm_create'),
     path('incoterms/<str:version>/update/', views.incoterm_update_formset, name='incoterm_update_formset'),
     path('incoterms/<str:version>/delete/', views.incoterm_delete_all, name='incoterm_delete_all'),
-    path('incoterms/upload/', views.incoterm_upload, name='incoterm_upload'),
+    path('incoterms/upload/<str:version>/', views.incoterm_upload, name='incoterm_upload'),
 
     # Master Data Inco Terms URLs
     path('master-data-inco-terms/<str:version>/update/', views.master_data_inco_terms_update_formset, name='master_data_inco_terms_update'),

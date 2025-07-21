@@ -1365,7 +1365,7 @@ def search_detailed_view_data(scenario_version, product=None, location=None, sit
             forecast_query = forecast_query.filter(Product=product)
             forecast_query = forecast_query.filter(Location__icontains=location)
             
-            forecast_data = forecast_query.values('Product', 'Location', 'Period_AU', 'Forecast_Region', 'Customer_code', 'Qty')[:100]
+            forecast_data = forecast_query.values('Product', 'Location', 'Period_AU', 'Forecast_Region', 'Customer_code', 'Qty')
             print(f"DEBUG: Found {len(forecast_data)} forecast records for {product} at {location}")
             
             if forecast_data:
@@ -1419,6 +1419,7 @@ def search_detailed_view_data(scenario_version, product=None, location=None, sit
                 adjusted_shipping_by_product_location = {}
                 
                 for forecast in forecast_data:
+                    
                     prod = forecast['Product']
                     orig_loc = forecast['Location']
                     customer_code = forecast['Customer_code']

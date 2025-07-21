@@ -9,11 +9,11 @@
             <div class="modal-body">
                 <p>Please ensure your Excel file contains the following fields in the header:</p>
                 <ul>
-                    <li><strong>Version</strong>: The version of the scenario.</li>
-                    <li><strong>IncoTerm</strong>: The name of the Incoterm.</li>
+                    <li><strong>IncoTerm</strong>: The name of the Incoterm (e.g., EXW, CPT, CIF, DDP).</li>
                     <li><strong>IncoTermCaregory</strong>: The category of the Incoterm.</li>
                 </ul>
-                <form method="post" enctype="multipart/form-data" action="{% url 'incoterm_upload' %}">
+                <p class="text-info"><strong>Note:</strong> The incoterms will be automatically assigned to version <strong>{{ scenario.version }}</strong>.</p>
+                <form method="post" enctype="multipart/form-data" action="{% url 'incoterm_upload' scenario.version %}">
                     {% csrf_token %}
                     <div class="mb-3">
                         <label for="file" class="form-label">Select Excel File</label>

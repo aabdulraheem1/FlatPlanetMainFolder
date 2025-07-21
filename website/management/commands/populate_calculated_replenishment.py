@@ -276,13 +276,16 @@ class Command(BaseCommand):
                         if freight_data:
                             lead_time_days = 0
                             
-                            if incoterm_category == "NO FREIGHT":
+                            # Normalize incoterm category to handle whitespace variations
+                            normalized_category = ' '.join(incoterm_category.split()) if incoterm_category else ''
+                            
+                            if normalized_category == "NO FREIGHT":
                                 lead_time_days = 0
-                            elif incoterm_category == "PLANT TO DOMESTIC PORT":
+                            elif normalized_category == "PLANT TO DOMESTIC PORT":
                                 lead_time_days = freight_data.PlantToDomesticPortDays
-                            elif incoterm_category == "PLANT TO DOMESTIC PORT + INT FREIGHT":
+                            elif normalized_category == "PLANT TO DOMESTIC PORT + INT FREIGHT":
                                 lead_time_days = freight_data.PlantToDomesticPortDays + freight_data.OceanFreightDays
-                            elif incoterm_category == "PLANT TO DOMESTIC PORT + INT FREIGHT + DOM FREIGHT":
+                            elif normalized_category == "PLANT TO DOMESTIC PORT + INT FREIGHT + DOM FREIGHT":
                                 lead_time_days = (freight_data.PlantToDomesticPortDays + 
                                                 freight_data.OceanFreightDays + 
                                                 freight_data.PortToCustomerDays)
@@ -299,20 +302,7 @@ class Command(BaseCommand):
 
                     site_obj = plant_map.get(site)
 
-                    # DEBUG: Check why records might be skipped
-                    if product == 'T690EP' and location == 'WAT1':
-                        print(f"DEBUG T690EP-WAT1: Period={period.strftime('%Y-%m-%d')}")
-                        print(f"  Site from order book: {order_book_map.get((scenario.version, product))}")
-                        print(f"  Site from production: {production_map.get((scenario.version, product))}")
-                        print(f"  Site from supplier: {supplier_map.get((scenario.version, product))}")
-                        print(f"  Final site: {site}")
-                        print(f"  Site object found: {site_obj is not None}")
-                        print(f"  Customer code: {customer_code}")
-                        print(f"  Incoterm: {incoterm_code}")
-                        print(f"  Adjusted shipping date: {adjusted_shipping_date.strftime('%Y-%m-%d')}")
-                        if not site_obj:
-                            print(f"  SKIPPING - No site object found for site: {site}")
-                        print("---")
+                   
                     
                     if not site_obj:
                         continue  # This is where records get skipped!

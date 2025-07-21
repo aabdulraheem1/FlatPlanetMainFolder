@@ -2108,24 +2108,28 @@ from django.http import HttpResponse
 import pandas as pd
 from .models import MasterDataIncotTermTypesModel
 
-def incoterm_upload(request):
+def incoterm_upload(request, version):
+    scenario = get_object_or_404(scenarios, version=version)
+    
     if request.method == 'POST' and request.FILES['file']:
         excel_file = request.FILES['file']
         try:
             df = pd.read_excel(excel_file)
-            required_columns = [' version', 'IncoTerm', 'IncoTermCaregory']
+            required_columns = ['IncoTerm', 'IncoTermCaregory']
             if not all(col in df.columns for col in required_columns):
-                return HttpResponse("Invalid file format. Required columns:  version, IncoTerm, IncoTermCaregory.")
+                return HttpResponse("Invalid file format. Required columns: IncoTerm, IncoTermCaregory.")
             for _, row in df.iterrows():
                 MasterDataIncotTermTypesModel.objects.update_or_create(
-                    version_id=row[' version'],
+                    version=scenario,  # Use the scenario from URL, not from Excel
                     IncoTerm=row['IncoTerm'],
                     defaults={'IncoTermCaregory': row['IncoTermCaregory']}
                 )
-            return redirect('incoterm_list')
+            messages.success(request, f'Incoterm types uploaded successfully for {version}.')
+            return redirect('edit_scenario', version=version)
         except Exception as e:
-            return HttpResponse(f"Error processing file: {e}")
-    return render(request, 'website/incoterm_upload.html')
+            messages.error(request, f"Error processing file: {e}")
+            return redirect('edit_scenario', version=version)
+    return render(request, 'website/incoterm_upload.html', {'scenario': scenario})
 
 from django.shortcuts import render, redirect, get_object_or_404
 from django.forms import modelformset_factory
@@ -2222,9 +2226,13 @@ def master_data_inco_terms_upload(request, version):
                 if pd.isna(incoterm_value) or str(incoterm_value).strip() == '':
                     incoterm_value = 'EXW'
                 try:
-                    incoterm_obj = MasterDataIncotTermTypesModel.objects.get(IncoTerm=incoterm_value)
+                    # Get incoterm type for THIS SPECIFIC VERSION
+                    incoterm_obj = MasterDataIncotTermTypesModel.objects.get(
+                        version=scenario,
+                        IncoTerm=incoterm_value
+                    )
                 except MasterDataIncotTermTypesModel.DoesNotExist:
-                    messages.error(request, f"Incoterm '{incoterm_value}' does not exist in Incoterm Types.")
+                    messages.error(request, f"Incoterm '{incoterm_value}' does not exist in Incoterm Types for version {version}.")
                     continue  # Skip this row
                 MasterdataIncoTermsModel.objects.create(
                     version=scenario,
@@ -2260,11 +2268,20 @@ def master_data_inco_terms_copy(request, version):
                 return redirect('edit_scenario', version=version)
             else:
                 for record in source_records:
-                    MasterdataIncoTermsModel.objects.create(
-                        version=target_scenario,
-                        CustomerCode=record.CustomerCode,
-                        Incoterm=record.Incoterm
-                    )
+                    # Find the equivalent incoterm in the target version
+                    try:
+                        target_incoterm = MasterDataIncotTermTypesModel.objects.get(
+                            version=target_scenario,
+                            IncoTerm=record.Incoterm.IncoTerm
+                        )
+                        MasterdataIncoTermsModel.objects.create(
+                            version=target_scenario,
+                            CustomerCode=record.CustomerCode,
+                            Incoterm=target_incoterm
+                        )
+                    except MasterDataIncotTermTypesModel.DoesNotExist:
+                        messages.warning(request, f"Incoterm '{record.Incoterm.IncoTerm}' not found in target version {version}. Skipping customer {record.CustomerCode}.")
+                        continue
                 messages.success(request, "Incoterm records copied successfully.")
                 return redirect('edit_scenario', version=version)
     # For GET or if no source_version, render the copy form
