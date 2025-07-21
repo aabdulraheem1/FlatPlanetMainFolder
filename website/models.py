@@ -549,3 +549,18 @@ class MasterDataEpicorMethodOfManufacturingModel(models.Model):
         
     def __str__(self):
         return f"{self.ProductKey} - {self.SiteName} - {self.OperationSequence}"
+    
+
+class MasterDataSafetyStocks(models.Model):
+    version = models.ForeignKey(scenarios, on_delete=models.CASCADE)
+    Plant = models.CharField(max_length=10, blank=True, null=True)
+    PartNum = models.CharField(max_length=50, blank=True, null=True)
+    MinimumQty = models.DecimalField(max_digits=15, decimal_places=5, blank=True, null=True)
+    SafetyQty = models.DecimalField(max_digits=15, decimal_places=5, blank=True, null=True)
+    
+    class Meta:
+        db_table = 'MasterDataSafetyStocks'
+        unique_together = ('version', 'Plant', 'PartNum')
+    
+    def __str__(self):
+        return f"{self.Plant} - {self.PartNum}"

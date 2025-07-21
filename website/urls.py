@@ -168,6 +168,11 @@ urlpatterns = [
 
     path('search-detailed-inventory/', views.search_detailed_inventory, name='search_detailed_inventory'),
 
+    path('upload_safety_stocks/<str:version>/', views.upload_safety_stocks, name='upload_safety_stocks'),
+    path('update_safety_stocks/<str:version>/', views.update_safety_stocks, name='update_safety_stocks'),
+    path('delete_safety_stocks/<str:version>/', views.delete_safety_stocks, name='delete_safety_stocks'),
+    path('copy_safety_stocks/<str:version>/', views.copy_safety_stocks, name='copy_safety_stocks'),
+
 
 
     # Add other URL patterns as needed

@@ -1,23 +1,22 @@
-import os
-import pandas as pd
+# Add this to your tests.py file:
 
-folder = r"X:\SPR\Inventory Model Master Data"
-all_products = set()
+# Check what the inventory search returns
+from website.customized_function import search_inventory_planning_results
 
-for file in os.listdir(folder):
-    if file.endswith('.xlsx') or file.endswith('.xls'):
-        path = os.path.join(folder, file)
-        try:
-            df = pd.read_excel(path)
-            if 'Product' in df.columns:
-                products = df['Product'].dropna().astype(str).unique()
-                all_products.update(products)
-        except Exception as e:
-            print(f"Error reading {file}: {e}")
+# Try the same search that your HTML page is using
+results = search_inventory_planning_results(
+    scenario_version='Jul 25 SPR Inv',
+    product='T690EP',
+    location='WAT1',
+    site=''  # or None, depending on your function
+)
 
-# Convert to sorted list and print or save
-product_list = sorted(all_products)
-print(product_list)  # Print first 10 products for brevity
-
-
-
+print(f"\nSearch function results:")
+if hasattr(results, '__len__'):
+    print(f"Number of results returned by search: {len(results)}")
+    if len(results) > 0:
+        print(f"First result date: {results[0].get('date', 'N/A')}")
+        print(f"Last result date: {results[-1].get('date', 'N/A')}")
+else:
+    print("Results is not a list/array")
+    print(f"Results type: {type(results)}")

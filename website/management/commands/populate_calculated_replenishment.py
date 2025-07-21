@@ -16,13 +16,14 @@ from website.models import (
     MasterdataIncoTermsModel,
     MasterDataManuallyAssignProductionRequirement,
     MasterDataEpicorMethodOfManufacturingModel,
+    MasterDataSafetyStocks,  # Add this import
 )
 import pandas as pd
 from datetime import timedelta
 from collections import Counter
 
 class Command(BaseCommand):
-    help = "Populate data in CalcualtedReplenishmentModel from SMART_Forecast_Model with inventory depletion tracking and Incoterm logic"
+    help = "Populate data in CalcualtedReplenishmentModel from SMART_Forecast_Model with inventory depletion tracking, Incoterm logic, and safety stock requirements"
 
     def add_arguments(self, parser):
         parser.add_argument(
@@ -153,6 +154,16 @@ class Command(BaseCommand):
                     inventory_agg = pd.DataFrame(columns=['product', 'site_id', 'onhandstock_qty', 'intransitstock_qty', 'date_of_snapshot'])
                     self.stdout.write("No inventory data found")
 
+                # Load safety stock data
+                safety_stock_map = {
+                    (ss.Plant, ss.PartNum): {
+                        'minimum_qty': float(ss.MinimumQty or 0),
+                        'safety_qty': float(ss.SafetyQty or 0)
+                    }
+                    for ss in MasterDataSafetyStocks.objects.filter(version=scenario)
+                }
+                self.stdout.write(f"Loaded safety stock data for {len(safety_stock_map)} plant-product combinations")
+
                 # Prepare lookup dictionaries
                 product_map = {p.Product: p for p in MasterDataProductModel.objects.all()}
                 plant_map = {p.SiteName: p for p in MasterDataPlantModel.objects.all()}
@@ -193,6 +204,7 @@ class Command(BaseCommand):
                 self.stdout.write(f"  - Incoterm mappings: {len(incoterm_map)}")
                 self.stdout.write(f"  - Freight mappings: {len(freight_map)}")
                 self.stdout.write(f"  - Manual assignment mappings: {len(manual_assign_map)}")
+                self.stdout.write(f"  - Safety stock mappings: {len(safety_stock_map)}")
 
                 # Define excluded sites and foundry sites
                 excluded_sites = {'MTJ1', 'COI2', 'XUZ1', 'MER1', 'WUN1', 'WOD1', 'CHI1'}
@@ -286,11 +298,33 @@ class Command(BaseCommand):
                         site = manual_site_name
 
                     site_obj = plant_map.get(site)
+
+                    # DEBUG: Check why records might be skipped
+                    if product == 'T690EP' and location == 'WAT1':
+                        print(f"DEBUG T690EP-WAT1: Period={period.strftime('%Y-%m-%d')}")
+                        print(f"  Site from order book: {order_book_map.get((scenario.version, product))}")
+                        print(f"  Site from production: {production_map.get((scenario.version, product))}")
+                        print(f"  Site from supplier: {supplier_map.get((scenario.version, product))}")
+                        print(f"  Final site: {site}")
+                        print(f"  Site object found: {site_obj is not None}")
+                        print(f"  Customer code: {customer_code}")
+                        print(f"  Incoterm: {incoterm_code}")
+                        print(f"  Adjusted shipping date: {adjusted_shipping_date.strftime('%Y-%m-%d')}")
+                        if not site_obj:
+                            print(f"  SKIPPING - No site object found for site: {site}")
+                        print("---")
                     
                     if not site_obj:
-                        continue
+                        continue  # This is where records get skipped!
+                    
+                    
 
-                    # Inventory analysis
+                    # Get safety stock requirements for this product-location combination
+                    safety_stock_key = (location, product)
+                    safety_stock_data = safety_stock_map.get(safety_stock_key, {'minimum_qty': 0, 'safety_qty': 0})
+                    required_closing_stock = safety_stock_data['minimum_qty'] + safety_stock_data['safety_qty']
+
+                    # Inventory analysis with safety stock consideration
                     location_key = (product, location)
                     remaining_qty = total_qty
                     
@@ -300,28 +334,54 @@ class Command(BaseCommand):
                         total_available_stock = location_onhand_stock + location_intransit_stock
                         
                         if total_available_stock > 0:
-                            stock_used = min(total_qty, total_available_stock)
+                            # Calculate how much stock we can use (must leave required closing stock)
+                            usable_stock = max(0, total_available_stock - required_closing_stock)
+                            stock_used = min(total_qty, usable_stock)
                             remaining_qty = max(0, remaining_qty - stock_used)
                             
                             # Update remaining inventory
-                            intransit_used = min(stock_used, location_intransit_stock)
-                            onhand_used = stock_used - intransit_used
-                            
-                            remaining_inventory[location_key]['intransit'] -= intransit_used
-                            remaining_inventory[location_key]['onhand'] -= onhand_used
+                            if stock_used > 0:
+                                intransit_used = min(stock_used, location_intransit_stock)
+                                onhand_used = stock_used - intransit_used
+                                
+                                remaining_inventory[location_key]['intransit'] -= intransit_used
+                                remaining_inventory[location_key]['onhand'] -= onhand_used
 
-                    # Create replenishment record if needed
-                    if remaining_qty > 0:
-                        product_instance = product_map.get(product)
-                        if product_instance:
-                            replenishment_records.append(CalcualtedReplenishmentModel(
-                                version=scenario,
-                                Product=product_instance,
-                                Location=location,
-                                Site=site_obj,
-                                ShippingDate=adjusted_shipping_date,
-                                ReplenishmentQty=remaining_qty
-                            ))
+                            # Debug output for safety stock logic
+                            if required_closing_stock > 0:
+                                final_stock = total_available_stock - stock_used
+                                print(f"DEBUG Safety Stock - Product: {product}, Location: {location}")
+                                print(f"  Total Available: {total_available_stock}")
+                                print(f"  Required Closing: {required_closing_stock} (Min: {safety_stock_data['minimum_qty']}, Safety: {safety_stock_data['safety_qty']})")
+                                print(f"  Stock Used: {stock_used}")
+                                print(f"  Final Stock: {final_stock}")
+                                print(f"  Replenishment Needed: {remaining_qty}")
+
+                    # Add required closing stock to replenishment quantity
+                    if remaining_qty > 0 or required_closing_stock > 0:
+                        # If we have remaining demand, we need to replenish that PLUS ensure closing stock
+                        # If no remaining demand but we need closing stock, replenish to meet closing stock requirement
+                        
+                        current_stock_after_demand = 0
+                        if location_key in remaining_inventory:
+                            current_stock_after_demand = (remaining_inventory[location_key]['onhand'] + 
+                                                        remaining_inventory[location_key]['intransit'])
+                        
+                        # Calculate total replenishment needed
+                        total_replenishment_needed = remaining_qty + max(0, required_closing_stock - current_stock_after_demand)
+                        
+                        # Create replenishment record if needed
+                        if total_replenishment_needed > 0:
+                            product_instance = product_map.get(product)
+                            if product_instance:
+                                replenishment_records.append(CalcualtedReplenishmentModel(
+                                    version=scenario,
+                                    Product=product_instance,
+                                    Location=location,
+                                    Site=site_obj,
+                                    ShippingDate=adjusted_shipping_date,
+                                    ReplenishmentQty=total_replenishment_needed
+                                ))
 
                 # Bulk create records
                 if replenishment_records:

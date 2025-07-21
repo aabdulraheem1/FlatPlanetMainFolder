@@ -1797,3 +1797,4 @@ def detailed_view_scenario_inventory(scenario):
         'inventory_data': [],
         'production_data': [],
     }
+

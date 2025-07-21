@@ -31,7 +31,8 @@ from django.shortcuts import render, get_object_or_404, redirect
 import sys
 import subprocess
 from django.conf import settings
-from .models import (AggregatedForecast, RevenueToCogsConversionModel,  SiteAllocationModel, FixedPlantConversionModifiersModel,)
+from .models import (AggregatedForecast, RevenueToCogsConversionModel,  SiteAllocationModel, FixedPlantConversionModifiersModel,
+                     MasterDataSafetyStocks,)
 from website.customized_function import (get_monthly_cogs_and_revenue, get_forecast_data_by_parent_product_group, get_monthly_production_cogs,
 get_monthly_production_cogs_by_group, get_monthly_production_cogs_by_parent_group, get_combined_demand_and_poured_data, get_production_data_by_group,    get_top_products_per_month_by_group,
     get_dress_mass_data, get_forecast_data_by_product_group, get_forecast_data_by_region, get_monthly_pour_plan_for_site, calculate_control_tower_data,
@@ -454,6 +455,7 @@ def edit_scenario(request, version):
     revenue_conversion_modifiers_has_data = RevenueToCogsConversionModel.objects.filter(version=scenario).exists()
     revenue_to_cogs_conversion_has_data = RevenueToCogsConversionModel.objects.filter(version=scenario).exists()
     site_allocation_has_data = SiteAllocationModel.objects.filter(version=scenario).exists()
+    safety_stocks_has_data = MasterDataSafetyStocks.objects.filter(version=scenario).exists()
 
     # Retrieve missing regions from the session
     missing_regions = request.session.pop('missing_regions', None)
@@ -492,6 +494,7 @@ def edit_scenario(request, version):
         'revenue_conversion_modifiers_has_data': revenue_conversion_modifiers_has_data,
         'revenue_to_cogs_conversion_has_data': revenue_to_cogs_conversion_has_data,
         'site_allocation_has_data': site_allocation_has_data,
+        'safety_stocks_has_data': safety_stocks_has_data,
     })
 
 
@@ -4334,6 +4337,15 @@ def search_detailed_inventory(request):
                 site if site else None
             )
             
+            # DEBUG: Check what we got back
+            print(f"DEBUG AJAX: search_detailed_view_data returned {len(results['inventory_data'])} inventory records")
+            if results['inventory_data']:
+                periods = results['inventory_data'][0].get('periods', [])
+                print(f"DEBUG AJAX: First inventory record has {len(periods)} periods")
+                if periods:
+                    print(f"DEBUG AJAX: First period: {periods[0].get('date')}")
+                    print(f"DEBUG AJAX: Last period: {periods[-1].get('date')}")
+            
             # Render the results to HTML
             from django.template.loader import render_to_string
             
@@ -4345,6 +4357,10 @@ def search_detailed_inventory(request):
                 'detailed_production_data': results['production_data']
             })
             
+            # DEBUG: Check rendered HTML length
+            print(f"DEBUG AJAX: Rendered inventory HTML length: {len(inventory_html)}")
+            print(f"DEBUG AJAX: Rendered production HTML length: {len(production_html)}")
+            
             return JsonResponse({
                 'inventory_html': inventory_html,
                 'production_html': production_html,
@@ -4355,6 +4371,131 @@ def search_detailed_inventory(request):
         except scenarios.DoesNotExist:
             return JsonResponse({'error': 'Scenario not found'}, status=404)
         except Exception as e:
+            import traceback
+            print(f"DEBUG AJAX ERROR: {e}")
+            traceback.print_exc()
             return JsonResponse({'error': str(e)}, status=500)
     
     return JsonResponse({'error': 'Invalid method'}, status=405)
+
+
+# ...existing imports...
+from .models import MasterDataSafetyStocks
+from django.forms import modelformset_factory
+
+@login_required
+def upload_safety_stocks(request, version):
+    """Fetch safety stocks data from Epicor database."""
+    scenario = get_object_or_404(scenarios, version=version)
+    
+    try:
+        # Run the management command
+        result = run_management_command('fetch_safety_stocks_data', version)
+        if result.returncode == 0:
+            messages.success(request, "Safety stocks data successfully uploaded from Epicor.")
+        else:
+            messages.error(request, f"Error uploading safety stocks data: {result.stderr}")
+    except Exception as e:
+        messages.error(request, f"An error occurred: {e}")
+    
+    return redirect('edit_scenario', version=version)
+
+@login_required
+def update_safety_stocks(request, version):
+    """Update safety stocks records."""
+    user_name = request.user.username
+    scenario = get_object_or_404(scenarios, version=version)
+    
+    # Get filter values from GET parameters
+    plant_filter = request.GET.get('plant', '').strip()
+    part_filter = request.GET.get('part', '').strip()
+    
+    # Filter records
+    queryset = MasterDataSafetyStocks.objects.filter(version=scenario)
+    if plant_filter:
+        queryset = queryset.filter(Plant__icontains=plant_filter)
+    if part_filter:
+        queryset = queryset.filter(PartNum__icontains=part_filter)
+    
+    # Always order before paginating
+    queryset = queryset.order_by('Plant', 'PartNum')
+    
+    # Paginate the queryset
+    paginator = Paginator(queryset, 20)  # Show 20 records per page
+    page_number = request.GET.get('page')
+    page_obj = paginator.get_page(page_number)
+    
+    # Create formset
+    SafetyStocksFormSet = modelformset_factory(
+        MasterDataSafetyStocks,
+        fields=('Plant', 'PartNum', 'MinimumQty', 'SafetyQty'),
+        extra=0
+    )
+    
+    if request.method == 'POST':
+        formset = SafetyStocksFormSet(request.POST, queryset=page_obj.object_list)
+        if formset.is_valid():
+            formset.save()
+            messages.success(request, "Safety stocks updated successfully!")
+            return redirect('edit_scenario', version=version)
+    else:
+        formset = SafetyStocksFormSet(queryset=page_obj.object_list)
+    
+    return render(request, 'website/update_safety_stocks.html', {
+        'formset': formset,
+        'page_obj': page_obj,
+        'plant_filter': plant_filter,
+        'part_filter': part_filter,
+        'scenario': scenario,
+        'user_name': user_name,
+        'version': version,
+    })
+
+@login_required
+def delete_safety_stocks(request, version):
+    """Delete all safety stocks records for a specific version."""
+    scenario = get_object_or_404(scenarios, version=version)
+    
+    if request.method == 'POST':
+        MasterDataSafetyStocks.objects.filter(version=scenario).delete()
+        messages.success(request, "All safety stocks records deleted successfully!")
+        return redirect('edit_scenario', version=version)
+    
+    return render(request, 'website/delete_safety_stocks.html', {
+        'scenario': scenario,
+        'version': version
+    })
+
+@login_required
+def copy_safety_stocks(request, version):
+    """Copy safety stocks records from one version to another."""
+    target_scenario = get_object_or_404(scenarios, version=version)
+    
+    if request.method == 'POST':
+        source_version = request.POST.get('source_version')
+        source_scenario = get_object_or_404(scenarios, version=source_version)
+        
+        # Delete existing records for target scenario
+        MasterDataSafetyStocks.objects.filter(version=target_scenario).delete()
+        
+        # Copy records from source to target
+        source_records = MasterDataSafetyStocks.objects.filter(version=source_scenario)
+        for record in source_records:
+            MasterDataSafetyStocks.objects.create(
+                version=target_scenario,
+                Plant=record.Plant,
+                PartNum=record.PartNum,
+                MinimumQty=record.MinimumQty,
+                SafetyQty=record.SafetyQty
+            )
+        
+        messages.success(request, f"Safety stocks data successfully copied from scenario '{source_version}' to '{version}'.")
+        return redirect('edit_scenario', version=version)
+    
+    # Get all scenarios except the current one
+    all_scenarios = scenarios.objects.exclude(version=version)
+    
+    return render(request, 'website/copy_safety_stocks.html', {
+        'target_scenario': target_scenario,
+        'all_scenarios': all_scenarios,
+    })

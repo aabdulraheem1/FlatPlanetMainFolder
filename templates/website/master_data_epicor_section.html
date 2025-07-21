@@ -172,7 +172,33 @@
             <img src="/static/icons/copy.png" alt="Copy">
         </a>
     </td>
-</tr>
+    </tr>
+    <tr>
+            <td>Safety Stocks Setup</td>
+            <td>
+                <!-- Checkbox dynamically ticked based on database records -->
+                <input type="checkbox" {% if safety_stocks_has_data %}checked{% endif %} disabled>
+            </td>
+            <td>
+                <a href="{% url 'update_safety_stocks' scenario.version %}" class="btn btn-warning btn-sm"
+                    onclick="showLoading('Updating records...');">
+                    <img src="/static/icons/update.png" alt="Update">
+                </a>
+                <a href="{% url 'delete_safety_stocks' scenario.version %}" class="btn btn-danger btn-sm"
+                    onclick="return confirmDelete();">
+                    <img src="/static/icons/delete.png" alt="Delete">
+                </a>
+                <a href="{% url 'upload_safety_stocks' scenario.version %}" class="btn btn-info btn-sm"
+                    onclick="showLoading('Uploading records...');">
+                    <img src="/static/icons/upload.png" alt="Upload">
+                </a>
+                <a href="{% url 'copy_safety_stocks' scenario.version %}" class="btn btn-info btn-sm"
+                    onclick="showLoading('Copying records...');">
+                    <img src="/static/icons/copy.png" alt="Copy">
+                </a>
+            </td>
+        </tr>
+
     </tbody>
 </table>
 
