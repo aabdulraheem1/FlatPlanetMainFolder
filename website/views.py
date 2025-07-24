@@ -4653,7 +4653,7 @@ def auto_level_optimization(request, version):
                 for plan in pour_plans:
                     if plan.Month:
                         month_key = plan.Month.strftime('%Y-%m')
-                        monthly_pour_plan[month_key] = (plan.PlanDressMass or 0) * 100  # Multiply by 100 to match optimization scale
+                        monthly_pour_plan[month_key] = (plan.PlanDressMass or 0)  # FIXED: Removed * 100 - use actual tonnes
                 
                 print(f"DEBUG: Pour plan for {site_name}: {monthly_pour_plan}")
                 
@@ -4690,9 +4690,9 @@ def auto_level_optimization(request, version):
 
                 print(f"DEBUG: Monthly gaps to fill for {site_name}: {monthly_gaps}")
 
-                # ENHANCED: Thorough sequential month-by-month gap filling 
-                # Fill each month COMPLETELY before moving to next month
-                print(f"DEBUG: Starting THOROUGH sequential month-by-month optimization for {site_name}")
+                # NEW SEQUENTIAL MONTH-BY-MONTH GAP FILLING ALGORITHM
+                # Process each month sequentially, completely filling each gap before moving to the next
+                print(f"DEBUG: Starting NEW sequential month-by-month optimization for {site_name}")
                 
                 # Get all months that have Pour Plan capacity (sorted chronologically)
                 sorted_months = sorted([month for month in monthly_pour_plan.keys() 
@@ -4700,186 +4700,146 @@ def auto_level_optimization(request, version):
                 
                 print(f"DEBUG: Processing months in order: {sorted_months}")
                 
-                # Process each month sequentially with COMPLETE gap filling
-                for current_month in sorted_months:
-                    print(f"DEBUG: === Processing month {current_month} THOROUGHLY ===")
+                # Process each month sequentially - COMPLETELY fill each month before moving to next
+                for current_month_index, current_month in enumerate(sorted_months):
+                    print(f"DEBUG: === PROCESSING MONTH {current_month} (Index: {current_month_index}) ===")
                     
-                    # Keep looping until this month's gap is completely filled or no more moves possible
-                    max_iterations = 10  # Safety limit to prevent infinite loops
-                    iteration = 0
+                    # Recalculate current demand for this month (may have changed from previous optimizations)
+                    current_month_demand = CalculatedProductionModel.objects.filter(
+                        version=scenario,
+                        site__SiteName=site_name,
+                        pouring_date__year=int(current_month.split('-')[0]),
+                        pouring_date__month=int(current_month.split('-')[1])
+                    ).aggregate(total=Sum('tonnes'))['total'] or 0
                     
-                    while iteration < max_iterations:
-                        iteration += 1
-                        print(f"DEBUG: {current_month} - Iteration {iteration}")
+                    pour_capacity = monthly_pour_plan[current_month]
+                    gap_to_fill = pour_capacity - current_month_demand
+                    
+                    print(f"DEBUG: {current_month} - Pour Plan: {pour_capacity:.2f}, Current Demand: {current_month_demand:.2f}, Gap: {gap_to_fill:.2f}")
+                    
+                    # Skip if no gap or negative gap
+                    if gap_to_fill <= 1.0:
+                        print(f"DEBUG: {current_month} - No significant gap to fill ({gap_to_fill:.2f}t)")
+                        continue
+                    
+                    # Fill this gap from future months
+                    remaining_gap = gap_to_fill
+                    gap_target_date = datetime.strptime(current_month + '-15', '%Y-%m-%d').date()
+                    
+                    print(f"DEBUG: {current_month} - Need to fill {remaining_gap:.2f} tonnes gap")
+                    
+                    # Look through future months sequentially until gap is filled or 90-day limit reached
+                    for future_month_index in range(current_month_index + 1, len(sorted_months)):
+                        future_month = sorted_months[future_month_index]
                         
-                        # Recalculate current demand for this specific month (may have changed from previous moves)
-                        month_demand = 0
-                        demand_records = CalculatedProductionModel.objects.filter(
-                            version=scenario,
-                            site__SiteName=site_name,
-                            pouring_date__year=int(current_month.split('-')[0]),
-                            pouring_date__month=int(current_month.split('-')[1])
-                        ).values('tonnes')
+                        # Check 90-day constraint
+                        future_month_date = datetime.strptime(future_month + '-01', '%Y-%m-%d').date()
+                        days_difference = (future_month_date - gap_target_date).days
                         
-                        for record in demand_records:
-                            month_demand += record['tonnes'] or 0
-                        
-                        pour_capacity = monthly_pour_plan[current_month]
-                        current_gap = pour_capacity - month_demand
-                        
-                        print(f"DEBUG: {current_month} - Pour Plan: {pour_capacity:.2f}, Current Demand: {month_demand:.2f}, Gap: {current_gap:.2f}")
-                        
-                        # If gap is negligible or filled, move to next month
-                        if current_gap <= 1.0:  # Consider gaps less than 1 tonne as acceptable
-                            print(f"DEBUG: {current_month} gap filled successfully ({current_gap:.2f}t remaining)")
+                        if max_days_forward and days_difference > max_days_forward:
+                            print(f"DEBUG: Skipping {future_month} - beyond 90-day limit ({days_difference} days)")
                             break
                         
-                        # Track if we made any moves in this iteration
-                        moves_made_this_iteration = 0
-                        remaining_gap = current_gap
-                        gap_date = datetime.strptime(current_month + '-15', '%Y-%m-%d').date()
-                        gap_month_start = datetime.strptime(current_month + '-01', '%Y-%m-%d').date()
+                        print(f"DEBUG: Looking for production in {future_month} to fill {remaining_gap:.2f}t gap in {current_month}")
                         
-                        print(f"DEBUG: Attempting to fill {remaining_gap:.2f} tonnes gap in {current_month}")
-                        
-                        # ENHANCED: More aggressive search for production to move back
-                        # Try ALL product groups, not just selected ones, to maximize gap filling
-                        all_product_groups = list(CalculatedProductionModel.objects.filter(
+                        # Get production records from this future month, ordered by tonnage (smallest first for better distribution)
+                        future_productions = CalculatedProductionModel.objects.filter(
                             version=scenario,
-                            site__SiteName=site_name
-                        ).exclude(product_group__isnull=True).exclude(product_group='').values_list('product_group', flat=True).distinct())
+                            site__SiteName=site_name,
+                            pouring_date__year=int(future_month.split('-')[0]),
+                            pouring_date__month=int(future_month.split('-')[1]),
+                            tonnes__gt=0  # Only records with positive tonnage
+                        ).order_by('tonnes')  # Start with smallest records
                         
-                        print(f"DEBUG: Found {len(all_product_groups)} product groups for {site_name}: {all_product_groups}")
+                        future_month_total = future_productions.aggregate(total=Sum('tonnes'))['total'] or 0
+                        print(f"DEBUG: {future_month} has {future_month_total:.2f} tonnes available across {future_productions.count()} records")
                         
-                        # Use selected product groups first, then try others if gap remains
-                        product_groups_to_try = selected_product_groups + [pg for pg in all_product_groups if pg not in selected_product_groups]
+                        if future_month_total == 0:
+                            print(f"DEBUG: {future_month} has no production to move")
+                            continue
                         
-                        for product_group in product_groups_to_try:
-                            if remaining_gap <= 1.0:  # Stop if gap is small enough
-                                break
+                        # Determine how much to take from this month
+                        tonnes_to_take_from_month = min(remaining_gap, future_month_total)
+                        print(f"DEBUG: Taking {tonnes_to_take_from_month:.2f}t from {future_month} to fill {current_month}")
+                        
+                        # Move production records until we've taken enough from this month
+                        tonnes_taken_so_far = 0
+                        
+                        for production in future_productions:
+                            if tonnes_taken_so_far >= tonnes_to_take_from_month:
+                                break  # We've taken enough from this month
+                            
+                            production_tonnes = production.tonnes or 0
+                            if production_tonnes <= 0:
+                                continue
+                            
+                            # Calculate how much to move from this specific record
+                            tonnes_needed = tonnes_to_take_from_month - tonnes_taken_so_far
+                            tonnes_to_move = min(production_tonnes, tonnes_needed)
+                            
+                            if tonnes_to_move > 0:
+                                print(f"DEBUG: Moving {tonnes_to_move:.2f}t from record {production.id} ({production.product_group}) from {production.pouring_date} to {gap_target_date}")
                                 
-                            print(f"DEBUG: Looking for {product_group} from months after {current_month}")
-                            
-                            # ENHANCED: Look for production from ANYWHERE in the future, not just immediately after
-                            future_productions = CalculatedProductionModel.objects.filter(
-                                version=scenario,
-                                site__SiteName=site_name,
-                                product_group=product_group,
-                                pouring_date__gt=gap_month_start  # Any date after gap month start
-                            ).order_by('pouring_date')
-                            
-                            
-                            for production in future_productions:
-                                if remaining_gap <= 1.0:  # Stop if gap is small enough
-                                    break
+                                if production_tonnes > tonnes_to_move:
+                                    # Partial move - create new record for moved portion
+                                    move_ratio = tonnes_to_move / production_tonnes
                                     
-                                # Check 90-day constraint if enabled
-                                if max_days_forward:
-                                    days_difference = (production.pouring_date - gap_date).days
-                                    if days_difference > max_days_forward:
-                                        print(f"DEBUG: Skipping {production.id} - would move {days_difference} days (limit: {max_days_forward})")
-                                        continue
-                                
-                                # Calculate how much to move
-                                production_tonnes = production.tonnes or 0
-                                tonnes_to_move = min(production_tonnes, remaining_gap)
-                                
-                                if tonnes_to_move > 0:
-                                    moves_made_this_iteration += 1
-                                    print(f"DEBUG: Moving {tonnes_to_move:.2f} tonnes of {product_group} from {production.pouring_date} to {gap_date}")
+                                    moved_production = CalculatedProductionModel.objects.create(
+                                        version=production.version,
+                                        product=production.product,
+                                        site=production.site,
+                                        pouring_date=gap_target_date,
+                                        production_quantity=production.production_quantity * move_ratio,
+                                        tonnes=tonnes_to_move,
+                                        product_group=production.product_group,
+                                        parent_product_group=production.parent_product_group,
+                                        price_aud=production.price_aud,
+                                        cost_aud=production.cost_aud,
+                                        cogs_aud=(production.cogs_aud or 0) * move_ratio,
+                                        revenue_aud=(production.revenue_aud or 0) * move_ratio
+                                    )
                                     
-                                    if production_tonnes > tonnes_to_move:
-                                        # Partial move - create new record for moved portion
-                                        moved_production = CalculatedProductionModel.objects.create(
-                                            version=production.version,
-                                            product=production.product,
-                                            site=production.site,
-                                            pouring_date=gap_date,
-                                            production_quantity=production.production_quantity * (tonnes_to_move / production_tonnes),
-                                            tonnes=tonnes_to_move,
-                                            product_group=production.product_group,
-                                            parent_product_group=production.parent_product_group,
-                                            price_aud=production.price_aud,
-                                            cost_aud=production.cost_aud,
-                                            cogs_aud=production.cogs_aud * (tonnes_to_move / production_tonnes) if production.cogs_aud else 0,
-                                            revenue_aud=production.revenue_aud * (tonnes_to_move / production_tonnes) if production.revenue_aud else 0
-                                        )
-                                        
-                                        print(f"DEBUG: Created new record ID: {moved_production.id}")
-                                        
-                                        # Reduce original production
-                                        production.production_quantity -= moved_production.production_quantity
-                                        production.tonnes -= tonnes_to_move
-                                        if production.cogs_aud:
-                                            production.cogs_aud -= moved_production.cogs_aud
-                                        if production.revenue_aud:
-                                            production.revenue_aud -= moved_production.revenue_aud
-                                        production.save()
-                                        
-                                        print(f"DEBUG: Reduced original record from {production_tonnes} to {production.tonnes} tonnes")
-                                        
-                                    else:
-                                        # Move the entire production record
-                                        original_date = production.pouring_date
-                                        production.pouring_date = gap_date
-                                        production.save()
-                                        
-                                        print(f"DEBUG: Moved entire record ID: {production.id} from {original_date} to {gap_date}")
+                                    # Reduce original production
+                                    production.production_quantity *= (1 - move_ratio)
+                                    production.tonnes -= tonnes_to_move
+                                    production.cogs_aud = (production.cogs_aud or 0) * (1 - move_ratio)
+                                    production.revenue_aud = (production.revenue_aud or 0) * (1 - move_ratio)
+                                    production.save()
                                     
-                                    # Update tracking
-                                    remaining_gap -= tonnes_to_move
-                                    total_tonnes_moved += tonnes_to_move
-                                    optimized_count += 1
+                                    print(f"DEBUG: Created new record {moved_production.id}, reduced original from {production_tonnes:.2f}t to {production.tonnes:.2f}t")
                                     
-                                    print(f"DEBUG: Remaining gap in {current_month}: {remaining_gap:.2f} tonnes")
-                        
-                        # If no moves were made in this iteration, we can't fill more
-                        if moves_made_this_iteration == 0:
-                            print(f"DEBUG: No more moves possible for {current_month}, remaining gap: {remaining_gap:.2f}t")
-                            
-                            # Check if this gap is acceptable - only if next months are empty OR 90-day limit reached
-                            remaining_gap_final = remaining_gap
-                            next_month_production = 0
-                            
-                            # Find next month with production
-                            current_month_date = datetime.strptime(current_month + '-01', '%Y-%m-%d').date()
-                            next_month_date = current_month_date.replace(day=1)
-                            if next_month_date.month == 12:
-                                next_month_date = next_month_date.replace(year=next_month_date.year + 1, month=1)
-                            else:
-                                next_month_date = next_month_date.replace(month=next_month_date.month + 1)
-                            
-                            # Check if there's production in the next 3 months
-                            for i in range(3):  # Check next 3 months
-                                check_date = next_month_date
-                                if check_date.month + i > 12:
-                                    check_date = check_date.replace(year=check_date.year + 1, month=check_date.month + i - 12)
                                 else:
-                                    check_date = check_date.replace(month=check_date.month + i)
+                                    # Move entire record
+                                    original_date = production.pouring_date
+                                    production.pouring_date = gap_target_date
+                                    production.save()
+                                    
+                                    print(f"DEBUG: Moved entire record {production.id} from {original_date} to {gap_target_date}")
                                 
-                                month_production = CalculatedProductionModel.objects.filter(
-                                    version=scenario,
-                                    site__SiteName=site_name,
-                                    pouring_date__year=check_date.year,
-                                    pouring_date__month=check_date.month
-                                ).aggregate(total=Sum('tonnes'))['total'] or 0
+                                # Update counters
+                                tonnes_taken_so_far += tonnes_to_move
+                                remaining_gap -= tonnes_to_move
+                                total_tonnes_moved += tonnes_to_move
+                                optimized_count += 1
                                 
-                                if month_production > 0:
-                                    next_month_production += month_production
-                            
-                            if next_month_production > 0 and remaining_gap_final > 5:  # 5 tonne tolerance
-                                print(f"WARNING: Gap of {remaining_gap_final:.1f}t in {current_month} with {next_month_production:.1f}t available in future months!")
-                            
-                            break  # Exit the while loop for this month
+                                print(f"DEBUG: Progress - Taken {tonnes_taken_so_far:.2f}t from {future_month}, remaining gap: {remaining_gap:.2f}t")
                         
-                        if remaining_gap > 0:
-                            print(f"DEBUG: Could not fully fill gap in {current_month}, remaining: {remaining_gap:.2f} tonnes")
-                        else:
-                            print(f"DEBUG: Successfully filled gap in {current_month}")
+                        # Check if this month's gap is now filled
+                        if remaining_gap <= 1.0:
+                            print(f"DEBUG: {current_month} gap successfully filled! Remaining: {remaining_gap:.2f}t")
+                            break
+                        
+                        # If we've zeroed out this future month, continue to next
+                        if tonnes_taken_so_far >= future_month_total:
+                            print(f"DEBUG: {future_month} completely zeroed out, moving to next month")
+                    
+                    # Final status for this month
+                    if remaining_gap > 1.0:
+                        print(f"WARNING: Could not completely fill {current_month} gap. Remaining: {remaining_gap:.2f}t")
                     else:
-                        print(f"DEBUG: No gap in {current_month} (current demand meets or exceeds pour plan)")
+                        print(f"SUCCESS: {current_month} gap completely filled!")
                 
-                print(f"DEBUG: Completed sequential month-by-month optimization for {site_name}")
+                print(f"DEBUG: Completed NEW sequential optimization for {site_name}")
             
             # Mark optimization as applied
             opt_state.auto_optimization_applied = True
@@ -4905,7 +4865,33 @@ def auto_level_optimization(request, version):
                     
                     print(f"DEBUG: All aggregations recalculated successfully")
                     
-                    messages.success(request, f"Successfully filled pour plan gaps by moving {optimized_count} production records forward across all product groups, totaling {total_tonnes_moved:.2f} tonnes. All charts have been updated to reflect the optimization. Auto optimization is now locked until reset.")
+                    # CRITICAL: Update Control Tower cache with new demand plan after production moves
+                    print(f"DEBUG: Updating Control Tower cache after auto-leveling...")
+                    try:
+                        import subprocess
+                        import sys
+                        import os
+                        from django.conf import settings
+                        
+                        # Get the Django project root directory
+                        current_dir = os.path.dirname(os.path.abspath(__file__))  # website folder
+                        project_root = os.path.dirname(current_dir)  # SPR folder
+                        manage_py = os.path.join(project_root, 'manage.py')
+                        
+                        # Run cache_review_data command to update Control Tower cache
+                        cmd = [sys.executable, manage_py, 'cache_review_data', '--scenario', str(version), '--force']
+                        result = subprocess.run(cmd, capture_output=True, text=True, cwd=project_root)
+                        
+                        if result.returncode == 0:
+                            print(f"DEBUG: Control Tower cache updated successfully")
+                            messages.success(request, f"Successfully filled pour plan gaps by moving {optimized_count} production records forward across all product groups, totaling {total_tonnes_moved:.2f} tonnes. All charts and Control Tower demand plan have been updated to reflect the optimization. Auto optimization is now locked until reset.")
+                        else:
+                            print(f"ERROR: Control Tower cache update failed: {result.stderr}")
+                            messages.warning(request, f"Optimization completed ({optimized_count} records moved, {total_tonnes_moved:.2f} tonnes), charts updated, but Control Tower cache may need manual refresh. Error: {result.stderr}")
+                            
+                    except Exception as cache_error:
+                        print(f"ERROR: Failed to update Control Tower cache: {cache_error}")
+                        messages.warning(request, f"Optimization completed ({optimized_count} records moved, {total_tonnes_moved:.2f} tonnes), charts updated, but Control Tower cache may need manual refresh. Error: {str(cache_error)}")
                     
                 except Exception as agg_error:
                     print(f"ERROR: Failed to recalculate aggregations: {agg_error}")
@@ -4990,7 +4976,28 @@ def reset_production_plan(request, version):
                     
                     print(f"DEBUG: All aggregations recalculated successfully")
                     
-                    messages.success(request, f"Production plan reset successfully for version {version}. All chart data has been recalculated. Auto optimization is now available.")
+                    # CRITICAL: Update Control Tower cache after production plan reset
+                    print(f"DEBUG: Updating Control Tower cache after production plan reset...")
+                    try:
+                        # Run cache_review_data command to update Control Tower cache
+                        cache_cmd = [
+                            'python', manage_py_path, 
+                            'cache_review_data', 
+                            '--scenario', version, 
+                            '--force'
+                        ]
+                        cache_result = subprocess.run(cache_cmd, capture_output=True, text=True, cwd=project_root)
+                        
+                        if cache_result.returncode == 0:
+                            print(f"DEBUG: Control Tower cache updated successfully after reset")
+                            messages.success(request, f"Production plan reset successfully for version {version}. All chart data and Control Tower demand plan have been recalculated. Auto optimization is now available.")
+                        else:
+                            print(f"ERROR: Control Tower cache update failed after reset: {cache_result.stderr}")
+                            messages.warning(request, f"Production plan reset successfully, charts recalculated, but Control Tower cache may need manual refresh. Error: {cache_result.stderr}")
+                            
+                    except Exception as cache_error:
+                        print(f"ERROR: Failed to update Control Tower cache after reset: {cache_error}")
+                        messages.warning(request, f"Production plan reset successfully, charts recalculated, but Control Tower cache may need manual refresh. Error: {str(cache_error)}")
                     
                 except Exception as agg_error:
                     print(f"ERROR: Failed to recalculate aggregations: {agg_error}")
