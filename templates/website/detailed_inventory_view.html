@@ -1,0 +1,133 @@
+{% extends 'website/base.html' %}
+{% load static %}
+
+{% block title %}Detailed Inventory View - {{ version }}{% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-4">
+    <div class="row">
+        <div class="col-12">
+            <h2><i class="fas fa-search"></i> Detailed Inventory & Production View</h2>
+            <p class="text-muted">Scenario: <strong>{{ version }}</strong></p>
+            
+            <!-- Search Form -->
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h5><i class="fas fa-filter"></i> Search & Filter</h5>
+                </div>
+                <div class="card-body">
+                    <form method="get" action="{% url 'detailed_view_scenario_inventory' version %}">
+                        <div class="row">
+                            <div class="col-md-8">
+                                <div class="form-group">
+                                    <label for="search_term">Search Term:</label>
+                                    <input type="text" class="form-control" id="search_term" name="search_term" 
+                                           value="{{ search_term }}" 
+                                           placeholder="Enter product code, description, or site">
+                                </div>
+                            </div>
+                            <div class="col-md-4 d-flex align-items-end">
+                                <button type="submit" class="btn btn-primary mr-2">
+                                    <i class="fas fa-search"></i> Search
+                                </button>
+                                <a href="{% url 'detailed_view_scenario_inventory' version %}" class="btn btn-secondary">
+                                    <i class="fas fa-times"></i> Clear
+                                </a>
+                            </div>
+                        </div>
+                    </form>
+                    
+                    <div class="mt-3">
+                        <h6>Search Tips:</h6>
+                        <ul class="list-unstyled">
+                            <li><i class="fas fa-info-circle text-info"></i> Enter partial product codes (e.g., "ABC")</li>
+                            <li><i class="fas fa-info-circle text-info"></i> Search by site names (MTJ1, COI2, etc.)</li>
+                            <li><i class="fas fa-info-circle text-info"></i> Use product descriptions</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+
+            {% if search_term %}
+                <!-- Results Section -->
+                <div class="card">
+                    <div class="card-header">
+                        <h5><i class="fas fa-table"></i> Search Results for "{{ search_term }}"</h5>
+                    </div>
+                    <div class="card-body">
+                        {% if detailed_inventory_data or detailed_production_data %}
+                            <!-- Navigation Tabs -->
+                            <ul class="nav nav-tabs" id="resultTabs" role="tablist">
+                                <li class="nav-item">
+                                    <a class="nav-link active" id="inventory-tab" data-toggle="tab" href="#inventory" role="tab" aria-controls="inventory" aria-selected="true">
+                                        <i class="fas fa-warehouse"></i> Inventory Data 
+                                        <span class="badge badge-info">{{ detailed_inventory_data|length }}</span>
+                                    </a>
+                                </li>
+                                <li class="nav-item">
+                                    <a class="nav-link" id="production-tab" data-toggle="tab" href="#production" role="tab" aria-controls="production" aria-selected="false">
+                                        <i class="fas fa-industry"></i> Production Data 
+                                        <span class="badge badge-success">{{ detailed_production_data|length }}</span>
+                                    </a>
+                                </li>
+                            </ul>
+
+                            <!-- Tab Content -->
+                            <div class="tab-content" id="resultTabContent">
+                                <!-- Inventory Tab -->
+                                <div class="tab-pane fade show active" id="inventory" role="tabpanel" aria-labelledby="inventory-tab">
+                                    <div class="mt-3">
+                                        {% if detailed_inventory_data %}
+                                            <div class="table-responsive">
+                                                {% include 'website/inventory_table_partial.html' %}
+                                            </div>
+                                        {% else %}
+                                            <div class="alert alert-info">
+                                                <i class="fas fa-info-circle"></i> No inventory data found for "{{ search_term }}".
+                                            </div>
+                                        {% endif %}
+                                    </div>
+                                </div>
+
+                                <!-- Production Tab -->
+                                <div class="tab-pane fade" id="production" role="tabpanel" aria-labelledby="production-tab">
+                                    <div class="mt-3">
+                                        {% if detailed_production_data %}
+                                            <div class="table-responsive">
+                                                {% include 'website/production_table_partial.html' %}
+                                            </div>
+                                        {% else %}
+                                            <div class="alert alert-info">
+                                                <i class="fas fa-info-circle"></i> No production data found for "{{ search_term }}".
+                                            </div>
+                                        {% endif %}
+                                    </div>
+                                </div>
+                            </div>
+                        {% else %}
+                            <div class="alert alert-warning">
+                                <i class="fas fa-exclamation-triangle"></i> No data found for "{{ search_term }}". Try a different search term.
+                            </div>
+                        {% endif %}
+                    </div>
+                </div>
+            {% else %}
+                <!-- Instructions -->
+                <div class="card">
+                    <div class="card-body text-center">
+                        <i class="fas fa-search fa-3x text-muted mb-3"></i>
+                        <h4>Search Inventory & Production Data</h4>
+                        <p class="text-muted">Enter a search term above to find detailed inventory and production information for this scenario.</p>
+                        <p><small class="text-muted">Use the search form above to filter by product codes, descriptions, or site names.</small></p>
+                    </div>
+                </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<!-- jQuery and Bootstrap JS for tabs -->
+<script src="https://code.jquery.com/jquery-3.5.1.min.js"></script>
+<script src="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/js/bootstrap.min.js"></script>
+
+{% endblock %}

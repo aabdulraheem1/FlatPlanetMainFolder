@@ -45,5 +45,10 @@
             <input type="checkbox" id="approval3" name="approval3" {% if scenario.approval3 %}checked{% endif %} {% if not scenario.open_to_update %}disabled{% endif %}>
         </div>
         <button type="submit" name="edit_scenario" class="btn btn-primary" {% if not scenario.open_to_update %}disabled{% endif %}>Save Scenario</button>
+        <a href="{% url 'calculate_aggregated_data' scenario.version %}" class="btn btn-success ml-2" 
+           onclick="return confirm('Calculate aggregated data for this scenario? This may take a few minutes.')">
+            Calculate Aggregated Data
+        </a>
+        <a href="{% url 'review_scenario' scenario.version %}" class="btn btn-info ml-2">Review Scenario</a>
     </form>
 </div>

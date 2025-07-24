@@ -1,0 +1,117 @@
+<!-- Forecast Section -->
+<div class="row">
+    <div class="col-12">
+        <h3>Forecast Analysis</h3>
+        <p>Forecast data across product groups, regions, and customers for Version: {{ version }}</p>
+        
+        <!-- Forecast Charts Row -->
+        <div class="row">
+            <div class="col-md-6">
+                <h5>Parent Product Group Forecast</h5>
+                <canvas id="parentProductGroupChart" width="400" height="200"></canvas>
+            </div>
+            <div class="col-md-6">
+                <h5>Product Group Forecast</h5>
+                <canvas id="productGroupChart" width="400" height="200"></canvas>
+            </div>
+        </div>
+        
+        <div class="row mt-4">
+            <div class="col-md-6">
+                <h5>Regional Forecast</h5>
+                <canvas id="regionChart" width="400" height="200"></canvas>
+            </div>
+            <div class="col-md-6">
+                <h5>Customer Forecast</h5>
+                <canvas id="customerChart" width="400" height="200"></canvas>
+            </div>
+        </div>
+        
+        <div class="row mt-4">
+            <div class="col-md-12">
+                <h5>Data Source Breakdown</h5>
+                <canvas id="dataSourceChart" width="400" height="200"></canvas>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Parse JSON data from Django template
+    const parentProductGroupData = JSON.parse('{{ chart_data_parent_product_group|escapejs }}');
+    const productGroupData = JSON.parse('{{ chart_data_product_group|escapejs }}');
+    const regionData = JSON.parse('{{ chart_data_region|escapejs }}');
+    const customerData = JSON.parse('{{ chart_data_customer|escapejs }}');
+    const dataSourceData = JSON.parse('{{ chart_data_data_source|escapejs }}');
+    
+    console.log('Parent Product Group Data:', parentProductGroupData);
+    console.log('Product Group Data:', productGroupData);
+    console.log('Region Data:', regionData);
+    console.log('Customer Data:', customerData);
+    console.log('Data Source Data:', dataSourceData);
+    
+    // Create charts with the data
+    if (parentProductGroupData && Object.keys(parentProductGroupData).length > 0) {
+        createForecastChart('parentProductGroupChart', parentProductGroupData, 'Parent Product Group');
+    } else {
+        console.log('No parent product group data available');
+    }
+    
+    if (productGroupData && Object.keys(productGroupData).length > 0) {
+        createForecastChart('productGroupChart', productGroupData, 'Product Group');
+    } else {
+        console.log('No product group data available');
+    }
+    
+    if (regionData && Object.keys(regionData).length > 0) {
+        createForecastChart('regionChart', regionData, 'Region');
+    } else {
+        console.log('No region data available');
+    }
+    
+    if (customerData && Object.keys(customerData).length > 0) {
+        createForecastChart('customerChart', customerData, 'Customer');
+    } else {
+        console.log('No customer data available');
+    }
+    
+    if (dataSourceData && Object.keys(dataSourceData).length > 0) {
+        createForecastChart('dataSourceChart', dataSourceData, 'Data Source');
+    } else {
+        console.log('No data source data available');
+    }
+});
+
+function createForecastChart(canvasId, data, title) {
+    const ctx = document.getElementById(canvasId);
+    if (!ctx) {
+        console.log('Canvas not found:', canvasId);
+        return;
+    }
+    
+    console.log('Creating chart for', canvasId, 'with data:', data);
+    
+    new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels: Object.keys(data),
+            datasets: [{
+                label: title,
+                data: Object.values(data),
+                backgroundColor: 'rgba(54, 162, 235, 0.6)',
+                borderColor: 'rgba(54, 162, 235, 1)',
+                borderWidth: 1
+            }]
+        },
+        options: {
+            responsive: true,
+            scales: {
+                y: {
+                    beginAtZero: true
+                }
+            }
+        }
+    });
+}
+</script>

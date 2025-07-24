@@ -1,9 +1,10 @@
 <div class="container mt-5">
+    {% csrf_token %}
     <h2>Inventory</h2>
     <ul class="nav nav-tabs" id="inventoryTabs" role="tablist">
         <li class="nav-item">
             <a class="nav-link active" id="inv-tab-1" data-toggle="tab" href="#inv-1" role="tab"
-                aria-controls="inv-1" aria-selected="true">COGS</a>
+                aria-controls="inv-1" aria-selected="true">Cost Analysis</a>
                 
         </li>
         <li class="nav-item">
@@ -26,16 +27,70 @@
     </ul>
     <div class="tab-content" id="inventoryTabsContent">
         <div class="tab-pane fade show active" id="inv-1" role="tabpanel" aria-labelledby="inv-tab-1">
-            <select id="parentGroupFilter" class="form-control mb-3 mt-5" style="width: 300px;">
-    <option value="">All Parent Product Groups</option>
-    {% for group in parent_product_groups %}
-        <option value="{{ group }}">{{ group }}</option>
-    {% endfor %}
-</select>
+    <div class="row mt-3">
+        <div class="col-md-8">
+            <div class="d-flex align-items-center">
+                <select id="parentGroupFilter" class="form-control mb-3 mr-3" style="width: 300px;">
+                    <option value="">All Parent Product Groups</option>
+                    {% for group in parent_product_groups %}
+                        <option value="{{ group }}">{{ group }}</option>
+                    {% endfor %}
+                </select>
+                <button type="button" class="btn btn-success mb-3 mr-2" onclick="exportInventoryData('excel')" title="Export inventory data to Excel">
+                    <i class="fas fa-file-excel"></i> Export to Excel
+                </button>
+                <button type="button" class="btn btn-info mb-3" onclick="exportInventoryData('csv')" title="Export inventory data to CSV">
+                    <i class="fas fa-file-csv"></i> Export to CSV
+                </button>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <!-- Opening Inventory Info Card -->
+            <div class="card border-info" id="openingInventoryCard">
+                <div class="card-header bg-info text-white py-2">
+                    <h6 class="mb-0">
+                        <i class="fas fa-warehouse"></i> Opening Inventory
+                    </h6>
+                </div>
+                <div class="card-body py-2">
+                    <div class="row">
+                        <div class="col-12">
+                            <div class="text-center">
+                                <h4 class="text-primary mb-1" id="openingInventoryValue">
+                                    <i class="fas fa-spinner fa-spin"></i> Loading...
+                                </h4>
+                                <small class="text-muted" id="openingInventoryDate">
+                                    As of: <span id="snapshotDate">{{ snapshot_date|default:"Loading..." }}</span>
+                                </small>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="row mt-2">
+                        <div class="col-12">
+                            <small class="text-muted" id="openingInventoryGroup">
+                                <i class="fas fa-layer-group"></i> <span id="groupInfo">All Groups</span>
+                            </small>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="row">
+        <div class="col-12">
             <canvas id="inventoryChart1" width="400" height="200"></canvas>
         </div>
+    </div>
+</div>
         <div class="tab-pane fade" id="inv-2" role="tabpanel" aria-labelledby="inv-tab-2">
-    <canvas id="productionGroupChart" width="400" height="200"></canvas>
+    
+    <!-- Chart Section -->
+    <div class="row">
+        <div class="col-12">
+            <canvas id="productionGroupChart" width="400" height="200"></canvas>
+        </div>
+    </div>
 </div>
         <div class="tab-pane fade" id="inv-3" role="tabpanel" aria-labelledby="inv-tab-3">
             <canvas id="inventoryChart3" width="400" height="200"></canvas>
@@ -114,6 +169,7 @@
     
 <script>
 const productionGroupChartData = {{ production_cogs_group_chart|safe }};
+const topProductsByGroupMonth = {{ top_products_by_group_month|safe }};
 
 const ctxGroup = document.getElementById('productionGroupChart').getContext('2d');
 new Chart(ctxGroup, {
@@ -125,11 +181,78 @@ new Chart(ctxGroup, {
     options: {
         responsive: true,
         plugins: {
-            legend: { display: true }
+            legend: { display: true },
+            tooltip: {
+                mode: 'index',
+                intersect: false,
+                backgroundColor: 'rgba(0, 0, 0, 0.9)',
+                titleColor: '#fff',
+                bodyColor: '#fff',
+                borderColor: '#ccc',
+                borderWidth: 1,
+                cornerRadius: 8,
+                displayColors: true,
+                bodyFont: {
+                    family: 'Monaco, Consolas, monospace',
+                    size: 11
+                },
+                titleFont: {
+                    size: 12,
+                    weight: 'bold'
+                },
+                callbacks: {
+                    afterBody: function(tooltipItems) {
+                        if (!topProductsByGroupMonth || tooltipItems.length === 0) {
+                            return [];
+                        }
+                        
+                        const tooltipItem = tooltipItems[0];
+                        const monthLabel = tooltipItem.label; // e.g., "Jan 2026"
+                        const datasetIndex = tooltipItem.datasetIndex;
+                        const parentGroup = productionGroupChartData.datasets[datasetIndex].label;
+                        
+                        // Get top products for this group and month
+                        if (topProductsByGroupMonth[parentGroup] && topProductsByGroupMonth[parentGroup][monthLabel]) {
+                            const topProducts = topProductsByGroupMonth[parentGroup][monthLabel];
+                            
+                            if (topProducts.length > 0) {
+                                const lines = [];
+                                lines.push(''); // Empty line for spacing
+                                lines.push(`🏆 Top ${Math.min(15, topProducts.length)} Products by Cost:`);
+                                lines.push('━'.repeat(40));
+                                
+                                topProducts.slice(0, 15).forEach((item, index) => {
+                                    const cost = new Intl.NumberFormat('en-AU', {
+                                        style: 'currency',
+                                        currency: 'AUD',
+                                        minimumFractionDigits: 0,
+                                        maximumFractionDigits: 0
+                                    }).format(item.cogs);
+                                    
+                                    // Truncate long product names
+                                    const productName = item.product.length > 20 ? 
+                                        item.product.substring(0, 17) + '...' : 
+                                        item.product;
+                                    
+                                    lines.push(`${(index + 1).toString().padStart(2, ' ')}. ${productName.padEnd(20, ' ')} ${cost}`);
+                                });
+                                
+                                if (topProducts.length > 15) {
+                                    lines.push(`... and ${topProducts.length - 15} more products`);
+                                }
+                                
+                                return lines;
+                            }
+                        }
+                        
+                        return ['', '📊 No detailed product data available'];
+                    }
+                }
+            }
         },
         scales: {
             x: { title: { display: true, text: 'Month' }, stacked: true },
-            y: { title: { display: true, text: 'Production AUD' }, beginAtZero: true, stacked: true }
+            y: { title: { display: true, text: 'Amount (AUD)' }, beginAtZero: true, stacked: true }
         }
     }
 });
@@ -141,6 +264,35 @@ const ctx = document.getElementById('inventoryChart1').getContext('2d');
 
 let chartInstance = null;
 
+function updateOpeningInventoryCard(data, group) {
+    const valueElement = document.getElementById('openingInventoryValue');
+    const groupElement = document.getElementById('groupInfo');
+    
+    if (data && data.opening_inventory !== undefined) {
+        // Format the currency value
+        const formattedValue = new Intl.NumberFormat('en-AU', {
+            style: 'currency',
+            currency: 'AUD',
+            minimumFractionDigits: 0,
+            maximumFractionDigits: 0
+        }).format(data.opening_inventory);
+        
+        valueElement.innerHTML = formattedValue;
+        valueElement.className = 'text-primary mb-1';
+        
+        // Update group info
+        if (group) {
+            groupElement.innerHTML = group;
+        } else {
+            groupElement.innerHTML = 'All Groups';
+        }
+    } else {
+        valueElement.innerHTML = '<i class="fas fa-exclamation-triangle text-warning"></i> No Data';
+        valueElement.className = 'text-muted mb-1';
+        groupElement.innerHTML = group || 'All Groups';
+    }
+}
+
 function updateChartForGroup(group) {
     let data;
     if (!group) {
@@ -149,17 +301,21 @@ function updateChartForGroup(group) {
         let allMonthsSet = new Set();
         Object.values(allCogsData).forEach(g => g.months.forEach(m => allMonthsSet.add(m)));
         let allMonths = Array.from(allMonthsSet).sort((a, b) => {
-    // Parse "Jan 2026" as a date
-    const parseMonth = s => new Date(Date.parse("01 " + s));
-    return parseMonth(a) - parseMonth(b);
-});
+            // Parse "Jan 2026" as a date
+            const parseMonth = s => new Date(Date.parse("01 " + s));
+            return parseMonth(a) - parseMonth(b);
+        });
 
         // Sum data for each month across all groups
         let cogs = Array(allMonths.length).fill(0);
         let revenue = Array(allMonths.length).fill(0);
         let production_aud = Array(allMonths.length).fill(0);
+        let total_opening_inventory = 0;
 
+        // Calculate totals and opening inventory
         Object.values(allCogsData).forEach(g => {
+            total_opening_inventory += g.opening_inventory || 0;
+            
             g.months.forEach((m, idx) => {
                 let monthIdx = allMonths.indexOf(m);
                 if (monthIdx !== -1) {
@@ -170,28 +326,44 @@ function updateChartForGroup(group) {
             });
         });
 
+        // Calculate combined inventory balance
+        let inventory_balance = [];
+        let current_balance = total_opening_inventory;
+        
+        for (let i = 0; i < allMonths.length; i++) {
+            current_balance += (production_aud[i] || 0) - (cogs[i] || 0);
+            inventory_balance.push(current_balance);
+        }
+
         data = {
             months: allMonths,
             cogs: cogs,
             revenue: revenue,
-            production_aud: production_aud
+            production_aud: production_aud,
+            inventory_balance: inventory_balance,
+            opening_inventory: total_opening_inventory
         };
     } else if (allCogsData[group]) {
         data = allCogsData[group];
     } else {
         // No data for this group
-        return;
+        data = {
+            opening_inventory: 0
+        };
     }
+
+    // Update the opening inventory card
+    updateOpeningInventoryCard(data, group);
 
     if (chartInstance) chartInstance.destroy();
     chartInstance = new Chart(ctx, {
         type: 'line',
         data: {
-            labels: data.months,
+            labels: data.months || [],
             datasets: [
                 {
-                    label: 'COGS',
-                    data: data.cogs,
+                    label: 'COGS (Forecast)',
+                    data: data.cogs || [],
                     borderColor: 'rgba(255, 99, 132, 1)',
                     backgroundColor: 'rgba(255, 99, 132, 0.2)',
                     fill: false,
@@ -199,30 +371,71 @@ function updateChartForGroup(group) {
                 },
                 {
                     label: 'Revenue',
-                    data: data.revenue,
+                    data: data.revenue || [],
                     borderColor: 'rgba(54, 162, 235, 1)',
                     backgroundColor: 'rgba(54, 162, 235, 0.2)',
                     fill: false,
                     tension: 0.1
                 },
                 {
-                    label: 'Production AUD',
-                    data: data.production_aud,
+                    label: 'Production Costs (Actual)',
+                    data: data.production_aud || [],
                     borderColor: 'rgba(255, 206, 86, 1)',
                     backgroundColor: 'rgba(255, 206, 86, 0.2)',
                     fill: false,
                     tension: 0.1
+                },
+                {
+                    label: 'Inventory Balance',
+                    data: data.inventory_balance || [],
+                    borderColor: 'rgba(75, 192, 192, 1)',
+                    backgroundColor: 'rgba(75, 192, 192, 0.2)',
+                    fill: false,
+                    tension: 0.1,
+                    borderWidth: 3
                 }
             ]
         },
         options: {
             responsive: true,
+            interaction: {
+                mode: 'index',
+                intersect: false,
+            },
             plugins: {
-                legend: { display: true }
+                legend: { 
+                    display: true,
+                    labels: {
+                        usePointStyle: true,
+                    }
+                },
+                tooltip: {
+                    callbacks: {
+                        afterLabel: function(context) {
+                            if (context.datasetIndex === 3) { // Inventory Balance dataset
+                                return `Opening Inventory: $${(data.opening_inventory || 0).toLocaleString()}`;
+                            }
+                            return '';
+                        }
+                    }
+                }
             },
             scales: {
-                x: { title: { display: true, text: 'Month' } },
-                y: { title: { display: true, text: 'AUD' }, beginAtZero: true }
+                x: { 
+                    title: { display: true, text: 'Month' }
+                },
+                y: { 
+                    type: 'linear',
+                    display: true,
+                    position: 'left',
+                    title: { display: true, text: 'Amount (AUD)' },
+                    beginAtZero: true,
+                    ticks: {
+                        callback: function(value) {
+                            return '$' + value.toLocaleString();
+                        }
+                    }
+                }
             }
         }
     });
@@ -235,6 +448,117 @@ updateChartForGroup(filterDropdown.value);
 filterDropdown.addEventListener('change', function() {
     updateChartForGroup(this.value);
 });
+
+// Excel Export Function
+function getCookie(name) {
+    let cookieValue = null;
+    if (document.cookie && document.cookie !== '') {
+        const cookies = document.cookie.split(';');
+        for (let i = 0; i < cookies.length; i++) {
+            const cookie = cookies[i].trim();
+            if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                break;
+            }
+        }
+    }
+    return cookieValue;
+}
+
+function exportInventoryData(format = 'excel') {
+    const selectedGroup = document.getElementById('parentGroupFilter').value;
+    const version = '{{ version }}';
+    
+    // Show loading state
+    const exportBtns = document.querySelectorAll('button[onclick*="exportInventoryData"]');
+    const originalTexts = Array.from(exportBtns).map(btn => btn.innerHTML);
+    
+    exportBtns.forEach(btn => {
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Exporting...';
+        btn.disabled = true;
+    });
+    
+    // Create form data
+    const formData = new FormData();
+    formData.append('version', version);
+    formData.append('parent_group', selectedGroup || '');
+    formData.append('format', format);
+    
+    // Make request to export endpoint
+    fetch('/export-inventory-data/', {
+        method: 'POST',
+        body: formData,
+        headers: {
+            'X-CSRFToken': getCookie('csrftoken')
+        }
+    })
+    .then(response => {
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+        return response.blob();
+    })
+    .then(blob => {
+        // Create download link
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        
+        // Generate filename with timestamp and group info
+        const timestamp = new Date().toISOString().slice(0, 16).replace(/[:-]/g, '');
+        const groupSuffix = selectedGroup ? `_${selectedGroup.replace(/[^a-zA-Z0-9]/g, '_')}` : '_All_Groups';
+        const extension = format === 'csv' ? 'csv' : 'xlsx';
+        a.download = `Inventory_Data_${version}${groupSuffix}_${timestamp}.${extension}`;
+        
+        document.body.appendChild(a);
+        a.click();
+        window.URL.revokeObjectURL(url);
+        document.body.removeChild(a);
+        
+        // Reset buttons
+        exportBtns.forEach((btn, index) => {
+            btn.innerHTML = originalTexts[index];
+            btn.disabled = false;
+        });
+        
+        // Show success message
+        const formatName = format === 'csv' ? 'CSV' : 'Excel';
+        showExportMessage('success', `${formatName} file downloaded successfully!`);
+    })
+    .catch(error => {
+        console.error('Export error:', error);
+        
+        // Reset buttons
+        exportBtns.forEach((btn, index) => {
+            btn.innerHTML = originalTexts[index];
+            btn.disabled = false;
+        });
+        
+        showExportMessage('error', 'Export failed: ' + error.message);
+    });
+}
+
+function showExportMessage(type, message) {
+    // Create temporary alert
+    const alertDiv = document.createElement('div');
+    alertDiv.className = `alert alert-${type === 'success' ? 'success' : 'danger'} alert-dismissible fade show position-fixed`;
+    alertDiv.style.cssText = 'top: 20px; right: 20px; z-index: 9999; min-width: 300px;';
+    alertDiv.innerHTML = `
+        <i class="fas fa-${type === 'success' ? 'check-circle' : 'exclamation-triangle'}"></i> ${message}
+        <button type="button" class="close" data-dismiss="alert">
+            <span>&times;</span>
+        </button>
+    `;
+    
+    document.body.appendChild(alertDiv);
+    
+    // Auto-remove after 5 seconds
+    setTimeout(() => {
+        if (alertDiv.parentNode) {
+            alertDiv.parentNode.removeChild(alertDiv);
+        }
+    }, 5000);
+}
 </script>
 <!-- Update the script section in your template -->
 <script>
@@ -389,5 +713,6 @@ document.getElementById('detailedSearchForm').addEventListener('keypress', funct
         searchDetailedView();
     }
 });
+
 </script>
 </div>

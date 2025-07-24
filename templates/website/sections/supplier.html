@@ -1,0 +1,83 @@
+<!-- Supplier Section -->
+<div class="row">
+    <div class="col-12">
+        <h3>Supplier Analysis</h3>
+        <p>Supplier data and analytics for Version: {{ version }}</p>
+        
+        <div class="row">
+            <div class="col-md-6">
+                <h5>Top Supplier Products</h5>
+                <div class="table-responsive">
+                    <table class="table table-striped">
+                        <thead>
+                            <tr>
+                                <th>Product</th>
+                                <th>Value</th>
+                            </tr>
+                        </thead>
+                        <tbody id="supplierProductsTable">
+                            <!-- Products will be populated here -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            
+            <div class="col-md-6">
+                <h5>Supplier Performance Chart</h5>
+                <canvas id="supplierChart" width="400" height="200"></canvas>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Initialize supplier data - data is already objects, not JSON strings
+    const supplierTopProducts = {{ supplier_a_top_products_json|safe }};
+    const supplierChartData = {{ supplier_a_chart_data|safe }};
+    
+    console.log('Supplier Top Products:', supplierTopProducts);
+    console.log('Supplier Chart Data:', supplierChartData);
+    
+    // Populate top products table
+    if (supplierTopProducts && Array.isArray(supplierTopProducts)) {
+        const tableBody = document.getElementById('supplierProductsTable');
+        supplierTopProducts.forEach(product => {
+            const row = document.createElement('tr');
+            row.innerHTML = `
+                <td>${product.product || 'N/A'}</td>
+                <td>${product.value || 'N/A'}</td>
+            `;
+            tableBody.appendChild(row);
+        });
+    }
+    
+    // Create supplier chart
+    if (supplierChartData && Object.keys(supplierChartData).length > 0) {
+        const ctx = document.getElementById('supplierChart');
+        if (ctx) {
+            new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: Object.keys(supplierChartData),
+                    datasets: [{
+                        label: 'Supplier Data',
+                        data: Object.values(supplierChartData),
+                        backgroundColor: 'rgba(255, 99, 132, 0.6)',
+                        borderColor: 'rgba(255, 99, 132, 1)',
+                        borderWidth: 1
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    scales: {
+                        y: {
+                            beginAtZero: true
+                        }
+                    }
+                }
+            });
+        }
+    }
+});
+</script>

@@ -24,6 +24,9 @@
                 <a href="{% url 'calculate_model' scenario.version %}" class="btn btn-success btn-sm"
                     onclick="return confirm('Are you sure you want to calculate the model for this scenario?');">Calculate
                     the Model</a>
+                <a href="{% url 'test_product_calculation' scenario.version %}" class="btn btn-info btn-sm" 
+                    title="Test calculation for a specific product (much faster)">
+                    <i class="fas fa-flask"></i> Test Product</a>
             </td>
         </tr>
         {% endfor %}

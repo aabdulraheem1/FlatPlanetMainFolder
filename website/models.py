@@ -181,17 +181,18 @@ class MasterDataPlan(models.Model):
     OtherNonPouringDays = models.IntegerField(null=True, blank=True)
     heatsperdays = models.FloatField(null=True, blank=True)
     TonsPerHeat = models.FloatField(null=True, blank=True)
+    CalendarDays = models.IntegerField(null=True, blank=True)  # Stored calculated value
+    AvailableDays = models.IntegerField(null=True, blank=True)  # Stored calculated value  
+    PlanDressMass = models.FloatField(null=True, blank=True)  # Stored calculated value
 
-    @property
-    def CalendarDays(self):
+    def calculate_calendar_days(self):
         """Calculate the number of days in the given month."""
         if self.Month:
             from calendar import monthrange
             return monthrange(self.Month.year, self.Month.month)[1]
         return 0
 
-    @property
-    def AvailableDays(self):
+    def calculate_available_days(self):
         """Calculate available days."""
         if self.CalendarDays:
             return (
@@ -203,18 +204,25 @@ class MasterDataPlan(models.Model):
             )
         return 0
 
-    @property
-    def PlanDressMass(self):
-        """Calculate dress mass."""
+    def calculate_plan_dress_mass(self):
+        """Calculate and return dress mass value."""
         if self.AvailableDays and self.heatsperdays and self.TonsPerHeat and self.Yield:
             return (
                 self.AvailableDays
                 * self.heatsperdays
                 * self.TonsPerHeat
-                * self.Yield
+                * (self.Yield / 100)  # Convert percentage to decimal
                 * (1 - (self.WasterPercentage or 0) / 100)
             )
         return 0
+
+    def save(self, *args, **kwargs):
+        """Override save to automatically calculate all derived fields."""
+        # Calculate and store all calculated fields
+        self.CalendarDays = self.calculate_calendar_days()
+        self.AvailableDays = self.calculate_available_days()
+        self.PlanDressMass = self.calculate_plan_dress_mass()
+        super().save(*args, **kwargs)
 
     class Meta:
         constraints = [
@@ -222,7 +230,7 @@ class MasterDataPlan(models.Model):
         ]
 
     def __str__(self):
-        return f"{self.Foundry.SiteName} - {self.Month} - {self.Version.version}"
+        return f"{self.Foundry.SiteName} - {self.Month} - {self.version.version}"
     
 class MasterDataProductModel(models.Model):
     Product = models.CharField(max_length=250, primary_key=True)
@@ -380,7 +388,7 @@ class CalculatedProductionModel(models.Model):
     product_group = models.CharField(max_length=250, null=True, blank=True)  # <-- Add this line
     parent_product_group = models.CharField(max_length=250, null=True, blank=True)  # <-- Add this line    
     price_aud = models.FloatField(default=0, null=True, blank=True)
-    cost_aud = models.FloatField(default=0, null=True, blank=True)
+    cost_aud = models.FloatField(default=0, null=True, blank=True)  # Keep for DB compatibility (unused)
     cogs_aud = models.FloatField(default=0, null=True, blank=True)
     revenue_aud = models.FloatField(default=0, null=True, blank=True)
 
@@ -564,3 +572,186 @@ class MasterDataSafetyStocks(models.Model):
     
     def __str__(self):
         return f"{self.Plant} - {self.PartNum}"
+
+class ScenarioOptimizationState(models.Model):
+    """Track optimization state for scenarios to prevent multiple optimizations"""
+    version = models.OneToOneField(scenarios, on_delete=models.CASCADE, primary_key=True)
+    auto_optimization_applied = models.BooleanField(default=False)
+    last_optimization_date = models.DateTimeField(null=True, blank=True)
+    last_reset_date = models.DateTimeField(null=True, blank=True)
+    
+    def __str__(self):
+        return f"{self.version.version} - Optimized: {self.auto_optimization_applied}"
+
+
+# ========== CACHED CALCULATION MODELS ==========
+
+class CachedControlTowerData(models.Model):
+    """Cache control tower calculations to avoid expensive real-time computation"""
+    version = models.OneToOneField(scenarios, on_delete=models.CASCADE, primary_key=True)
+    combined_demand_plan = models.JSONField()  # Store the demand plan data
+    poured_data = models.JSONField()          # Store the poured data  
+    pour_plan = models.JSONField()            # Store the pour plan data
+    calculation_date = models.DateTimeField(auto_now=True)
+    
+    def __str__(self):
+        return f"Control Tower Data - {self.version.version}"
+
+class CachedFoundryData(models.Model):
+    """Cache foundry chart data for each foundry site"""
+    version = models.ForeignKey(scenarios, on_delete=models.CASCADE)
+    foundry_site = models.CharField(max_length=10)  # MTJ1, COI2, XUZ1, etc.
+    chart_data = models.JSONField()         # Store the chart data
+    top_products = models.JSONField()       # Store top products data
+    monthly_pour_plan = models.JSONField()  # Store monthly pour plan
+    calculation_date = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        unique_together = ('version', 'foundry_site')
+    
+    def __str__(self):
+        return f"Foundry Data - {self.version.version} - {self.foundry_site}"
+
+class CachedForecastData(models.Model):
+    """Cache forecast chart data by aggregation type"""
+    version = models.ForeignKey(scenarios, on_delete=models.CASCADE)
+    data_type = models.CharField(max_length=50)  # parent_product_group, product_group, region, customer, data_source
+    chart_data = models.JSONField()              # Store the chart data
+    calculation_date = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        unique_together = ('version', 'data_type')
+    
+    def __str__(self):
+        return f"Forecast Data - {self.version.version} - {self.data_type}"
+
+class CachedInventoryData(models.Model):
+    """Cache complex inventory calculations including opening stock"""
+    version = models.OneToOneField(scenarios, on_delete=models.CASCADE, primary_key=True)
+    inventory_months = models.JSONField()               # Monthly data
+    inventory_cogs = models.JSONField()                 # COGS data
+    inventory_revenue = models.JSONField()              # Revenue data  
+    production_aud = models.JSONField()                 # Production AUD data
+    production_cogs_group_chart = models.JSONField()   # Production COGS by group
+    top_products_by_group_month = models.JSONField()   # Top products data
+    parent_product_groups = models.JSONField()         # Product groups list
+    cogs_data_by_group = models.JSONField()            # COGS data by group
+    calculation_date = models.DateTimeField(auto_now=True)
+    
+    def __str__(self):
+        return f"Inventory Data - {self.version.version}"
+
+class CachedSupplierData(models.Model):
+    """Cache supplier production data"""
+    version = models.ForeignKey(scenarios, on_delete=models.CASCADE)
+    supplier_code = models.CharField(max_length=20)    # HBZJBF02, etc.
+    chart_data = models.JSONField()                    # Production chart data
+    top_products = models.JSONField()                  # Top products data
+    calculation_date = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        unique_together = ('version', 'supplier_code')
+    
+    def __str__(self):
+        return f"Supplier Data - {self.version.version} - {self.supplier_code}"
+
+class CachedDetailedInventoryData(models.Model):
+    """Cache detailed inventory view data (usually empty until searched)"""
+    version = models.OneToOneField(scenarios, on_delete=models.CASCADE, primary_key=True)
+    inventory_data = models.JSONField(default=list)    # Detailed inventory data
+    production_data = models.JSONField(default=list)   # Detailed production data
+    calculation_date = models.DateTimeField(auto_now=True)
+    
+    def __str__(self):
+        return f"Detailed Inventory Data - {self.version.version}"
+
+
+# ===== AGGREGATED CHART DATA MODELS =====
+# These models store pre-calculated chart data to avoid real-time calculations
+
+class AggregatedForecastChartData(models.Model):
+    """Pre-calculated forecast chart data by different dimensions"""
+    version = models.OneToOneField(scenarios, on_delete=models.CASCADE, primary_key=True)
+    
+    # Chart data organized by different views
+    by_product_group = models.JSONField(default=dict)      # Chart data by product group
+    by_parent_group = models.JSONField(default=dict)       # Chart data by parent product group  
+    by_region = models.JSONField(default=dict)             # Chart data by region
+    by_customer = models.JSONField(default=dict)           # Chart data by customer
+    by_data_source = models.JSONField(default=dict)        # Chart data by data source
+    
+    # Summary metrics
+    total_tonnes = models.FloatField(default=0)
+    total_customers = models.IntegerField(default=0)
+    total_periods = models.IntegerField(default=0)
+    
+    calculation_date = models.DateTimeField(auto_now=True)
+    
+    def __str__(self):
+        return f"Forecast Chart Data - {self.version.version}"
+
+
+class AggregatedFoundryChartData(models.Model):
+    """Pre-calculated foundry chart data by sites"""
+    version = models.OneToOneField(scenarios, on_delete=models.CASCADE, primary_key=True)
+    
+    # Foundry data by site
+    foundry_data = models.JSONField(default=dict)          # All sites foundry data
+    site_list = models.JSONField(default=list)             # Available sites
+    
+    # Summary metrics
+    total_sites = models.IntegerField(default=0)
+    total_production = models.FloatField(default=0)
+    
+    calculation_date = models.DateTimeField(auto_now=True)
+    
+    def __str__(self):
+        return f"Foundry Chart Data - {self.version.version}"
+
+
+class AggregatedInventoryChartData(models.Model):
+    """Pre-calculated inventory chart data by groups"""
+    version = models.OneToOneField(scenarios, on_delete=models.CASCADE, primary_key=True)
+    
+    # Inventory data by group
+    inventory_by_group = models.JSONField(default=dict)    # Inventory data by product group
+    monthly_trends = models.JSONField(default=dict)        # Monthly inventory trends
+    
+    # Summary metrics  
+    total_inventory_value = models.FloatField(default=0)
+    total_groups = models.IntegerField(default=0)
+    total_products = models.IntegerField(default=0)
+    
+    calculation_date = models.DateTimeField(auto_now=True)
+    
+    def __str__(self):
+        return f"Inventory Chart Data - {self.version.version}"
+
+
+class AggregatedFinancialChartData(models.Model):
+    """Pre-calculated financial chart data by groups for Cost Analysis"""
+    version = models.OneToOneField(scenarios, on_delete=models.CASCADE, primary_key=True)
+    
+    # Financial data by group
+    financial_by_group = models.JSONField(default=dict)    # {group: {revenue: [...], cogs: [...], production: [...], inventory_projection: [...]}}
+    parent_product_groups = models.JSONField(default=list) # List of parent product groups for filter dropdown
+    
+    # Summary metrics for each financial line
+    total_revenue_aud = models.FloatField(default=0)
+    total_cogs_aud = models.FloatField(default=0) 
+    total_production_aud = models.FloatField(default=0)
+    total_inventory_projection = models.FloatField(default=0)
+    
+    # Chart data structure for frontend
+    revenue_chart_data = models.JSONField(default=dict)    # Chart.js format for Revenue by group
+    cogs_chart_data = models.JSONField(default=dict)       # Chart.js format for COGS by group  
+    production_chart_data = models.JSONField(default=dict) # Chart.js format for Production by group
+    inventory_projection_data = models.JSONField(default=dict) # Chart.js format for Inventory Projection by group
+    
+    # Combined 4-line chart data (company totals)
+    combined_financial_data = models.JSONField(default=dict) # Chart.js format for 4-line chart
+    
+    calculation_date = models.DateTimeField(auto_now=True)
+    
+    def __str__(self):
+        return f"Financial Chart Data - {self.version.version}"

@@ -1,0 +1,437 @@
+<!-- Inventory Section -->
+<div class="container mt-5">
+    {% csrf_token %}
+    <h2>Inventory</h2>
+    <ul class="nav nav-tabs" id="inventoryTabs" role="tablist">
+        <li class="nav-item">
+            <a class="nav-link active" id="inv-tab-1" data-toggle="tab" href="#inv-1" role="tab"
+                aria-controls="inv-1" aria-selected="true">Cost Analysis</a>
+        </li>
+        <li class="nav-item">
+            <a class="nav-link" id="inv-tab-2" data-toggle="tab" href="#inv-2" role="tab"
+                aria-controls="inv-2" aria-selected="false">Production Plan AUD</a>
+        </li>
+        <li class="nav-item">
+            <a class="nav-link" id="inv-tab-3" data-toggle="tab" href="#inv-3" role="tab"
+                aria-controls="inv-3" aria-selected="false">Projected Inventory</a>
+        </li>
+        <li class="nav-item">
+            <a class="nav-link" id="inv-tab-4" data-toggle="tab" href="#inv-4" role="tab"
+                aria-controls="inv-4" aria-selected="false">Detailed View</a>
+        </li>
+    </ul>
+    <div class="tab-content" id="inventoryTabsContent">
+        <!-- Cost Analysis Tab -->
+        <div class="tab-pane fade show active" id="inv-1" role="tabpanel" aria-labelledby="inv-tab-1">
+            <div class="row mt-3">
+                <div class="col-md-8">
+                    <div class="d-flex align-items-center">
+                        <select id="parentGroupFilter" class="form-control mb-3 mr-3" style="width: 300px;">
+                            <option value="">All Parent Product Groups</option>
+                            {% for group in parent_product_groups %}
+                                <option value="{{ group }}">{{ group }}</option>
+                            {% endfor %}
+                        </select>
+                        <button type="button" class="btn btn-success mb-3 mr-2" onclick="exportInventoryData('excel')" title="Export inventory data to Excel">
+                            <i class="fas fa-file-excel"></i> Export to Excel
+                        </button>
+                        <button type="button" class="btn btn-info mb-3" onclick="exportInventoryData('csv')" title="Export inventory data to CSV">
+                            <i class="fas fa-file-csv"></i> Export to CSV
+                        </button>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <!-- Opening Inventory Info Card -->
+                    <div class="card border-info" id="openingInventoryCard">
+                        <div class="card-header bg-info text-white py-2">
+                            <h6 class="mb-0">
+                                <i class="fas fa-warehouse"></i> Opening Inventory
+                            </h6>
+                        </div>
+                        <div class="card-body py-2">
+                            <div class="row">
+                                <div class="col-12">
+                                    <div class="text-center">
+                                        <h4 class="text-primary mb-1" id="openingInventoryValue">
+                                            {{ opening_inventory_value|default:"$0 AUD" }}
+                                        </h4>
+                                        <small class="text-muted" id="openingInventoryDate">
+                                            As of: <span id="snapshotDate">{{ snapshot_date|default:"June 30, 2025" }}</span>
+                                        </small>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="row mt-2">
+                                <div class="col-12">
+                                    <small class="text-muted" id="openingInventoryGroup">
+                                        <i class="fas fa-layer-group"></i> <span id="groupInfo">All Groups</span>
+                                    </small>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="row">
+                <div class="col-12">
+                    <canvas id="inventoryChart1" width="400" height="200"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <!-- Production Plan AUD Tab -->
+        <div class="tab-pane fade" id="inv-2" role="tabpanel" aria-labelledby="inv-tab-2">
+            <div class="row">
+                <div class="col-12">
+                    <canvas id="productionGroupChart" width="400" height="200"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <!-- Projected Inventory Tab -->
+        <div class="tab-pane fade" id="inv-3" role="tabpanel" aria-labelledby="inv-tab-3">
+            <canvas id="inventoryChart3" width="400" height="200"></canvas>
+        </div>
+
+        <!-- Detailed View Tab -->
+        <div class="tab-pane fade" id="inv-4" role="tabpanel" aria-labelledby="inv-tab-4">
+            <div class="mt-3 mb-4">
+                <div class="row">
+                    <div class="col-md-6">
+                        <h4>Search Inventory & Production Data</h4>
+                        <form method="get" action="{% url 'detailed_view_scenario_inventory' version %}" target="_blank">
+                            <div class="form-group">
+                                <label for="search_term">Search Term:</label>
+                                <input type="text" class="form-control" id="search_term" name="search_term" placeholder="Enter product code, description, or site">
+                            </div>
+                            <button type="submit" class="btn btn-primary">Search & Open in New Tab</button>
+                        </form>
+                    </div>
+                    <div class="col-md-6">
+                        <h5>Search Tips:</h5>
+                        <ul class="list-unstyled">
+                            <li><i class="fas fa-info-circle text-info"></i> Enter partial product codes (e.g., "ABC")</li>
+                            <li><i class="fas fa-info-circle text-info"></i> Search by site names (MTJ1, COI2, etc.)</li>
+                            <li><i class="fas fa-info-circle text-info"></i> Use product descriptions</li>
+                            <li><i class="fas fa-info-circle text-info"></i> Results will open in a new tab</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+// Inventory chart initialization
+document.addEventListener('DOMContentLoaded', function() {
+    // Initialize inventory charts with proper aggregated data
+    const inventoryMonths = {{ inventory_months|safe }};
+    const inventoryByGroup = {{ inventory_by_group|safe }};
+    const inventoryMonthlyTrends = {{ inventory_monthly_trends|safe }};
+    const financialChartData = {{ financial_chart_data|safe }};  // NEW: 4-line financial data
+    
+    // Debug: Log the data to console
+    console.log('🔥 TEMPLATE DEBUG: Inventory Months:', inventoryMonths);
+    console.log('🔥 TEMPLATE DEBUG: Inventory By Group:', inventoryByGroup);
+    console.log('🔥 TEMPLATE DEBUG: Financial Chart Data:', financialChartData);
+    console.log('🔥 TEMPLATE DEBUG: Type of inventoryByGroup:', typeof inventoryByGroup);
+    console.log('🔥 TEMPLATE DEBUG: inventoryByGroup has labels?', inventoryByGroup?.labels);
+    console.log('🔥 TEMPLATE DEBUG: inventoryByGroup has datasets?', inventoryByGroup?.datasets);
+    
+    // Validate data structure
+    if (!financialChartData || !financialChartData.labels || !financialChartData.datasets) {
+        console.error('🔥 ERROR: Invalid financial chart data structure!', financialChartData);
+        return;
+    }
+    
+    console.log('🔥 SUCCESS: Valid financial data structure found!');
+    console.log('🔥 Financial Labels:', financialChartData.labels);
+    console.log('🔥 Financial Datasets:', financialChartData.datasets.length);
+    
+    // Store chart instances for filtering
+    let costAnalysisChart, productionGroupChart, projectedInventoryChart;
+    
+    // Function to filter data by selected group
+    function filterDataByGroup(selectedGroup) {
+        if (!selectedGroup || selectedGroup === "All Parent Product Groups") {
+            return financialChartData;  // Return full financial data (company totals)
+        }
+        
+        // NEW: Filter financial data by group using stored financial_by_group data
+        try {
+            const financialByGroup = JSON.parse('{{ financial_by_group|safe }}');
+            
+            if (financialByGroup && financialByGroup[selectedGroup]) {
+                const groupData = financialByGroup[selectedGroup];
+                
+                // Create filtered chart data for the selected group
+                return {
+                    labels: groupData.months,
+                    datasets: [
+                        {
+                            label: 'Revenue AUD (' + selectedGroup + ')',
+                            data: groupData.revenue,
+                            borderColor: '#28a745',
+                            backgroundColor: 'rgba(40, 167, 69, 0.1)',
+                            tension: 0.1,
+                            fill: false
+                        },
+                        {
+                            label: 'COGS AUD (' + selectedGroup + ')',
+                            data: groupData.cogs,
+                            borderColor: '#dc3545',
+                            backgroundColor: 'rgba(220, 53, 69, 0.1)',
+                            tension: 0.1,
+                            fill: false
+                        },
+                        {
+                            label: 'Production AUD (' + selectedGroup + ')',
+                            data: groupData.production,
+                            borderColor: '#007bff',
+                            backgroundColor: 'rgba(0, 123, 255, 0.1)',
+                            tension: 0.1,
+                            fill: false
+                        },
+                        {
+                            label: 'Inventory Projection (' + selectedGroup + ')',
+                            data: groupData.inventory_projection,
+                            borderColor: '#ffc107',
+                            backgroundColor: 'rgba(255, 193, 7, 0.1)',
+                            tension: 0.1,
+                            fill: false
+                        }
+                    ]
+                };
+            }
+        } catch (e) {
+            console.error('Error parsing financial data by group:', e);
+        }
+        
+        // Fallback to full data if group not found
+        return financialChartData;
+    }
+    
+    // Function to update charts based on filter
+    function updateCharts(selectedGroup) {
+        const filteredData = filterDataByGroup(selectedGroup);
+        
+        // Update opening inventory value based on selected group
+        let openingValue = 0;
+        let groupDisplayText = selectedGroup || "All Groups";
+        
+        if (selectedGroup && selectedGroup !== "All Parent Product Groups") {
+            // Get opening inventory value from stored inventory data by group
+            try {
+                // Parse the stored inventory values by group (raw numbers, not chart data)
+                const inventoryValuesByGroup = JSON.parse('{{ inventory_values_by_group|safe }}');
+                console.log('Available inventory groups:', Object.keys(inventoryValuesByGroup));
+                
+                // Try to find exact match first
+                if (inventoryValuesByGroup[selectedGroup]) {
+                    openingValue = inventoryValuesByGroup[selectedGroup];
+                    console.log('Found exact match for ' + selectedGroup + ': $' + openingValue.toLocaleString());
+                } else {
+                    // Try to find partial match
+                    for (const groupName in inventoryValuesByGroup) {
+                        if (groupName.includes(selectedGroup) || selectedGroup.includes(groupName)) {
+                            openingValue = inventoryValuesByGroup[groupName];
+                            console.log('Found partial match ' + groupName + ' for ' + selectedGroup + ': $' + openingValue.toLocaleString());
+                            break;
+                        }
+                    }
+                }
+                
+                if (openingValue === 0) {
+                    console.warn('No inventory data found for group: ' + selectedGroup);
+                    console.log('Available groups:', Object.keys(inventoryValuesByGroup));
+                }
+            } catch (e) {
+                console.error('Error parsing inventory values by group:', e);
+                openingValue = 0;
+            }
+        } else {
+            // Sum all groups' opening values (company total)
+            try {
+                const inventoryValuesByGroup = JSON.parse('{{ inventory_values_by_group|safe }}');
+                for (const groupName in inventoryValuesByGroup) {
+                    if (inventoryValuesByGroup[groupName] && typeof inventoryValuesByGroup[groupName] === 'number') {
+                        openingValue += inventoryValuesByGroup[groupName];
+                    }
+                }
+                console.log('Total opening value for all groups: $' + openingValue.toLocaleString());
+            } catch (e) {
+                console.error('Error calculating total opening value:', e);
+                openingValue = {{ opening_inventory_raw|default:0 }};
+            }
+            groupDisplayText = "All Groups";
+        }
+        
+        // Format and update the opening inventory display
+        let formattedValue;
+        if (openingValue > 1000000) {
+            formattedValue = `$${(openingValue/1000000).toFixed(1)}M AUD`;
+        } else if (openingValue > 1000) {
+            formattedValue = `$${(openingValue/1000).toFixed(0)}K AUD`;
+        } else {
+            formattedValue = `$${openingValue.toFixed(0)} AUD`;
+        }
+        
+        // Update the opening inventory card
+        const openingInventoryElement = document.getElementById('openingInventoryValue');
+        const groupInfoElement = document.getElementById('groupInfo');
+        
+        if (openingInventoryElement) {
+            openingInventoryElement.textContent = formattedValue;
+        }
+        
+        if (groupInfoElement) {
+            groupInfoElement.textContent = groupDisplayText;
+        }
+        
+        // Update Cost Analysis Chart (4-line financial chart)
+        if (costAnalysisChart) {
+            costAnalysisChart.data = filteredData;
+            costAnalysisChart.update();
+            console.log('🔥 Cost Analysis Chart updated for group:', selectedGroup);
+        }
+        
+        // Update Production Group Chart
+        if (productionGroupChart) {
+            productionGroupChart.data = filteredData;
+            productionGroupChart.update();
+        }
+        
+        // Update Projected Inventory Chart
+        if (projectedInventoryChart) {
+            projectedInventoryChart.data = filteredData;
+            projectedInventoryChart.update();
+        }
+    }
+    
+    // Add dropdown filter event listener
+    const parentGroupFilter = document.getElementById('parentGroupFilter');
+    if (parentGroupFilter) {
+        parentGroupFilter.addEventListener('change', function() {
+            updateCharts(this.value);
+        });
+    }
+
+    // Cost Analysis Chart - 4-LINE CHART: Revenue, COGS, Production, Inventory Projection
+    const ctx1 = document.getElementById('inventoryChart1');
+    if (ctx1) {
+        try {
+            console.log('🔥 Initializing Cost Analysis Chart with 4 lines...');
+            costAnalysisChart = new Chart(ctx1.getContext('2d'), {
+                type: 'line',  // Changed from 'bar' to 'line'
+                data: financialChartData,  // Use financial data instead of inventory data
+                options: {
+                    responsive: true,
+                    plugins: {
+                        legend: { display: true, position: 'top' },
+                        title: {
+                            display: true,
+                            text: 'Financial Analysis - Revenue, COGS, Production & Inventory Projection'
+                        }
+                    },
+                    scales: {
+                        x: { 
+                            title: { display: true, text: 'Month' }
+                        },
+                        y: { 
+                            title: { display: true, text: 'Value (AUD)' }, 
+                            beginAtZero: true 
+                        }
+                    },
+                    interaction: {
+                        intersect: false,
+                        mode: 'index'
+                    }
+                }
+            });
+            console.log('🔥 Cost Analysis Chart (4 lines) initialized successfully!');
+        } catch (error) {
+            console.error('🔥 ERROR initializing Cost Analysis Chart:', error);
+        }
+    } else {
+        console.error('🔥 ERROR: inventoryChart1 element not found!');
+    }
+
+    // Production Plan AUD Chart (Stacked Column) - using actual inventory data
+    const ctx2 = document.getElementById('productionGroupChart');
+    if (ctx2) {
+        try {
+            console.log('🔥 Initializing Production Group Chart...');
+            productionGroupChart = new Chart(ctx2.getContext('2d'), {
+                type: 'bar',
+                data: inventoryByGroup,
+                options: {
+                    responsive: true,
+                    plugins: {
+                        legend: { display: true },
+                        title: {
+                            display: true,
+                            text: 'Production Plan by Product Group'
+                        }
+                    },
+                    scales: {
+                        x: { 
+                            title: { display: true, text: 'Month' },
+                            stacked: true
+                        },
+                        y: { 
+                            title: { display: true, text: 'Production Value (AUD)' }, 
+                            beginAtZero: true,
+                            stacked: true
+                        }
+                    }
+                }
+            });
+            console.log('🔥 Production Group Chart initialized successfully!');
+        } catch (error) {
+            console.error('🔥 ERROR initializing Production Group Chart:', error);
+        }
+    } else {
+        console.error('🔥 ERROR: productionGroupChart element not found!');
+    }
+
+    // Projected Inventory Chart - using monthly trends data
+    const ctx3 = document.getElementById('inventoryChart3');
+    if (ctx3) {
+        try {
+            console.log('🔥 Initializing Projected Inventory Chart...');
+            projectedInventoryChart = new Chart(ctx3.getContext('2d'), {
+                type: 'line',
+                data: inventoryMonthlyTrends,
+                options: {
+                    responsive: true,
+                    plugins: {
+                        legend: { display: true },
+                        title: {
+                            display: true,
+                            text: 'Projected Inventory Trends'
+                        }
+                    },
+                    scales: {
+                        x: { title: { display: true, text: 'Month' } },
+                        y: { title: { display: true, text: 'Inventory Value (AUD)' }, beginAtZero: true }
+                    }
+                }
+            });
+            console.log('🔥 Projected Inventory Chart initialized successfully!');
+        } catch (error) {
+            console.error('🔥 ERROR initializing Projected Inventory Chart:', error);
+        }
+    } else {
+        console.error('🔥 ERROR: inventoryChart3 element not found!');
+    }
+    
+    console.log('🔥 ALL CHARTS INITIALIZATION COMPLETE!');
+});
+
+// Export functions (placeholder)
+function exportInventoryData(format) {
+    alert('Export to ' + format.toUpperCase() + ' functionality would be implemented here');
+}
+</script>

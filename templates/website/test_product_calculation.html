@@ -1,0 +1,72 @@
+{% extends 'website/base.html' %}
+
+{% block title %}Test Product Calculation{% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-4">
+    <div class="row">
+        <div class="col-md-8">
+            <div class="card">
+                <div class="card-header">
+                    <h4><i class="fas fa-calculator"></i> Test Product Calculation</h4>
+                    <p class="mb-0 text-muted">Run replenishment calculation for a specific product (much faster than full calculation)</p>
+                </div>
+                <div class="card-body">
+                    <div class="alert alert-info">
+                        <strong>Version:</strong> {{ version }}<br>
+                        <strong>Scenario:</strong> {{ scenario.scenario_description }}
+                    </div>
+                    
+                    <form method="POST">
+                        {% csrf_token %}
+                        <div class="form-group">
+                            <label for="product_name"><strong>Product Name:</strong></label>
+                            <input type="text" class="form-control" id="product_name" name="product_name" 
+                                   placeholder="e.g., DEWB135-1" required>
+                            <small class="form-text text-muted">
+                                Enter the exact product name (case-sensitive). Example: DEWB135-1
+                            </small>
+                        </div>
+                        
+                        <div class="alert alert-warning">
+                            <strong><i class="fas fa-info-circle"></i> Note:</strong> 
+                            This will only run the replenishment calculation for the specified product. 
+                            It's much faster than the full calculation (seconds vs minutes) and useful for testing.
+                        </div>
+                        
+                        <button type="submit" class="btn btn-primary">
+                            <i class="fas fa-play"></i> Run Test Calculation
+                        </button>
+                        <a href="{% url 'list_scenarios' %}" class="btn btn-secondary">
+                            <i class="fas fa-arrow-left"></i> Back to Scenarios
+                        </a>
+                    </form>
+                </div>
+            </div>
+        </div>
+        
+        <div class="col-md-4">
+            <div class="card">
+                <div class="card-header">
+                    <h5><i class="fas fa-lightbulb"></i> Quick Test Examples</h5>
+                </div>
+                <div class="card-body">
+                    <p><strong>Common products to test:</strong></p>
+                    <ul>
+                        <li><code>DEWB135-1</code> - The product we've been debugging</li>
+                        <li><code>DEWB125-1</code> - Another example</li>
+                        <li><code>DEWB145-1</code> - Another example</li>
+                    </ul>
+                    
+                    <div class="alert alert-success">
+                        <small>
+                            <strong>Tip:</strong> Use this to quickly test individual products 
+                            instead of waiting 10 minutes for the full calculation.
+                        </small>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

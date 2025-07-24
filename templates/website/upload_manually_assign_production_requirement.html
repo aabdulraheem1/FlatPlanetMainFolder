@@ -1,0 +1,310 @@
+{% extends 'website/base.html' %}
+
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Upload Manually Assign Production Requirement</title>
+    <style>
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+        }
+
+        th,
+        td {
+            border: 1px solid #ddd;
+            padding: 8px;
+            text-align: left;
+        }
+
+        th {
+            background-color: #f2f2f2;
+            font-weight: bold;
+        }
+
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            overflow: auto;
+            background-color: rgb(0,0,0);
+            background-color: rgba(0,0,0,0.4);
+        }
+
+        .modal-content {
+            background-color: #fefefe;
+            margin: 5% auto;
+            padding: 20px;
+            border: 1px solid #888;
+            width: 90%;
+            max-width: 800px;
+            border-radius: 5px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+
+        .close {
+            color: #aaa;
+            float: right;
+            font-size: 28px;
+            font-weight: bold;
+            line-height: 1;
+        }
+
+        .close:hover,
+        .close:focus {
+            color: black;
+            text-decoration: none;
+            cursor: pointer;
+        }
+
+        .info-button {
+            background-color: #007bff;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-bottom: 20px;
+            font-size: 14px;
+        }
+
+        .info-button:hover {
+            background-color: #0056b3;
+        }
+
+        .upload-section {
+            background-color: #f8f9fa;
+            padding: 20px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+        }
+
+        .alert {
+            padding: 12px;
+            margin-bottom: 20px;
+            border: 1px solid transparent;
+            border-radius: 4px;
+        }
+
+        .alert-success {
+            color: #155724;
+            background-color: #d4edda;
+            border-color: #c3e6cb;
+        }
+
+        .alert-error {
+            color: #721c24;
+            background-color: #f8d7da;
+            border-color: #f5c6cb;
+        }
+
+        .form-group {
+            margin-bottom: 15px;
+        }
+
+        .form-control {
+            width: 100%;
+            padding: 8px 12px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+
+        .btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+
+        .btn-primary {
+            background-color: #007bff;
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background-color: #0056b3;
+        }
+
+        .instructions {
+            background-color: #e3f2fd;
+            padding: 15px;
+            border-left: 4px solid #2196f3;
+            margin-bottom: 20px;
+        }
+    </style>
+</head>
+{% block content %}
+
+<body>
+
+    <h1>Upload Manually Assign Production Requirement</h1>
+    <h2>Version: {{ version }}</h2>
+
+    {% if messages %}
+        {% for message in messages %}
+            <div class="alert alert-{{ message.tags }}">
+                {{ message|linebreaks }}
+            </div>
+        {% endfor %}
+    {% endif %}
+
+    {% if error_message %}
+        <div class="alert alert-error">{{ error_message }}</div>
+    {% endif %}
+
+    <div class="instructions">
+        <h3>📋 Instructions</h3>
+        <p>Upload an Excel file containing manually assigned production requirements. The file must contain specific headers in the correct format.</p>
+        <button type="button" class="info-button" onclick="openModal()">
+            📋 Show Required Excel Headers
+        </button>
+    </div>
+
+    <div class="upload-section">
+        <h3>Upload File</h3>
+        <form method="post" enctype="multipart/form-data">
+            {% csrf_token %}
+            <div class="form-group">
+                {{ form.as_p }}
+            </div>
+            <button type="submit" class="btn btn-primary">Upload Excel File</button>
+        </form>
+    </div>
+
+    <!-- Modal for showing required headers -->
+    <div id="headersModal" class="modal">
+        <div class="modal-content">
+            <span class="close" onclick="closeModal()">&times;</span>
+            <h2>Required Excel Headers & Data Format</h2>
+            <p><strong>Your Excel file must contain the following headers in the exact order:</strong></p>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Column Name</th>
+                        <th>Description</th>
+                        <th>Data Type</th>
+                        <th>Example</th>
+                        <th>Required</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td><strong>Product</strong></td>
+                        <td>Product code that must exist in the master product data</td>
+                        <td>Text</td>
+                        <td>PROD001</td>
+                        <td>Yes</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Site</strong></td>
+                        <td>Site name that must exist in the master plant data</td>
+                        <td>Text</td>
+                        <td>Plant A</td>
+                        <td>Yes</td>
+                    </tr>
+                    <tr>
+                        <td><strong>ShippingDate</strong></td>
+                        <td>Shipping date in YYYY-MM-DD format</td>
+                        <td>Date</td>
+                        <td>2025-08-15</td>
+                        <td>No</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Percentage</strong></td>
+                        <td>Percentage of production requirement (0-100)</td>
+                        <td>Number</td>
+                        <td>75.5</td>
+                        <td>No</td>
+                    </tr>
+                </tbody>
+            </table>
+            <div style="margin-top: 15px; padding: 10px; background-color: #fff3cd; border: 1px solid #ffeaa7; border-radius: 4px;">
+                <strong>⚠️ Important Notes:</strong>
+                <ul>
+                    <li>Product codes must match exactly with existing products in master data</li>
+                    <li>Site names must match exactly with existing plants in master data</li>
+                    <li>Date format must be YYYY-MM-DD (e.g., 2025-08-15)</li>
+                    <li>Percentage values should be numbers (e.g., 75.5 for 75.5%)</li>
+                    <li>Existing data for this version will be replaced when uploading</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+
+    <h2>Sample Template</h2>
+    <p>Here's an example of how your Excel file should be structured:</p>
+    <table>
+        <thead>
+            <tr>
+                <th>Product</th>
+                <th>Site</th>
+                <th>ShippingDate</th>
+                <th>Percentage</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td>PROD001</td>
+                <td>Plant A</td>
+                <td>2025-08-15</td>
+                <td>75.5</td>
+            </tr>
+            <tr>
+                <td>PROD002</td>
+                <td>Plant B</td>
+                <td>2025-09-20</td>
+                <td>50.0</td>
+            </tr>
+            <tr>
+                <td>PROD003</td>
+                <td>Plant A</td>
+                <td>2025-10-10</td>
+                <td>100.0</td>
+            </tr>
+            <tr>
+                <td>PROD004</td>
+                <td>Plant C</td>
+                <td>2025-11-05</td>
+                <td>25.0</td>
+            </tr>
+        </tbody>
+    </table>
+
+    <script>
+        function openModal() {
+            document.getElementById("headersModal").style.display = "block";
+        }
+
+        function closeModal() {
+            document.getElementById("headersModal").style.display = "none";
+        }
+
+        // Close modal when clicking outside of it
+        window.onclick = function(event) {
+            var modal = document.getElementById("headersModal");
+            if (event.target == modal) {
+                modal.style.display = "none";
+            }
+        }
+
+        // Close modal with Escape key
+        document.addEventListener('keydown', function(event) {
+            if (event.key === 'Escape') {
+                closeModal();
+            }
+        });
+    </script>
+
+</body>
+{% endblock %}
+
+</html>

@@ -1,0 +1,33 @@
+<!-- Control Tower Section -->
+<div class="row">
+    <div class="col-12">
+        <h3>Control Tower Data</h3>
+        <p>Demand Plan, Pour Plan, and Production Data for Version: {{ version }}</p>
+        
+        <!-- Quick Summary Table -->
+        <div class="table-responsive">
+            <table class="table table-striped">
+                <thead>
+                    <tr>
+                        <th>Metric</th>
+                        <th>Value</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>Total Demand Plan Records</td>
+                        <td>{{ demand_plan|length }}</td>
+                    </tr>
+                    <tr>
+                        <td>Total Poured Data Records</td>
+                        <td>{{ poured_data|length }}</td>
+                    </tr>
+                    <tr>
+                        <td>Total Pour Plan Records</td>
+                        <td>{{ pour_plan|length }}</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>

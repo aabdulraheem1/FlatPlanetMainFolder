@@ -1,0 +1,46 @@
+<!-- Supplier Review Section -->
+<div class="container mt-5">
+    <h2>Supplier Review</h2>
+    <div class="row">
+        <div class="col-md-12">
+            <h4>Supplier A Production Analysis</h4>
+            <canvas id="supplierAChart" width="400" height="200"></canvas>
+            <script id="supplier-a-top-products-data" type="application/json">
+                {{ supplier_a_top_products_json|safe }}
+            </script>
+            <script>
+                const supplierAData = {{ supplier_a_chart_data|safe }};
+                const supplierATopProducts = JSON.parse(document.getElementById('supplier-a-top-products-data').textContent);
+                
+                const ctxSupplierA = document.getElementById('supplierAChart').getContext('2d');
+                new Chart(ctxSupplierA, {
+                    type: 'bar',
+                    data: supplierAData,
+                    options: {
+                        responsive: true,
+                        plugins: {
+                            legend: { display: true },
+                            tooltip: {
+                                callbacks: {
+                                    afterBody: function (context) {
+                                        const group = context[0].dataset.label;
+                                        const month = context[0].label;
+                                        const topByGroup = supplierATopProducts[month] && supplierATopProducts[month][group];
+                                        if (!topByGroup || topByGroup.length === 0) return '';
+                                        return 'Top 10 Products in ' + group + ':\n' + topByGroup.map(
+                                            (p, i) => `${i + 1}. ${p[0]}: ${parseInt(p[1])}`
+                                        ).join('\n');
+                                    }
+                                }
+                            }
+                        },
+                        scales: {
+                            x: { title: { display: true, text: 'Month' } },
+                            y: { title: { display: true, text: 'Tonnes' }, beginAtZero: true }
+                        }
+                    }
+                });
+            </script>
+        </div>
+    </div>
+</div>

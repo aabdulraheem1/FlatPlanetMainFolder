@@ -1,0 +1,102 @@
+{% extends 'website/base.html' %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="alert alert-info" role="alert">
+        <strong>Scenario Version:</strong> {{ version }}
+    </div>
+    
+    <div class="alert alert-warning" role="alert">
+        <h4 class="alert-heading">⚠️ Delete Confirmation</h4>
+        <p>You are about to delete <strong>{{ record_count }}</strong> manually assigned production requirement record(s) for scenario version "<strong>{{ version }}</strong>".</p>
+        {% if record_count > 0 %}
+            <p><strong>This action cannot be undone!</strong></p>
+        {% else %}
+            <p>No records found for this scenario version.</p>
+        {% endif %}
+    </div>
+
+    <div class="row">
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="card-title mb-0">⚠️ Confirm Deletion</h5>
+                </div>
+                <div class="card-body">
+                    {% if record_count > 0 %}
+                        <p>Are you sure you want to delete all {{ record_count }} manually assigned production requirement records for this scenario?</p>
+                        
+                        <form method="post" style="display: inline;">
+                            {% csrf_token %}
+                            <button type="submit" class="btn btn-danger">
+                                <i class="fas fa-trash"></i> Yes, Delete All Records
+                            </button>
+                        </form>
+                    {% else %}
+                        <p>No records to delete for this scenario version.</p>
+                    {% endif %}
+                    
+                    <a href="{% url 'edit_scenario' version %}" class="btn btn-secondary ml-2">
+                        <i class="fas fa-times"></i> Cancel
+                    </a>
+                </div>
+            </div>
+        </div>
+        
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="card-title mb-0">📋 Alternative Actions</h5>
+                </div>
+                <div class="card-body">
+                    <p>Instead of deleting, you can:</p>
+                    <ul>
+                        <li>
+                            <a href="{% url 'update_manually_assign_production_requirement' version %}" class="btn btn-sm btn-warning">
+                                <i class="fas fa-edit"></i> Update Records
+                            </a>
+                        </li>
+                        <li class="mt-2">
+                            <a href="{% url 'upload_manually_assign_production_requirement' version %}" class="btn btn-sm btn-info">
+                                <i class="fas fa-upload"></i> Upload New Data
+                            </a>
+                        </li>
+                        <li class="mt-2">
+                            <a href="{% url 'copy_manually_assign_production_requirement' version %}" class="btn btn-sm btn-success">
+                                <i class="fas fa-copy"></i> Copy from Another Version
+                            </a>
+                        </li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Back to Edit Scenario Button -->
+    <div class="mt-4">
+        <a href="{% url 'edit_scenario' version %}" class="btn btn-primary">
+            <i class="fas fa-arrow-left"></i> Back to Edit Scenario
+        </a>
+    </div>
+</div>
+
+<style>
+    .card {
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        margin-bottom: 20px;
+    }
+    
+    .btn {
+        margin-right: 10px;
+    }
+    
+    .alert-warning {
+        border-left: 5px solid #ffc107;
+    }
+    
+    .card-header {
+        background-color: #f8f9fa;
+        border-bottom: 1px solid #dee2e6;
+    }
+</style>
+{% endblock %}

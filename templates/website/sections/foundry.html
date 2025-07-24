@@ -1,0 +1,179 @@
+<!-- Foundry Section -->
+<div class="row">
+    <div class="col-12">
+        <h3>Foundry Data</h3>
+        <p>Production and Pour Plans across all foundries for Version: {{ version }}</p>
+        
+        <!-- Foundry Tabs -->
+        <ul class="nav nav-tabs" id="foundryTabs" role="tablist">
+            <li class="nav-item" role="presentation">
+                <button class="nav-link active" id="mtj-tab" data-bs-toggle="tab" data-bs-target="#mtj" type="button" role="tab">Mt Joli (MTJ1)</button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="coi-tab" data-bs-toggle="tab" data-bs-target="#coi" type="button" role="tab">Coimbatore (COI2)</button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="xuz-tab" data-bs-toggle="tab" data-bs-target="#xuz" type="button" role="tab">Xuzhou (XUZ1)</button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="mer-tab" data-bs-toggle="tab" data-bs-target="#mer" type="button" role="tab">Merlimau (MER1)</button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="wod-tab" data-bs-toggle="tab" data-bs-target="#wod" type="button" role="tab">Wodonga (WOD1)</button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="wun-tab" data-bs-toggle="tab" data-bs-target="#wun" type="button" role="tab">Wunsiedel (WUN1)</button>
+            </li>
+        </ul>
+        
+        <div class="tab-content" id="foundryTabsContent">
+            <!-- Mt Joli -->
+            <div class="tab-pane fade show active" id="mtj" role="tabpanel">
+                <div class="row mt-3">
+                    <div class="col-md-6">
+                        <h5>Top Products</h5>
+                        <div class="table-responsive">
+                            <table class="table table-sm">
+                                <tbody>
+                                    {% for product in mt_joli_top_products_json %}
+                                    <tr>
+                                        <td>{{ product.product }}</td>
+                                        <td>{{ product.tonnes|floatformat:1 }}</td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <h5>Monthly Pour Plan</h5>
+                        <canvas id="mtJoliChart" width="400" height="200"></canvas>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Other foundries would have similar structure -->
+            <div class="tab-pane fade" id="coi" role="tabpanel">
+                <div class="row mt-3">
+                    <div class="col-12">
+                        <h5>Coimbatore Foundry Data</h5>
+                        <p>Production data for Coimbatore foundry</p>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="tab-pane fade" id="xuz" role="tabpanel">
+                <div class="row mt-3">
+                    <div class="col-12">
+                        <h5>Xuzhou Foundry Data</h5>
+                        <p>Production data for Xuzhou foundry</p>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="tab-pane fade" id="mer" role="tabpanel">
+                <div class="row mt-3">
+                    <div class="col-12">
+                        <h5>Merlimau Foundry Data</h5>
+                        <p>Production data for Merlimau foundry</p>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="tab-pane fade" id="wod" role="tabpanel">
+                <div class="row mt-3">
+                    <div class="col-12">
+                        <h5>Wodonga Foundry Data</h5>
+                        <p>Production data for Wodonga foundry</p>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="tab-pane fade" id="wun" role="tabpanel">
+                <div class="row mt-3">
+                    <div class="col-12">
+                        <h5>Wunsiedel Foundry Data</h5>
+                        <p>Production data for Wunsiedel foundry</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Foundry data from Django template
+    const mtJoliData = {{ mt_joli_chart_data|safe }};
+    const coimbatoreData = {{ coimbatore_chart_data|safe }};
+    const xuzhouData = {{ xuzhou_chart_data|safe }};
+    const merlimauData = {{ merlimau_chart_data|safe }};
+    const wodongaData = {{ wod1_chart_data|safe }};
+    const wunsiedel = {{ wun1_chart_data|safe }};
+    
+    console.log('Mt Joli Data:', mtJoliData);
+    console.log('Coimbatore Data:', coimbatoreData);
+    console.log('Xuzhou Data:', xuzhouData);
+    console.log('Merlimau Data:', merlimauData);
+    console.log('Wodonga Data:', wodongaData);
+    console.log('Wunsiedel Data:', wunsiedel);
+    
+    // Create charts for each foundry
+    if (mtJoliData && Object.keys(mtJoliData).length > 0) {
+        createFoundryChart('mtJoliChart', mtJoliData, 'Mt Joli Monthly Pour Plan');
+    } else {
+        console.log('No Mt Joli data available');
+    }
+    
+    // Add chart creation for other foundries when their charts are added to the template
+});
+
+function createFoundryChart(canvasId, data, title) {
+    const ctx = document.getElementById(canvasId);
+    if (!ctx) {
+        console.log('Canvas not found:', canvasId);
+        return;
+    }
+    
+    console.log('Creating foundry chart for', canvasId, 'with data:', data);
+    
+    new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: Object.keys(data),
+            datasets: [{
+                label: title,
+                data: Object.values(data),
+                backgroundColor: 'rgba(75, 192, 192, 0.2)',
+                borderColor: 'rgba(75, 192, 192, 1)',
+                borderWidth: 2,
+                fill: false
+            }]
+        },
+        options: {
+            responsive: true,
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    title: {
+                        display: true,
+                        text: 'Tonnes'
+                    }
+                },
+                x: {
+                    title: {
+                        display: true,
+                        text: 'Month'
+                    }
+                }
+            },
+            plugins: {
+                title: {
+                    display: true,
+                    text: title
+                }
+            }
+        }
+    });
+}
+</script>

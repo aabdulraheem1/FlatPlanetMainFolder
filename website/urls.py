@@ -1,6 +1,7 @@
 from django.urls import path
 from . import views
 from .views import fetch_data_from_mssql
+from .views_ajax import get_detailed_monthly_table
 from django.shortcuts import render, redirect
 
 urlpatterns = [
@@ -29,6 +30,7 @@ urlpatterns = [
     path('edit_forecasts/<str:version>/<str:forecast_type>/', views.edit_forecasts, name='edit_forecasts'),
     
     path('scenario/review/<str:version>', views.review_scenario, name='review_scenario'),
+    path('scenario/calculate-aggregated/<str:version>/', views.calculate_aggregated_data, name='calculate_aggregated_data'),
     path('warningList/<str:version>', views.ScenarioWarningList, name='warningList'),
     path('create_product/', views.create_product, name='create_product'),
     path('update_product_allocation/<str:version>/', views.update_product_allocation, name='update_product_allocation'),
@@ -111,6 +113,7 @@ urlpatterns = [
 
     # ... existing URL patterns ...
     path('calculate-model/<str:version>/', views.calculate_model, name='calculate_model'),
+    path('test-product-calculation/<str:version>/', views.test_product_calculation, name='test_product_calculation'),
     
     # Other URL patterns...
     path('create-plant/', views.create_plant, name='create_plant'),
@@ -125,10 +128,15 @@ urlpatterns = [
 
     path('add_manually_assign_production_requirement/<str:version>/', views.add_manually_assign_production_requirement, name='add_manually_assign_production_requirement'),
 
-     # Add these three URLs for the scenario review action buttons
+     # Add these five URLs for the scenario review action buttons
     path('manual_optimize_product/<str:version>/', views.manual_optimize_product, name='manual_optimize_product'),
     path('balance_hard_green_sand/<str:version>/', views.balance_hard_green_sand, name='balance_hard_green_sand'),
     path('create_balanced_pour_plan/<str:version>/', views.create_balanced_pour_plan, name='create_balanced_pour_plan'),
+    path('auto_level_optimization/<str:version>/', views.auto_level_optimization, name='auto_level_optimization'),
+    path('reset_production_plan/<str:version>/', views.reset_production_plan, name='reset_production_plan'),
+    
+    # AJAX endpoint for detailed monthly tables
+    path('scenario/<str:version>/detailed-monthly-table/', get_detailed_monthly_table, name='get_detailed_monthly_table'),
 
     # ... other url patterns ...
     path('update_products_cost/<str:version>/', views.update_products_cost, name='update_products_cost'),
@@ -164,16 +172,26 @@ urlpatterns = [
     path('method-of-manufacturing/fetch/', views.method_of_manufacturing_fetch_data_from_mssql, name='method_of_manufacturing_fetch_data_from_mssql'),
 
      # ... existing patterns ...
-    path('detailed-view-inventory/', views.detailed_view_scenario_inventory, name='detailed_view_scenario_inventory'),
+    path('detailed-view-inventory/<str:version>/', views.detailed_view_scenario_inventory, name='detailed_view_scenario_inventory'),
+    
+    # Progressive loading URLs
+    path('scenario/review-progressive/<str:version>/', views.review_scenario_progressive, name='review_scenario_progressive'),
+    path('api/load-section/<str:section>/<str:version>/', views.load_section_data, name='load_section_data'),
 
     path('search-detailed-inventory/', views.search_detailed_inventory, name='search_detailed_inventory'),
+    path('export-inventory-data/', views.export_inventory_data, name='export_inventory_data'),
+    path('export-production-by-product/', views.export_production_by_product, name='export_production_by_product'),
 
     path('upload_safety_stocks/<str:version>/', views.upload_safety_stocks, name='upload_safety_stocks'),
     path('update_safety_stocks/<str:version>/', views.update_safety_stocks, name='update_safety_stocks'),
     path('delete_safety_stocks/<str:version>/', views.delete_safety_stocks, name='delete_safety_stocks'),
     path('copy_safety_stocks/<str:version>/', views.copy_safety_stocks, name='copy_safety_stocks'),
 
-
+    # AJAX endpoint for detailed monthly tables (performance optimization)
+    path('scenario/<str:version>/detailed-monthly-table/', get_detailed_monthly_table, name='get_detailed_monthly_table'),
+    
+    # Pour plan details endpoint
+    path('scenario/<str:version>/pour-plan-details/<str:fy>/<str:site>/', views.pour_plan_details, name='pour_plan_details'),
 
     # Add other URL patterns as needed
 ]

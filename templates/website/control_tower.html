@@ -1,0 +1,694 @@
+{% load static %}
+{% load humanize %}
+
+<!-- Control Tower Section -->
+<div class="container mt-4">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <h3>Control Tower</h3>
+        <div>
+            <button class="btn btn-info btn-sm" id="progressiveLoadBtn">
+                <i class="fas fa-rocket"></i> Progressive Load
+            </button>
+        </div>
+    </div>
+    
+    <div id="controlTowerContent">
+        <ul class="nav nav-tabs" id="controlTowerTab" role="tablist">
+            <li class="nav-item" role="presentation">
+                <button class="nav-link active" id="fy25-tab" data-bs-toggle="tab" data-bs-target="#fy25" type="button"
+                    role="tab" aria-controls="fy25" aria-selected="true">FY25</button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="fy26-tab" data-bs-toggle="tab" data-bs-target="#fy26" type="button" role="tab"
+                    aria-controls="fy26" aria-selected="false">FY26</button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="fy27-tab" data-bs-toggle="tab" data-bs-target="#fy27" type="button" role="tab"
+                    aria-controls="fy27" aria-selected="false">FY27</button>
+            </li>
+        </ul>
+        
+        <div class="tab-content" id="controlTowerTabContent">
+            <!-- FY25 Tab -->
+            <div class="tab-pane fade show active p-3" id="fy25" role="tabpanel" aria-labelledby="fy25-tab">
+                <table class="table table-bordered" style="width:auto; min-width:900px;">
+                    <thead class="table-light">
+                        <tr>
+                            <th></th>
+                            <th>FY25 Budget</th>
+                            <th>Available Capacity</th>
+                            <th>Current Pour Plan
+                                <div style="font-size: 0.8em; color: #666; font-style: italic;">Click for details</div>
+                            </th>
+                            <th>Current Demand Plan
+                                <div style="font-size: 0.8em; color: #666; font-style: italic;">Click for details</div>
+                            </th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td class="fw-bold">Mt Joli</td>
+                            <td></td>
+                            <td class="bg-light"></td>
+                            <td class="bg-light">
+                                <span class="pour-plan-click" data-fy="FY25" data-site="MTJ1" data-site-name="Mt Joli">
+                                    {{ pour_plan.FY25.MTJ1|default:"0"|intcomma }}
+                                </span>
+                            </td>
+                            <td class="bg-light">
+                                <span class="demand-plan-click" data-fy="FY25" data-site="MTJ1" data-site-name="Mt Joli">
+                                    {{ demand_plan.FY25.MTJ1|default:"0"|intcomma }}
+                                </span>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td class="fw-bold">Coimbatore</td>
+                            <td></td>
+                            <td class="bg-light"></td>
+                            <td class="bg-light">
+                                <span class="pour-plan-click" data-fy="FY25" data-site="COI2" data-site-name="Coimbatore">
+                                    {{ pour_plan.FY25.COI2|default:"0"|intcomma }}
+                                </span>
+                            </td>
+                            <td class="bg-light">
+                                <span class="demand-plan-click" data-fy="FY25" data-site="COI2" data-site-name="Coimbatore">
+                                    {{ demand_plan.FY25.COI2|default:"0"|intcomma }}
+                                </span>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td class="fw-bold">Xuzhou</td>
+                            <td></td>
+                            <td class="bg-light"></td>
+                            <td class="bg-light">
+                                <span class="pour-plan-click" data-fy="FY25" data-site="XUZ1" data-site-name="Xuzhou">
+                                    {{ pour_plan.FY25.XUZ1|default:"0"|intcomma }}
+                                </span>
+                            </td>
+                            <td class="bg-light">
+                                <span class="demand-plan-click" data-fy="FY25" data-site="XUZ1" data-site-name="Xuzhou">
+                                    {{ demand_plan.FY25.XUZ1|default:"0"|intcomma }}
+                                </span>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td class="fw-bold">Merlimau</td>
+                            <td></td>
+                            <td class="bg-light"></td>
+                            <td class="bg-light">
+                                <span class="pour-plan-click" data-fy="FY25" data-site="MER1" data-site-name="Merlimau">
+                                    {{ pour_plan.FY25.MER1|default:"0"|intcomma }}
+                                </span>
+                            </td>
+                            <td class="bg-light">
+                                <span class="demand-plan-click" data-fy="FY25" data-site="MER1" data-site-name="Merlimau">
+                                    {{ demand_plan.FY25.MER1|default:"0"|intcomma }}
+                                </span>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td class="fw-bold">Wundowie</td>
+                            <td></td>
+                            <td class="bg-light"></td>
+                            <td class="bg-light">
+                                <span class="pour-plan-click" data-fy="FY25" data-site="WUN1" data-site-name="Wundowie">
+                                    {{ pour_plan.FY25.WUN1|default:"0"|intcomma }}
+                                </span>
+                            </td>
+                            <td class="bg-light">
+                                <span class="demand-plan-click" data-fy="FY25" data-site="WUN1" data-site-name="Wundowie">
+                                    {{ demand_plan.FY25.WUN1|default:"0"|intcomma }}
+                                </span>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td class="fw-bold">Wodonga</td>
+                            <td></td>
+                            <td class="bg-light"></td>
+                            <td class="bg-light">
+                                <span class="pour-plan-click" data-fy="FY25" data-site="WOD1" data-site-name="Wodonga">
+                                    {{ pour_plan.FY25.WOD1|default:"0"|intcomma }}
+                                </span>
+                            </td>
+                            <td class="bg-light">
+                                <span class="demand-plan-click" data-fy="FY25" data-site="WOD1" data-site-name="Wodonga">
+                                    {{ demand_plan.FY25.WOD1|default:"0"|intcomma }}
+                                </span>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td class="fw-bold">Chilca</td>
+                            <td></td>
+                            <td class="bg-light"></td>
+                            <td class="bg-light">
+                                <span class="pour-plan-click" data-fy="FY25" data-site="CHI1" data-site-name="Chilca">
+                                    {{ pour_plan.FY25.CHI1|default:"0"|intcomma }}
+                                </span>
+                            </td>
+                            <td class="bg-light">
+                                <span class="demand-plan-click" data-fy="FY25" data-site="CHI1" data-site-name="Chilca">
+                                    {{ demand_plan.FY25.CHI1|default:"0"|intcomma }}
+                                </span>
+                            </td>
+                        </tr>
+                        <tr class="table-secondary fw-bold">
+                            <td>Total Castings</td>
+                            <td></td>
+                            <td></td>
+                            <td>
+                                {% widthratio pour_plan.FY25.MTJ1|default:0 1 1 as mtj1_pour %}
+                                {% widthratio pour_plan.FY25.COI2|default:0 1 1 as coi2_pour %}
+                                {% widthratio pour_plan.FY25.XUZ1|default:0 1 1 as xuz1_pour %}
+                                {% widthratio pour_plan.FY25.MER1|default:0 1 1 as mer1_pour %}
+                                {% widthratio pour_plan.FY25.WUN1|default:0 1 1 as wun1_pour %}
+                                {% widthratio pour_plan.FY25.WOD1|default:0 1 1 as wod1_pour %}
+                                {% widthratio pour_plan.FY25.CHI1|default:0 1 1 as chi1_pour %}
+                                {% widthratio mtj1_pour|add:coi2_pour|add:xuz1_pour|add:mer1_pour|add:wun1_pour|add:wod1_pour|add:chi1_pour 1 1 as total_pour %}
+                                {{ total_pour|intcomma }}
+                            </td>
+                            <td>
+                                {% widthratio demand_plan.FY25.MTJ1|default:0 1 1 as mtj1_demand %}
+                                {% widthratio demand_plan.FY25.COI2|default:0 1 1 as coi2_demand %}
+                                {% widthratio demand_plan.FY25.XUZ1|default:0 1 1 as xuz1_demand %}
+                                {% widthratio demand_plan.FY25.MER1|default:0 1 1 as mer1_demand %}
+                                {% widthratio demand_plan.FY25.WUN1|default:0 1 1 as wun1_demand %}
+                                {% widthratio demand_plan.FY25.WOD1|default:0 1 1 as wod1_demand %}
+                                {% widthratio demand_plan.FY25.CHI1|default:0 1 1 as chi1_demand %}
+                                {% widthratio mtj1_demand|add:coi2_demand|add:xuz1_demand|add:mer1_demand|add:wun1_demand|add:wod1_demand|add:chi1_demand 1 1 as total_demand %}
+                                {{ total_demand|intcomma }}
+                            </td>
+                        </tr>
+                        <tr>
+                            <td class="fw-bold">Outsource</td>
+                            <td></td>
+                            <td></td>
+                            <td class="bg-light">11,182</td>
+                            <td class="bg-light">11,182</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- FY26 Tab -->
+            <div class="tab-pane fade p-3" id="fy26" role="tabpanel" aria-labelledby="fy26-tab">
+                <table class="table table-bordered" style="width:auto; min-width:900px;">
+                    <thead class="table-light">
+                        <tr>
+                            <th></th>
+                            <th>FY26 Budget</th>
+                            <th>Available Capacity</th>
+                            <th>Current Pour Plan
+                                <div style="font-size: 0.8em; color: #666; font-style: italic;">Click for details</div>
+                            </th>
+                            <th>Current Demand Plan
+                                <div style="font-size: 0.8em; color: #666; font-style: italic;">Click for details</div>
+                            </th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td class="fw-bold">Mt Joli</td>
+                            <td></td>
+                            <td class="bg-light"></td>
+                            <td class="bg-light">
+                                <span class="pour-plan-click" data-fy="FY26" data-site="MTJ1" data-site-name="Mt Joli">
+                                    {{ pour_plan.FY26.MTJ1|default:"0"|intcomma }}
+                                </span>
+                            </td>
+                            <td class="bg-light">
+                                <span class="demand-plan-click" data-fy="FY26" data-site="MTJ1" data-site-name="Mt Joli">
+                                    {{ demand_plan.FY26.MTJ1|default:"0"|intcomma }}
+                                </span>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td class="fw-bold">Coimbatore</td>
+                            <td></td>
+                            <td class="bg-light"></td>
+                            <td class="bg-light">
+                                <span class="pour-plan-click" data-fy="FY26" data-site="COI2" data-site-name="Coimbatore">
+                                    {{ pour_plan.FY26.COI2|default:"0"|intcomma }}
+                                </span>
+                            </td>
+                            <td class="bg-light">
+                                <span class="demand-plan-click" data-fy="FY26" data-site="COI2" data-site-name="Coimbatore">
+                                    {{ demand_plan.FY26.COI2|default:"0"|intcomma }}
+                                </span>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td class="fw-bold">Xuzhou</td>
+                            <td></td>
+                            <td class="bg-light"></td>
+                            <td class="bg-light">
+                                <span class="pour-plan-click" data-fy="FY26" data-site="XUZ1" data-site-name="Xuzhou">
+                                    {{ pour_plan.FY26.XUZ1|default:"0"|intcomma }}
+                                </span>
+                            </td>
+                            <td class="bg-light">
+                                <span class="demand-plan-click" data-fy="FY26" data-site="XUZ1" data-site-name="Xuzhou">
+                                    {{ demand_plan.FY26.XUZ1|default:"0"|intcomma }}
+                                </span>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td class="fw-bold">Merlimau</td>
+                            <td></td>
+                            <td class="bg-light"></td>
+                            <td class="bg-light">
+                                <span class="pour-plan-click" data-fy="FY26" data-site="MER1" data-site-name="Merlimau">
+                                    {{ pour_plan.FY26.MER1|default:"0"|intcomma }}
+                                </span>
+                            </td>
+                            <td class="bg-light">
+                                <span class="demand-plan-click" data-fy="FY26" data-site="MER1" data-site-name="Merlimau">
+                                    {{ demand_plan.FY26.MER1|default:"0"|intcomma }}
+                                </span>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td class="fw-bold">Wundowie</td>
+                            <td></td>
+                            <td class="bg-light"></td>
+                            <td class="bg-light">
+                                <span class="pour-plan-click" data-fy="FY26" data-site="WUN1" data-site-name="Wundowie">
+                                    {{ pour_plan.FY26.WUN1|default:"0"|intcomma }}
+                                </span>
+                            </td>
+                            <td class="bg-light">
+                                <span class="demand-plan-click" data-fy="FY26" data-site="WUN1" data-site-name="Wundowie">
+                                    {{ demand_plan.FY26.WUN1|default:"0"|intcomma }}
+                                </span>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td class="fw-bold">Wodonga</td>
+                            <td></td>
+                            <td class="bg-light"></td>
+                            <td class="bg-light">
+                                <span class="pour-plan-click" data-fy="FY26" data-site="WOD1" data-site-name="Wodonga">
+                                    {{ pour_plan.FY26.WOD1|default:"0"|intcomma }}
+                                </span>
+                            </td>
+                            <td class="bg-light">
+                                <span class="demand-plan-click" data-fy="FY26" data-site="WOD1" data-site-name="Wodonga">
+                                    {{ demand_plan.FY26.WOD1|default:"0"|intcomma }}
+                                </span>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td class="fw-bold">Chilca</td>
+                            <td></td>
+                            <td class="bg-light"></td>
+                            <td class="bg-light">
+                                <span class="pour-plan-click" data-fy="FY26" data-site="CHI1" data-site-name="Chilca">
+                                    {{ pour_plan.FY26.CHI1|default:"0"|intcomma }}
+                                </span>
+                            </td>
+                            <td class="bg-light">
+                                <span class="demand-plan-click" data-fy="FY26" data-site="CHI1" data-site-name="Chilca">
+                                    {{ demand_plan.FY26.CHI1|default:"0"|intcomma }}
+                                </span>
+                            </td>
+                        </tr>
+                        <tr class="table-secondary fw-bold">
+                            <td>Total Castings</td>
+                            <td></td>
+                            <td></td>
+                            <td>
+                                {% widthratio pour_plan.FY26.MTJ1|default:0 1 1 as mtj1_pour_26 %}
+                                {% widthratio pour_plan.FY26.COI2|default:0 1 1 as coi2_pour_26 %}
+                                {% widthratio pour_plan.FY26.XUZ1|default:0 1 1 as xuz1_pour_26 %}
+                                {% widthratio pour_plan.FY26.MER1|default:0 1 1 as mer1_pour_26 %}
+                                {% widthratio pour_plan.FY26.WUN1|default:0 1 1 as wun1_pour_26 %}
+                                {% widthratio pour_plan.FY26.WOD1|default:0 1 1 as wod1_pour_26 %}
+                                {% widthratio pour_plan.FY26.CHI1|default:0 1 1 as chi1_pour_26 %}
+                                {% widthratio mtj1_pour_26|add:coi2_pour_26|add:xuz1_pour_26|add:mer1_pour_26|add:wun1_pour_26|add:wod1_pour_26|add:chi1_pour_26 1 1 as total_pour_26 %}
+                                {{ total_pour_26|intcomma }}
+                            </td>
+                            <td>
+                                {% widthratio demand_plan.FY26.MTJ1|default:0 1 1 as mtj1_demand_26 %}
+                                {% widthratio demand_plan.FY26.COI2|default:0 1 1 as coi2_demand_26 %}
+                                {% widthratio demand_plan.FY26.XUZ1|default:0 1 1 as xuz1_demand_26 %}
+                                {% widthratio demand_plan.FY26.MER1|default:0 1 1 as mer1_demand_26 %}
+                                {% widthratio demand_plan.FY26.WUN1|default:0 1 1 as wun1_demand_26 %}
+                                {% widthratio demand_plan.FY26.WOD1|default:0 1 1 as wod1_demand_26 %}
+                                {% widthratio demand_plan.FY26.CHI1|default:0 1 1 as chi1_demand_26 %}
+                                {% widthratio mtj1_demand_26|add:coi2_demand_26|add:xuz1_demand_26|add:mer1_demand_26|add:wun1_demand_26|add:wod1_demand_26|add:chi1_demand_26 1 1 as total_demand_26 %}
+                                {{ total_demand_26|intcomma }}
+                            </td>
+                        </tr>
+                        <tr>
+                            <td class="fw-bold">Outsource</td>
+                            <td></td>
+                            <td></td>
+                            <td class="bg-light">11,182</td>
+                            <td class="bg-light">11,182</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- FY27 Tab -->
+            <div class="tab-pane fade p-3" id="fy27" role="tabpanel" aria-labelledby="fy27-tab">
+                <table class="table table-bordered" style="width:auto; min-width:900px;">
+                    <thead class="table-light">
+                        <tr>
+                            <th></th>
+                            <th>FY27 Budget</th>
+                            <th>Available Capacity</th>
+                            <th>Current Pour Plan
+                                <div style="font-size: 0.8em; color: #666; font-style: italic;">Click for details</div>
+                            </th>
+                            <th>Current Demand Plan
+                                <div style="font-size: 0.8em; color: #666; font-style: italic;">Click for details</div>
+                            </th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td class="fw-bold">Mt Joli</td>
+                            <td></td>
+                            <td class="bg-light"></td>
+                            <td class="bg-light">
+                                <span class="pour-plan-click" data-fy="FY27" data-site="MTJ1" data-site-name="Mt Joli">
+                                    {{ pour_plan.FY27.MTJ1|default:"0"|intcomma }}
+                                </span>
+                            </td>
+                            <td class="bg-light">
+                                <span class="demand-plan-click" data-fy="FY27" data-site="MTJ1" data-site-name="Mt Joli">
+                                    {{ demand_plan.FY27.MTJ1|default:"0"|intcomma }}
+                                </span>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td class="fw-bold">Coimbatore</td>
+                            <td></td>
+                            <td class="bg-light"></td>
+                            <td class="bg-light">
+                                <span class="pour-plan-click" data-fy="FY27" data-site="COI2" data-site-name="Coimbatore">
+                                    {{ pour_plan.FY27.COI2|default:"0"|intcomma }}
+                                </span>
+                            </td>
+                            <td class="bg-light">
+                                <span class="demand-plan-click" data-fy="FY27" data-site="COI2" data-site-name="Coimbatore">
+                                    {{ demand_plan.FY27.COI2|default:"0"|intcomma }}
+                                </span>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td class="fw-bold">Xuzhou</td>
+                            <td></td>
+                            <td class="bg-light"></td>
+                            <td class="bg-light">
+                                <span class="pour-plan-click" data-fy="FY27" data-site="XUZ1" data-site-name="Xuzhou">
+                                    {{ pour_plan.FY27.XUZ1|default:"0"|intcomma }}
+                                </span>
+                            </td>
+                            <td class="bg-light">
+                                <span class="demand-plan-click" data-fy="FY27" data-site="XUZ1" data-site-name="Xuzhou">
+                                    {{ demand_plan.FY27.XUZ1|default:"0"|intcomma }}
+                                </span>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td class="fw-bold">Merlimau</td>
+                            <td></td>
+                            <td class="bg-light"></td>
+                            <td class="bg-light">
+                                <span class="pour-plan-click" data-fy="FY27" data-site="MER1" data-site-name="Merlimau">
+                                    {{ pour_plan.FY27.MER1|default:"0"|intcomma }}
+                                </span>
+                            </td>
+                            <td class="bg-light">
+                                <span class="demand-plan-click" data-fy="FY27" data-site="MER1" data-site-name="Merlimau">
+                                    {{ demand_plan.FY27.MER1|default:"0"|intcomma }}
+                                </span>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td class="fw-bold">Wundowie</td>
+                            <td></td>
+                            <td class="bg-light"></td>
+                            <td class="bg-light">
+                                <span class="pour-plan-click" data-fy="FY27" data-site="WUN1" data-site-name="Wundowie">
+                                    {{ pour_plan.FY27.WUN1|default:"0"|intcomma }}
+                                </span>
+                            </td>
+                            <td class="bg-light">
+                                <span class="demand-plan-click" data-fy="FY27" data-site="WUN1" data-site-name="Wundowie">
+                                    {{ demand_plan.FY27.WUN1|default:"0"|intcomma }}
+                                </span>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td class="fw-bold">Wodonga</td>
+                            <td></td>
+                            <td class="bg-light"></td>
+                            <td class="bg-light">
+                                <span class="pour-plan-click" data-fy="FY27" data-site="WOD1" data-site-name="Wodonga">
+                                    {{ pour_plan.FY27.WOD1|default:"0"|intcomma }}
+                                </span>
+                            </td>
+                            <td class="bg-light">
+                                <span class="demand-plan-click" data-fy="FY27" data-site="WOD1" data-site-name="Wodonga">
+                                    {{ demand_plan.FY27.WOD1|default:"0"|intcomma }}
+                                </span>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td class="fw-bold">Chilca</td>
+                            <td></td>
+                            <td class="bg-light"></td>
+                            <td class="bg-light">
+                                <span class="pour-plan-click" data-fy="FY27" data-site="CHI1" data-site-name="Chilca">
+                                    {{ pour_plan.FY27.CHI1|default:"0"|intcomma }}
+                                </span>
+                            </td>
+                            <td class="bg-light">
+                                <span class="demand-plan-click" data-fy="FY27" data-site="CHI1" data-site-name="Chilca">
+                                    {{ demand_plan.FY27.CHI1|default:"0"|intcomma }}
+                                </span>
+                            </td>
+                        </tr>
+                        <tr class="table-secondary fw-bold">
+                            <td>Total Castings</td>
+                            <td></td>
+                            <td></td>
+                            <td>
+                                {% widthratio pour_plan.FY27.MTJ1|default:0 1 1 as mtj1_pour_27 %}
+                                {% widthratio pour_plan.FY27.COI2|default:0 1 1 as coi2_pour_27 %}
+                                {% widthratio pour_plan.FY27.XUZ1|default:0 1 1 as xuz1_pour_27 %}
+                                {% widthratio pour_plan.FY27.MER1|default:0 1 1 as mer1_pour_27 %}
+                                {% widthratio pour_plan.FY27.WUN1|default:0 1 1 as wun1_pour_27 %}
+                                {% widthratio pour_plan.FY27.WOD1|default:0 1 1 as wod1_pour_27 %}
+                                {% widthratio pour_plan.FY27.CHI1|default:0 1 1 as chi1_pour_27 %}
+                                {% widthratio mtj1_pour_27|add:coi2_pour_27|add:xuz1_pour_27|add:mer1_pour_27|add:wun1_pour_27|add:wod1_pour_27|add:chi1_pour_27 1 1 as total_pour_27 %}
+                                {{ total_pour_27|intcomma }}
+                            </td>
+                            <td>
+                                {% widthratio demand_plan.FY27.MTJ1|default:0 1 1 as mtj1_demand_27 %}
+                                {% widthratio demand_plan.FY27.COI2|default:0 1 1 as coi2_demand_27 %}
+                                {% widthratio demand_plan.FY27.XUZ1|default:0 1 1 as xuz1_demand_27 %}
+                                {% widthratio demand_plan.FY27.MER1|default:0 1 1 as mer1_demand_27 %}
+                                {% widthratio demand_plan.FY27.WUN1|default:0 1 1 as wun1_demand_27 %}
+                                {% widthratio demand_plan.FY27.WOD1|default:0 1 1 as wod1_demand_27 %}
+                                {% widthratio demand_plan.FY27.CHI1|default:0 1 1 as chi1_demand_27 %}
+                                {% widthratio mtj1_demand_27|add:coi2_demand_27|add:xuz1_demand_27|add:mer1_demand_27|add:wun1_demand_27|add:wod1_demand_27|add:chi1_demand_27 1 1 as total_demand_27 %}
+                                {{ total_demand_27|intcomma }}
+                            </td>
+                        </tr>
+                        <tr>
+                            <td class="fw-bold">Outsource</td>
+                            <td></td>
+                            <td></td>
+                            <td class="bg-light">11,182</td>
+                            <td class="bg-light">11,182</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal for Monthly Breakdown -->
+<div class="modal fade" id="monthlyBreakdownModal" tabindex="-1" aria-labelledby="monthlyBreakdownModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="monthlyBreakdownModalLabel">Monthly Breakdown</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div id="modalContent">
+                    <!-- Dynamic content will be loaded here -->
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+.table th, .table td {
+    text-align: center;
+    vertical-align: middle;
+    border: 1px solid #dee2e6;
+    padding: 8px 12px;
+}
+.table th {
+    background-color: #e9ecef;
+}
+.table .fw-bold {
+    text-align: left;
+    font-weight: bold;
+}
+.table .bg-light {
+    background-color: #f8f9fa !important;
+}
+.table-secondary {
+    background-color: #e9ecef !important;
+}
+/* Updated styling for clickable demand plan and pour plan numbers */
+.demand-plan-click, .pour-plan-click {
+    cursor: pointer;
+    text-decoration: underline;
+    text-decoration-style: dotted;
+    color: #0066cc;
+    font-weight: bold;
+}
+.demand-plan-click:hover, .pour-plan-click:hover {
+    background-color: #f8f9fa;
+    border-radius: 3px;
+    color: #004499;
+}
+/* Modal styling */
+.modal-header {
+    background-color: #e9ecef;
+    border-bottom: 2px solid #dee2e6;
+}
+.monthly-breakdown-table {
+    font-size: 13px;
+}
+.monthly-breakdown-table th {
+    background-color: #f8f9fa;
+    font-weight: bold;
+    text-align: center;
+}
+.monthly-breakdown-table td {
+    text-align: right;
+    padding: 6px 8px;
+}
+.monthly-breakdown-table .month-column {
+    text-align: left;
+}
+.monthly-breakdown-table tfoot {
+    background-color: #e9ecef;
+    font-weight: bold;
+}
+</style>
+
+<script>
+// Cache for loaded table data to avoid repeated AJAX calls
+window.detailedMonthlyTableCache = {};
+
+document.addEventListener('DOMContentLoaded', function() {
+    // Progressive Load button functionality
+    document.getElementById('progressiveLoadBtn').addEventListener('click', function() {
+        window.location.href = `/scenario/review-progressive/{{ version }}/`;
+    });
+    
+    // Bootstrap tab initialization
+    var triggerTabList = [].slice.call(document.querySelectorAll('#controlTowerTab button'));
+    triggerTabList.forEach(function (triggerEl) {
+        var tabTrigger = new bootstrap.Tab(triggerEl);
+        
+        triggerEl.addEventListener('click', function (event) {
+            event.preventDefault();
+            tabTrigger.show();
+        });
+    });
+    
+    console.log('Control Tower initialized with cached data from view');
+});
+
+// Handle click events on demand plan and pour plan numbers
+document.addEventListener('click', function(e) {
+    if (e.target.classList.contains('demand-plan-click') || e.target.classList.contains('pour-plan-click')) {
+        const fy = e.target.getAttribute('data-fy');
+        const site = e.target.getAttribute('data-site');
+        const siteName = e.target.getAttribute('data-site-name');
+        const planType = e.target.classList.contains('pour-plan-click') ? 'Pour Plan' : 'Demand Plan';
+        const planTypeParam = e.target.classList.contains('pour-plan-click') ? 'pour' : 'demand';
+        
+        console.log(`🖱️ Clicked on ${siteName} (${site}) for ${fy} - ${planType}`);
+        
+        // Update modal title
+        document.getElementById('monthlyBreakdownModalLabel').textContent = 
+            `Monthly Breakdown - ${siteName} (${fy}) - ${planType}`;
+        
+        // Check cache first - include plan type in cache key
+        const cacheKey = `${fy}-${site}-${planTypeParam}`;
+        if (window.detailedMonthlyTableCache[cacheKey]) {
+            console.log('📊 Using cached data for', fy, site, planTypeParam);
+            document.getElementById('modalContent').innerHTML = window.detailedMonthlyTableCache[cacheKey];
+            showModal();
+            return;
+        }
+        
+        // Show loading indicator
+        document.getElementById('modalContent').innerHTML = `
+            <div style="padding: 40px; text-align: center;">
+                <div class="spinner-border text-primary" role="status">
+                    <span class="sr-only">Loading...</span>
+                </div>
+                <p class="mt-3">Loading monthly breakdown data...</p>
+            </div>
+        `;
+        
+        showModal();
+        
+        // Load data via AJAX - include plan type
+        fetch(`/scenario/{{ version }}/detailed-monthly-table/?fy=${fy}&site=${site}&plan_type=${planTypeParam}`)
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    console.log('✅ Loaded data via AJAX for', fy, site, planTypeParam);
+                    // Cache the data with plan type included
+                    const fullCacheKey = `${fy}-${site}-${planTypeParam}`;
+                    window.detailedMonthlyTableCache[fullCacheKey] = data.html;
+                    // Display the data
+                    document.getElementById('modalContent').innerHTML = data.html;
+                } else {
+                    console.error('❌ Error loading data:', data.error);
+                    document.getElementById('modalContent').innerHTML = `
+                        <div style="padding: 20px; text-align: center;">
+                            <h5>Error Loading Data</h5>
+                            <p class="text-danger">${data.error}</p>
+                        </div>
+                    `;
+                }
+            })
+            .catch(error => {
+                console.error('❌ AJAX error:', error);
+                document.getElementById('modalContent').innerHTML = `
+                    <div style="padding: 20px; text-align: center;">
+                        <h5>Connection Error</h5>
+                        <p class="text-danger">Failed to load data. Please try again.</p>
+                        <button class="btn btn-primary" onclick="location.reload()">Refresh Page</button>
+                    </div>
+                `;
+            });
+    }
+});
+
+function showModal() {
+    const modal = new bootstrap.Modal(document.getElementById('monthlyBreakdownModal'));
+    modal.show();
+}
+
+console.log('🚀 AJAX-based modal handlers initialized');
+</script>

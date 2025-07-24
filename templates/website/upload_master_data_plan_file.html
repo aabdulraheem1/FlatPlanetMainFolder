@@ -1,0 +1,366 @@
+{% extends 'website/base.html' %}
+{% load static %}
+
+{% block title %}Upload Pour Plan Master Data{% endblock %}
+
+{% block extra_css %}
+<style>
+    .upload-container {
+        max-width: 900px;
+        margin: 20px auto;
+        padding: 30px;
+        background: #f8f9fa;
+        border-radius: 10px;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    }
+    
+    .upload-box {
+        border: 2px dashed #007bff;
+        border-radius: 10px;
+        padding: 40px;
+        text-align: center;
+        background: white;
+        margin: 20px 0;
+        transition: all 0.3s ease;
+    }
+    
+    .upload-box:hover {
+        border-color: #0056b3;
+        background: #f0f8ff;
+    }
+    
+    .upload-box.dragover {
+        border-color: #28a745;
+        background: #f0fff0;
+    }
+    
+    .file-input {
+        display: none;
+    }
+    
+    .upload-btn {
+        background: #007bff;
+        color: white;
+        padding: 12px 24px;
+        border: none;
+        border-radius: 5px;
+        cursor: pointer;
+        font-size: 16px;
+        margin: 10px;
+        transition: background 0.3s ease;
+    }
+    
+    .upload-btn:hover {
+        background: #0056b3;
+    }
+    
+    .requirements-section {
+        background: white;
+        padding: 20px;
+        border-radius: 8px;
+        margin: 20px 0;
+        border-left: 4px solid #007bff;
+    }
+    
+    .headers-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 10px;
+        margin: 15px 0;
+    }
+    
+    .header-item {
+        background: #e9ecef;
+        padding: 8px 12px;
+        border-radius: 4px;
+        font-family: monospace;
+        font-size: 14px;
+        border-left: 3px solid #007bff;
+    }
+    
+    .alert {
+        padding: 15px;
+        border-radius: 5px;
+        margin: 15px 0;
+    }
+    
+    .alert-success {
+        background: #d4edda;
+        border: 1px solid #c3e6cb;
+        color: #155724;
+    }
+    
+    .alert-error {
+        background: #f8d7da;
+        border: 1px solid #f5c6cb;
+        color: #721c24;
+    }
+    
+    .alert-warning {
+        background: #fff3cd;
+        border: 1px solid #ffeaa7;
+        color: #856404;
+    }
+    
+    .progress-section {
+        display: none;
+        margin: 20px 0;
+    }
+    
+    .progress-bar {
+        width: 100%;
+        height: 20px;
+        background: #e9ecef;
+        border-radius: 10px;
+        overflow: hidden;
+    }
+    
+    .progress-fill {
+        height: 100%;
+        background: #007bff;
+        width: 0%;
+        transition: width 0.3s ease;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="upload-container">
+    <h2><i class="fas fa-upload"></i> Upload Pour Plan Master Data</h2>
+    <p class="text-muted">Scenario: <strong>{{ scenario.version }}</strong></p>
+    
+    <!-- Display Messages -->
+    {% if messages %}
+        {% for message in messages %}
+            <div class="alert alert-{{ message.tags }}">
+                {{ message|linebreaks }}
+            </div>
+        {% endfor %}
+    {% endif %}
+    
+    <!-- Upload Form -->
+    <form method="post" enctype="multipart/form-data" id="uploadForm">
+        {% csrf_token %}
+        
+        <div class="upload-box" id="uploadBox">
+            <i class="fas fa-cloud-upload-alt fa-3x text-primary mb-3"></i>
+            <h4>Drop your Excel file here or click to browse</h4>
+            <p class="text-muted">Supports .xlsx, .xls, and .csv files</p>
+            
+            <input type="file" 
+                   name="file" 
+                   id="fileInput" 
+                   class="file-input" 
+                   accept=".xlsx,.xls,.csv"
+                   required>
+            
+            <button type="button" class="upload-btn" onclick="document.getElementById('fileInput').click();">
+                <i class="fas fa-folder-open"></i> Choose File
+            </button>
+            
+            <div id="selectedFile" style="display: none; margin-top: 15px;">
+                <p><strong>Selected:</strong> <span id="fileName"></span></p>
+                <button type="submit" class="upload-btn" style="background: #28a745;">
+                    <i class="fas fa-upload"></i> Upload & Replace Data
+                </button>
+            </div>
+        </div>
+        
+        <div class="progress-section" id="progressSection">
+            <h5>Processing...</h5>
+            <div class="progress-bar">
+                <div class="progress-fill" id="progressFill"></div>
+            </div>
+            <p id="progressText">Preparing upload...</p>
+        </div>
+    </form>
+    
+    <!-- Requirements Section -->
+    <div class="requirements-section">
+        <h4><i class="fas fa-exclamation-triangle text-warning"></i> Important Information</h4>
+        
+        <div class="alert alert-warning">
+            <strong>⚠️ Data Replacement:</strong> Uploading a new file will <strong>DELETE ALL</strong> existing Pour Plan data for this scenario and replace it with the uploaded data.
+        </div>
+        
+        <h5>Required Excel Headers:</h5>
+        <p>Your Excel file must contain the following columns in the first row:</p>
+        
+        <div class="headers-grid">
+            {% for header in required_headers %}
+                <div class="header-item">{{ header }}</div>
+            {% endfor %}
+        </div>
+        
+        <h5 style="margin-top: 25px;">Automatic Calculations:</h5>
+        <ul>
+            <li><strong>CalendarDays</strong> = Calculated from Month (days in the month)</li>
+            <li><strong>AvailableDays</strong> = CalendarDays - PlannedMaintenanceDays - PublicHolidays - Weekends - OtherNonPouringDays</li>
+            <li><strong>PlanDressMass</strong> = AvailableDays × heatsperdays × TonsPerHeat × (Yield/100) × (1 - WasterPercentage/100)</li>
+        </ul>
+        
+        <h5 style="margin-top: 25px;">Data Format Guidelines:</h5>
+        <ul>
+            <li><strong>Foundry:</strong> Must match existing foundry names in the system</li>
+            <li><strong>Month:</strong> Date format (YYYY-MM-DD or MM/DD/YYYY)</li>
+            <li><strong>Numeric fields:</strong> Use decimal numbers (e.g., 85.5 for yield)</li>
+            <li><strong>WasterPercentage:</strong> Enter as percentage (2.65 for 2.65%, not 0.0265)</li>
+            <li><strong>Yield:</strong> Enter as percentage (85.5 for 85.5%, not 0.855)</li>
+        </ul>
+    </div>
+    
+    <!-- Sample Data Section -->
+    <div class="requirements-section">
+        <h4><i class="fas fa-table text-info"></i> Sample Data Format</h4>
+        <div style="overflow-x: auto;">
+            <table class="table table-bordered table-sm" style="font-size: 12px;">
+                <thead class="thead-light">
+                    <tr>
+                        <th>Foundry</th>
+                        <th>Month</th>
+                        <th>Yield</th>
+                        <th>WasterPercentage</th>
+                        <th>PlannedMaintenanceDays</th>
+                        <th>PublicHolidays</th>
+                        <th>Weekends</th>
+                        <th>OtherNonPouringDays</th>
+                        <th>heatsperdays</th>
+                        <th>TonsPerHeat</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>XUZ1</td>
+                        <td>2025-01-01</td>
+                        <td>85.5</td>
+                        <td>8.2</td>
+                        <td>2</td>
+                        <td>1</td>
+                        <td>8</td>
+                        <td>1</td>
+                        <td>2.5</td>
+                        <td>45</td>
+                    </tr>
+                    <tr>
+                        <td>MER1</td>
+                        <td>2025-02-01</td>
+                        <td>87.0</td>
+                        <td>2.65</td>
+                        <td>1</td>
+                        <td>0</td>
+                        <td>8</td>
+                        <td>0</td>
+                        <td>2.0</td>
+                        <td>50</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+    
+    <div style="text-align: center; margin-top: 30px;">
+        <a href="{% url 'edit_scenario' scenario.version %}" class="btn btn-secondary">
+            <i class="fas fa-arrow-left"></i> Back to Scenario
+        </a>
+    </div>
+</div>
+
+<script>
+// File upload handling
+const uploadBox = document.getElementById('uploadBox');
+const fileInput = document.getElementById('fileInput');
+const selectedFile = document.getElementById('selectedFile');
+const fileName = document.getElementById('fileName');
+const uploadForm = document.getElementById('uploadForm');
+const progressSection = document.getElementById('progressSection');
+const progressFill = document.getElementById('progressFill');
+const progressText = document.getElementById('progressText');
+
+// Drag and drop functionality
+uploadBox.addEventListener('dragover', function(e) {
+    e.preventDefault();
+    uploadBox.classList.add('dragover');
+});
+
+uploadBox.addEventListener('dragleave', function(e) {
+    e.preventDefault();
+    uploadBox.classList.remove('dragover');
+});
+
+uploadBox.addEventListener('drop', function(e) {
+    e.preventDefault();
+    uploadBox.classList.remove('dragover');
+    
+    const files = e.dataTransfer.files;
+    if (files.length > 0) {
+        fileInput.files = files;
+        handleFileSelection();
+    }
+});
+
+// Click to upload
+uploadBox.addEventListener('click', function(e) {
+    if (e.target.tagName !== 'BUTTON' && e.target.tagName !== 'INPUT') {
+        fileInput.click();
+    }
+});
+
+// File selection handler
+fileInput.addEventListener('change', handleFileSelection);
+
+function handleFileSelection() {
+    const file = fileInput.files[0];
+    if (file) {
+        fileName.textContent = file.name;
+        selectedFile.style.display = 'block';
+        
+        // Validate file type
+        const validTypes = ['.xlsx', '.xls', '.csv'];
+        const fileExtension = file.name.toLowerCase().substring(file.name.lastIndexOf('.'));
+        
+        if (!validTypes.includes(fileExtension)) {
+            alert('Please select a valid Excel file (.xlsx, .xls) or CSV file (.csv)');
+            fileInput.value = '';
+            selectedFile.style.display = 'none';
+        }
+    }
+}
+
+// Form submission with progress
+uploadForm.addEventListener('submit', function(e) {
+    if (!fileInput.files[0]) {
+        e.preventDefault();
+        alert('Please select a file to upload.');
+        return;
+    }
+    
+    // Show progress
+    progressSection.style.display = 'block';
+    uploadBox.style.display = 'none';
+    
+    // Simulate progress (since we can't track actual file upload progress easily)
+    let progress = 0;
+    const progressInterval = setInterval(function() {
+        progress += Math.random() * 15;
+        if (progress > 90) progress = 90;
+        
+        progressFill.style.width = progress + '%';
+        
+        if (progress < 30) {
+            progressText.textContent = 'Reading file...';
+        } else if (progress < 60) {
+            progressText.textContent = 'Validating data...';
+        } else if (progress < 90) {
+            progressText.textContent = 'Processing records...';
+        }
+    }, 200);
+    
+    // Clear interval when form actually submits
+    setTimeout(function() {
+        clearInterval(progressInterval);
+        progressFill.style.width = '100%';
+        progressText.textContent = 'Upload complete!';
+    }, 2000);
+});
+</script>
+{% endblock %}

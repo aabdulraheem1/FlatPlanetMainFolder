@@ -7,6 +7,13 @@
     </div>
     <h2>Update Manually Assign Production Requirement</h2>
 
+    <!-- Records Count -->
+    {% if page_obj %}
+    <div class="alert alert-info">
+        Total Records: {{ page_obj.paginator.count }} | Showing {{ page_obj.start_index }}-{{ page_obj.end_index }}
+    </div>
+    {% endif %}
+
     <!-- Filter Form -->
     <form method="get" class="mb-3">
         <div class="form-row">
@@ -35,6 +42,17 @@
             </div>
         </div>
     </form>
+
+    <!-- Error Messages -->
+    {% if errors %}
+    <div class="alert alert-danger">
+        <ul>
+            {% for error in errors %}
+            <li>{{ error }}</li>
+            {% endfor %}
+        </ul>
+    </div>
+    {% endif %}
 
     <form method="post">
         {% csrf_token %}
@@ -65,6 +83,43 @@
         <a href="{% url 'edit_scenario' version %}" class="btn btn-secondary">Cancel</a>
         <a href="{% url 'edit_scenario' version %}" class="btn btn-primary ml-2">Back to Edit Scenario</a>
     </form>
+    
+    <!-- Pagination Controls -->
+    {% if page_obj.has_other_pages %}
+    <nav aria-label="Page navigation" class="mt-3">
+        <ul class="pagination justify-content-center">
+            {% if page_obj.has_previous %}
+            <li class="page-item">
+                <a class="page-link" href="?page=1{% if product_filter %}&product={{ product_filter }}{% endif %}{% if site_filter %}&site={{ site_filter }}{% endif %}{% if shipping_date_filter %}&shipping_date={{ shipping_date_filter }}{% endif %}{% if percentage_filter %}&percentage={{ percentage_filter }}{% endif %}">&laquo; First</a>
+            </li>
+            <li class="page-item">
+                <a class="page-link" href="?page={{ page_obj.previous_page_number }}{% if product_filter %}&product={{ product_filter }}{% endif %}{% if site_filter %}&site={{ site_filter }}{% endif %}{% if shipping_date_filter %}&shipping_date={{ shipping_date_filter }}{% endif %}{% if percentage_filter %}&percentage={{ percentage_filter }}{% endif %}">Previous</a>
+            </li>
+            {% endif %}
+
+            {% for num in page_obj.paginator.page_range %}
+                {% if page_obj.number == num %}
+                    <li class="page-item active">
+                        <span class="page-link">{{ num }}</span>
+                    </li>
+                {% elif num > page_obj.number|add:'-3' and num < page_obj.number|add:'3' %}
+                    <li class="page-item">
+                        <a class="page-link" href="?page={{ num }}{% if product_filter %}&product={{ product_filter }}{% endif %}{% if site_filter %}&site={{ site_filter }}{% endif %}{% if shipping_date_filter %}&shipping_date={{ shipping_date_filter }}{% endif %}{% if percentage_filter %}&percentage={{ percentage_filter }}{% endif %}">{{ num }}</a>
+                    </li>
+                {% endif %}
+            {% endfor %}
+
+            {% if page_obj.has_next %}
+            <li class="page-item">
+                <a class="page-link" href="?page={{ page_obj.next_page_number }}{% if product_filter %}&product={{ product_filter }}{% endif %}{% if site_filter %}&site={{ site_filter }}{% endif %}{% if shipping_date_filter %}&shipping_date={{ shipping_date_filter }}{% endif %}{% if percentage_filter %}&percentage={{ percentage_filter }}{% endif %}">Next</a>
+            </li>
+            <li class="page-item">
+                <a class="page-link" href="?page={{ page_obj.paginator.num_pages }}{% if product_filter %}&product={{ product_filter }}{% endif %}{% if site_filter %}&site={{ site_filter }}{% endif %}{% if shipping_date_filter %}&shipping_date={{ shipping_date_filter }}{% endif %}{% if percentage_filter %}&percentage={{ percentage_filter }}{% endif %}">Last &raquo;</a>
+            </li>
+            {% endif %}
+        </ul>
+    </nav>
+    {% endif %}
     
     <script>
     document.addEventListener('DOMContentLoaded', function() {

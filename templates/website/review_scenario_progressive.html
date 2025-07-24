@@ -1,0 +1,243 @@
+{% extends 'website/base.html' %}
+{% load static %}
+
+{% block title %}Review Scenario - {{ version }}{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <h1>Scenario Review: {{ version }}</h1>
+    <p class="text-muted">User: {{ user_name }}</p>
+
+    <!-- Performance Notice -->
+    <div class="alert alert-info" id="performanceNotice">
+        <i class="fas fa-info-circle"></i> 
+        <strong>Optimized Loading:</strong> Sections load on-demand when you click their tabs to improve performance.
+        <button type="button" class="close" data-dismiss="alert">&times;</button>
+    </div>
+
+    <!-- Navigation Tabs -->
+    <ul class="nav nav-tabs" id="scenarioTabs" role="tablist">
+        <li class="nav-item">
+            <a class="nav-link active" id="control-tower-tab" data-toggle="tab" href="#control-tower" 
+               role="tab" aria-controls="control-tower" aria-selected="true">
+                <i class="fas fa-tachometer-alt"></i> Control Tower
+            </a>
+        </li>
+        <li class="nav-item">
+            <a class="nav-link" id="foundry-tab" data-toggle="tab" href="#foundry" 
+               role="tab" aria-controls="foundry" aria-selected="false">
+                <i class="fas fa-industry"></i> Foundry
+            </a>
+        </li>
+        <li class="nav-item">
+            <a class="nav-link" id="forecast-tab" data-toggle="tab" href="#forecast" 
+               role="tab" aria-controls="forecast" aria-selected="false">
+                <i class="fas fa-chart-line"></i> Forecast
+            </a>
+        </li>
+        <li class="nav-item">
+            <a class="nav-link" id="inventory-tab" data-toggle="tab" href="#inventory" 
+               role="tab" aria-controls="inventory" aria-selected="false">
+                <i class="fas fa-warehouse"></i> Inventory <span class="badge badge-warning">Slow</span>
+            </a>
+        </li>
+        <li class="nav-item">
+            <a class="nav-link" id="supplier-tab" data-toggle="tab" href="#supplier" 
+               role="tab" aria-controls="supplier" aria-selected="false">
+                <i class="fas fa-truck"></i> Supplier
+            </a>
+        </li>
+    </ul>
+
+    <!-- Tab Content -->
+    <div class="tab-content" id="scenarioTabContent">
+        <!-- Control Tower Tab -->
+        <div class="tab-pane fade show active" id="control-tower" role="tabpanel" aria-labelledby="control-tower-tab">
+            <div class="d-flex justify-content-center align-items-center" style="min-height: 200px;">
+                <div class="spinner-border text-primary" role="status">
+                    <span class="sr-only">Loading Control Tower data...</span>
+                </div>
+                <span class="ml-2">Loading Control Tower data...</span>
+            </div>
+        </div>
+
+        <!-- Foundry Tab -->
+        <div class="tab-pane fade" id="foundry" role="tabpanel" aria-labelledby="foundry-tab">
+            <div class="text-center text-muted p-4">
+                <i class="fas fa-mouse-pointer fa-2x mb-2"></i>
+                <p>Click to load Foundry data</p>
+            </div>
+        </div>
+
+        <!-- Forecast Tab -->
+        <div class="tab-pane fade" id="forecast" role="tabpanel" aria-labelledby="forecast-tab">
+            <div class="text-center text-muted p-4">
+                <i class="fas fa-mouse-pointer fa-2x mb-2"></i>
+                <p>Click to load Forecast data</p>
+            </div>
+        </div>
+
+        <!-- Inventory Tab -->
+        <div class="tab-pane fade" id="inventory" role="tabpanel" aria-labelledby="inventory-tab">
+            <div class="text-center text-muted p-4">
+                <i class="fas fa-exclamation-triangle fa-2x mb-2 text-warning"></i>
+                <p><strong>High Data Volume:</strong> This section may take 2-3 minutes to load</p>
+                <p class="small">Click to load Inventory data (6+ minutes of calculations)</p>
+            </div>
+        </div>
+
+        <!-- Supplier Tab -->
+        <div class="tab-pane fade" id="supplier" role="tabpanel" aria-labelledby="supplier-tab">
+            <div class="text-center text-muted p-4">
+                <i class="fas fa-mouse-pointer fa-2x mb-2"></i>
+                <p>Click to load Supplier data</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- jQuery and Bootstrap JS -->
+<script src="https://code.jquery.com/jquery-3.5.1.min.js"></script>
+<script src="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/js/bootstrap.min.js"></script>
+
+<script>
+// Get CSRF token for AJAX requests
+function getCookie(name) {
+    let cookieValue = null;
+    if (document.cookie && document.cookie !== '') {
+        const cookies = document.cookie.split(';');
+        for (let i = 0; i < cookies.length; i++) {
+            const cookie = cookies[i].trim();
+            if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                break;
+            }
+        }
+    }
+    return cookieValue;
+}
+
+const csrftoken = getCookie('csrftoken');
+
+// Setup AJAX to send CSRF token
+$.ajaxSetup({
+    beforeSend: function(xhr, settings) {
+        if (!(/^http:.*/.test(settings.url) || /^https:.*/.test(settings.url))) {
+            xhr.setRequestHeader("X-CSRFToken", csrftoken);
+        }
+    }
+});
+
+$(document).ready(function() {
+    const loadedSections = new Set();
+    
+    // Load Control Tower data immediately (it's fast)
+    loadSectionData('control_tower');
+    
+    // Handle tab switching
+    $('#scenarioTabs a[data-toggle="tab"]').on('shown.bs.tab', function (e) {
+        const targetId = $(e.target).attr('href').substring(1);
+        const sectionMap = {
+            'control-tower': 'control_tower',
+            'foundry': 'foundry', 
+            'forecast': 'forecast',
+            'inventory': 'inventory',
+            'supplier': 'supplier'
+        };
+        
+        const section = sectionMap[targetId];
+        if (section && !loadedSections.has(section)) {
+            loadSectionData(section);
+        }
+    });
+    
+    function loadSectionData(section) {
+        const tabContent = {
+            'control_tower': '#control-tower',
+            'foundry': '#foundry',
+            'forecast': '#forecast', 
+            'inventory': '#inventory',
+            'supplier': '#supplier'
+        };
+        
+        const $tabPane = $(tabContent[section]);
+        
+        // Show loading spinner
+        let loadingMessage = 'Loading data...';
+        let estimatedTime = '';
+        
+        if (section === 'inventory') {
+            loadingMessage = 'Loading Inventory data (this may take 2-3 minutes)...';
+            estimatedTime = '<br><small class="text-warning">⏱️ Estimated time: 6+ minutes</small>';
+        }
+        
+        $tabPane.html(`
+            <div class="d-flex flex-column justify-content-center align-items-center" style="min-height: 300px;">
+                <div class="spinner-border text-primary mb-3" role="status">
+                    <span class="sr-only">${loadingMessage}</span>
+                </div>
+                <div class="text-center">
+                    <strong>${loadingMessage}</strong>
+                    ${estimatedTime}
+                    <div class="progress mt-3" style="width: 300px;">
+                        <div class="progress-bar progress-bar-striped progress-bar-animated" 
+                             role="progressbar" style="width: 100%"></div>
+                    </div>
+                </div>
+            </div>
+        `);
+        
+        // Start timer for user feedback
+        const startTime = Date.now();
+        const timer = setInterval(() => {
+            const elapsed = Math.floor((Date.now() - startTime) / 1000);
+            const minutes = Math.floor(elapsed / 60);
+            const seconds = elapsed % 60;
+            const timeString = minutes > 0 ? `${minutes}m ${seconds}s` : `${seconds}s`;
+            
+            $tabPane.find('strong').text(`${loadingMessage} (${timeString} elapsed)`);
+        }, 1000);
+        
+        // Load the actual data
+        $.ajax({
+            url: `/api/load-section/${section}/{{ version }}/`,
+            method: 'GET',
+            timeout: 600000, // 10 minute timeout for inventory
+            success: function(data) {
+                clearInterval(timer);
+                $tabPane.html(data.html);
+                loadedSections.add(section);
+                
+                // Initialize any charts or interactive elements
+                if (typeof initializeCharts === 'function') {
+                    initializeCharts(section);
+                }
+            },
+            error: function(xhr, status, error) {
+                clearInterval(timer);
+                const elapsed = Math.floor((Date.now() - startTime) / 1000);
+                let errorMessage = 'Failed to load data';
+                
+                if (status === 'timeout') {
+                    errorMessage = `Loading timed out after ${Math.floor(elapsed/60)} minutes`;
+                } else if (xhr.status === 500) {
+                    errorMessage = 'Server error occurred';
+                }
+                
+                $tabPane.html(`
+                    <div class="alert alert-danger">
+                        <i class="fas fa-exclamation-triangle"></i>
+                        <strong>Error:</strong> ${errorMessage}
+                        <br><small>Time elapsed: ${Math.floor(elapsed/60)}m ${elapsed%60}s</small>
+                        <br><button class="btn btn-sm btn-outline-danger mt-2" onclick="location.reload()">
+                            <i class="fas fa-redo"></i> Reload Page
+                        </button>
+                    </div>
+                `);
+            }
+        });
+    }
+});
+</script>
+
+{% endblock %}

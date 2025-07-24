@@ -1,0 +1,252 @@
+<!-- Forecast Analysis Section -->
+<div class="container mt-5">
+    <h2>Forecast Analysis</h2>
+    
+    <!-- Add data source filter -->
+    <div class="row mb-3">
+        <div class="col-md-6">
+            <label for="dataSourceFilter" class="form-label">Filter by Data Source:</label>
+            <select id="dataSourceFilter" class="form-control" onchange="updateCharts()">
+                <option value="all">All Data Sources</option>
+                <option value="Fixed Plant">Fixed Plant Only</option>
+                <option value="Revenue Forecast">Revenue Forecast Only</option>
+                <option value="Regular">Regular Forecast Only</option>
+            </select>
+        </div>
+        <div class="col-md-6">
+            <label class="form-label">Total Tonnes: <span id="totalTonnes">0</span></label>
+        </div>
+    </div>
+    
+    <ul class="nav nav-tabs" id="forecastTabs" role="tablist">
+        <li class="nav-item">
+            <a class="nav-link active" id="product-group-tab" data-toggle="tab" href="#product-group" role="tab"
+                aria-controls="product-group" aria-selected="true">By Product Group</a>
+        </li>
+        <li class="nav-item">
+            <a class="nav-link" id="parent-product-group-tab" data-toggle="tab" href="#parent-product-group" role="tab"
+                aria-controls="parent-product-group" aria-selected="false">By Parent Product Group</a>
+        </li>
+        <li class="nav-item">
+            <a class="nav-link" id="region-tab" data-toggle="tab" href="#region" role="tab" aria-controls="region"
+                aria-selected="false">By Region</a>
+        </li>
+        <li class="nav-item">
+            <a class="nav-link" id="customer-tab" data-toggle="tab" href="#customer" role="tab" aria-controls="customer"
+                aria-selected="false">By Customer</a>
+        </li>
+        <li class="nav-item">
+            <a class="nav-link" id="data-source-tab" data-toggle="tab" href="#data-source" role="tab" aria-controls="data-source"
+                aria-selected="false">By Data Source</a>
+        </li>
+    </ul>
+
+    <div class="tab-content" id="forecastTabsContent">
+        <!-- Product Group Tab -->
+        <div class="tab-pane fade show active" id="product-group" role="tabpanel" aria-labelledby="product-group-tab">
+            <canvas id="productGroupChart" width="400" height="200"></canvas>
+        </div>
+        
+        <!-- Parent Product Group Tab -->
+        <div class="tab-pane fade" id="parent-product-group" role="tabpanel" aria-labelledby="parent-product-group-tab">
+            <canvas id="ParentGroupChart" width="400" height="200"></canvas>
+        </div>
+        
+        <!-- Region Tab -->
+        <div class="tab-pane fade" id="region" role="tabpanel" aria-labelledby="region-tab">
+            <canvas id="regionChart" width="400" height="200"></canvas>
+        </div>
+        
+        <!-- Customer Tab -->
+        <div class="tab-pane fade" id="customer" role="tabpanel" aria-labelledby="customer-tab">
+            <canvas id="customerChart" width="400" height="200"></canvas>
+        </div>
+        
+        <!-- Data Source Tab -->
+        <div class="tab-pane fade" id="data-source" role="tabpanel" aria-labelledby="data-source-tab">
+            <canvas id="dataSourceChart" width="400" height="200"></canvas>
+        </div>
+    </div>
+</div>
+
+<script>
+// Define consistent color palette for better visibility
+const colorPalette = [
+    'rgba(255, 99, 132, 0.8)',   // Red
+    'rgba(54, 162, 235, 0.8)',   // Blue
+    'rgba(255, 206, 86, 0.8)',   // Yellow
+    'rgba(75, 192, 192, 0.8)',   // Green
+    'rgba(153, 102, 255, 0.8)',  // Purple
+    'rgba(255, 159, 64, 0.8)',   // Orange
+    'rgba(199, 199, 199, 0.8)',  // Grey
+    'rgba(83, 102, 255, 0.8)',   // Indigo
+    'rgba(255, 99, 255, 0.8)',   // Pink
+    'rgba(99, 255, 132, 0.8)',   // Light Green
+    'rgba(255, 132, 99, 0.8)',   // Coral
+    'rgba(132, 99, 255, 0.8)'    // Light Purple
+];
+
+const borderColors = colorPalette.map(color => color.replace('0.8', '1'));
+
+// Store chart instances
+let charts = {};
+
+// Raw data from Django
+const rawData = {
+    productGroup: {{ chart_data_product_group|safe }},
+    parentProductGroup: {{ chart_data_parent_product_group|safe }},
+    region: {{ chart_data_region|safe }},
+    customer: {{ chart_data_customer|safe }},
+    dataSource: {{ chart_data_data_source|safe }}
+};
+
+// Initialize charts
+function initializeCharts() {
+    // Product Group Chart - Stacked Column
+    const ctx1 = document.getElementById('productGroupChart').getContext('2d');
+    charts.productGroup = new Chart(ctx1, {
+        type: 'bar',
+        data: rawData.productGroup,
+        options: {
+            responsive: true,
+            plugins: {
+                legend: { display: true }
+            },
+            scales: {
+                x: { 
+                    title: { display: true, text: 'Month' },
+                    stacked: true
+                },
+                y: { 
+                    title: { display: true, text: 'Tonnes' }, 
+                    beginAtZero: true,
+                    stacked: true
+                }
+            }
+        }
+    });
+
+    // Parent Product Group Chart - Stacked Column
+    const ctx2 = document.getElementById('ParentGroupChart').getContext('2d');
+    charts.parentProductGroup = new Chart(ctx2, {
+        type: 'bar',
+        data: rawData.parentProductGroup,
+        options: {
+            responsive: true,
+            plugins: {
+                legend: { display: true }
+            },
+            scales: {
+                x: { 
+                    title: { display: true, text: 'Month' },
+                    stacked: true
+                },
+                y: { 
+                    title: { display: true, text: 'Tonnes' }, 
+                    beginAtZero: true,
+                    stacked: true
+                }
+            }
+        }
+    });
+
+    // Region Chart - Stacked Column
+    const ctx3 = document.getElementById('regionChart').getContext('2d');
+    charts.region = new Chart(ctx3, {
+        type: 'bar',
+        data: rawData.region,
+        options: {
+            responsive: true,
+            plugins: {
+                legend: { display: true }
+            },
+            scales: {
+                x: { 
+                    title: { display: true, text: 'Month' },
+                    stacked: true
+                },
+                y: { 
+                    title: { display: true, text: 'Tonnes' }, 
+                    beginAtZero: true,
+                    stacked: true
+                }
+            }
+        }
+    });
+
+    // Customer Chart - Stacked Column
+    const ctx4 = document.getElementById('customerChart').getContext('2d');
+    charts.customer = new Chart(ctx4, {
+        type: 'bar',
+        data: rawData.customer,
+        options: {
+            responsive: true,
+            plugins: {
+                legend: { display: true }
+            },
+            scales: {
+                x: { 
+                    title: { display: true, text: 'Month' },
+                    stacked: true
+                },
+                y: { 
+                    title: { display: true, text: 'Tonnes' }, 
+                    beginAtZero: true,
+                    stacked: true
+                }
+            }
+        }
+    });
+
+    // Data Source Chart - Stacked Column
+    const ctx5 = document.getElementById('dataSourceChart').getContext('2d');
+    charts.dataSource = new Chart(ctx5, {
+        type: 'bar',
+        data: rawData.dataSource,
+        options: {
+            responsive: true,
+            plugins: {
+                legend: { display: true }
+            },
+            scales: {
+                x: { 
+                    title: { display: true, text: 'Month' },
+                    stacked: true
+                },
+                y: { 
+                    title: { display: true, text: 'Tonnes' }, 
+                    beginAtZero: true,
+                    stacked: true
+                }
+            }
+        }
+    });
+
+    updateTotalTonnes();
+}
+
+function updateCharts() {
+    // Filter functionality can be implemented here
+    updateTotalTonnes();
+}
+
+function updateTotalTonnes() {
+    // Calculate total tonnes
+    let total = 0;
+    if (rawData.dataSource && rawData.dataSource.datasets) {
+        rawData.dataSource.datasets.forEach(dataset => {
+            if (dataset.data) {
+                dataset.data.forEach(value => {
+                    total += value || 0;
+                });
+            }
+        });
+    }
+    document.getElementById('totalTonnes').textContent = total.toLocaleString();
+}
+
+// Initialize charts when DOM is loaded
+document.addEventListener('DOMContentLoaded', function() {
+    initializeCharts();
+});
+</script>
