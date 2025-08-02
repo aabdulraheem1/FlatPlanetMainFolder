@@ -201,6 +201,18 @@ document.addEventListener('DOMContentLoaded', function() {
                             backgroundColor: 'rgba(255, 193, 7, 0.1)',
                             tension: 0.1,
                             fill: false
+                        },
+                        {
+                            label: 'Actual Inventory (' + selectedGroup + ')',
+                            data: groupData.actual_inventory || [],
+                            borderColor: '#6f42c1',
+                            backgroundColor: 'rgba(111, 66, 193, 0.1)',
+                            tension: 0.1,
+                            fill: false
+                        }
+                            backgroundColor: 'rgba(255, 193, 7, 0.1)',
+                            tension: 0.1,
+                            fill: false
                         }
                     ]
                 };
@@ -318,21 +330,21 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 
-    // Cost Analysis Chart - 4-LINE CHART: Revenue, COGS, Production, Inventory Projection
+    // Cost Analysis Chart - 5-LINE CHART: Revenue, COGS, Production, Inventory Projection, Actual Inventory
     const ctx1 = document.getElementById('inventoryChart1');
     if (ctx1) {
         try {
-            console.log('🔥 Initializing Cost Analysis Chart with 4 lines...');
+            console.log('🔥 Initializing Cost Analysis Chart with 5 lines...');
             costAnalysisChart = new Chart(ctx1.getContext('2d'), {
                 type: 'line',  // Changed from 'bar' to 'line'
-                data: financialChartData,  // Use financial data instead of inventory data
+                data: financialChartData,  // Use enhanced financial data
                 options: {
                     responsive: true,
                     plugins: {
                         legend: { display: true, position: 'top' },
                         title: {
                             display: true,
-                            text: 'Financial Analysis - Revenue, COGS, Production & Inventory Projection'
+                            text: 'Enhanced Financial Analysis - Revenue, COGS, Production, Projected & Actual Inventory'
                         }
                     },
                     scales: {

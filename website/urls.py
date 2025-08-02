@@ -193,5 +193,8 @@ urlpatterns = [
     # Pour plan details endpoint
     path('scenario/<str:version>/pour-plan-details/<str:fy>/<str:site>/', views.pour_plan_details, name='pour_plan_details'),
 
+    # API endpoint for inventory chart data
+    path('get_inventory_chart_data/<str:version>/', views.get_inventory_chart_data, name='get_inventory_chart_data'),
+
     # Add other URL patterns as needed
 ]

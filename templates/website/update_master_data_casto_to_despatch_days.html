@@ -34,17 +34,26 @@
     </form>
     
     <script>
-    document.addEventListener('DOMContentLoaded', function() {
-        const form = document.querySelector('form[method="post"]');
-        if (form) {
-            form.addEventListener('submit', function(e) {
-                // Allow form submission to continue
-                setTimeout(function() {
-                    window.location.href = "{% url 'edit_scenario' version %}";
-                }, 500);
-            });
-        }
-    });
-    </script>
+document.addEventListener('DOMContentLoaded', function() {
+    const form = document.querySelector('form[method="post"]');
+    let isSubmitting = false;
+    
+    if (form) {
+        form.addEventListener('submit', function(e) {
+            if (isSubmitting) {
+                e.preventDefault();
+                return false;
+            }
+            
+            isSubmitting = true;
+            const submitBtn = form.querySelector('button[type="submit"]');
+            if (submitBtn) {
+                submitBtn.disabled = true;
+                submitBtn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status"></span> Saving...';
+            }
+        });
+    }
+});
+</script>
 </div>
 {% endblock %}

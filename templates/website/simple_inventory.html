@@ -1,0 +1,639 @@
+<!-- Inventory Cost Analysis Section -->
+<div class="container mt-5">
+    {% csrf_token %}
+    <h2>Inventory Cost Analysis</h2>
+    
+    <!-- Filter and Info Row -->
+    <div class="row mb-4">
+        <div class="col-md-8">
+            <div class="d-flex align-items-center">
+                <select id="productGroupFilter" class="form-control mb-3 mr-3" style="width: 300px;">
+                    <option value="">All Product Groups</option>
+                    <option value="Mining Fabrication">Mining Fabrication</option>
+                    <option value="Fixed Plant">Fixed Plant</option>
+                    <option value="GET">GET</option>
+                    <option value="Mill Liners">Mill Liners</option>
+                    <option value="Crawler Systems">Crawler Systems</option>
+                    <option value="Rail">Rail</option>
+                </select>
+                <button type="button" class="btn btn-success mb-3 mr-2" onclick="exportInventoryData('excel')" title="Export inventory financial data by parent product group to Excel/CSV">
+                    <i class="fas fa-file-excel"></i> Export to Excel
+                </button>
+                <button type="button" class="btn btn-info mb-3" onclick="exportInventoryData('csv')" title="Export inventory financial data by parent product group to CSV">
+                    <i class="fas fa-file-csv"></i> Export to CSV
+                </button>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card border-info">
+                <div class="card-header bg-info text-white">
+                    <h6 class="mb-0">
+                        <i class="fas fa-dollar-sign"></i> Total Inventory Value
+                    </h6>
+                </div>
+                <div class="card-body">
+                    <h4 class="text-primary mb-0" id="totalInventoryValue">$190.5M AUD</h4>
+                    <small class="text-muted">As of: July 24, 2025</small>
+                    <br>
+                    <small class="text-muted" id="selectedGroupInfo">All Product Groups</small>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Enhanced Chart -->
+    <div class="row">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0">Inventory Cost Analysis - 4-Line Financial View</h5>
+                </div>
+                <div class="card-body">
+                    <canvas id="simpleCostChart" width="400" height="200"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Get real inventory data from Django context
+    let inventoryDataByGroup = {};
+    let costChart;
+
+    // Load data from Django context (passed from review_scenario view)
+    try {
+        console.log('DEBUG: Attempting to load Django inventory data...');
+        
+        // First check what Django is actually providing
+        const rawDjangoData = '{{ inventory_chart_data|safe }}';
+        console.log('DEBUG: Raw Django template string:', rawDjangoData);
+        console.log('DEBUG: Raw Django string length:', rawDjangoData.length);
+        
+        const djangoInventoryData = {{ inventory_chart_data|safe }};
+        console.log('DEBUG: Parsed Django data:', djangoInventoryData);
+        console.log('DEBUG: Django data type:', typeof djangoInventoryData);
+        console.log('DEBUG: Is object?', typeof djangoInventoryData === 'object');
+        console.log('DEBUG: Is null?', djangoInventoryData === null);
+        console.log('DEBUG: Is empty object?', djangoInventoryData && Object.keys(djangoInventoryData).length === 0);
+        
+        if (djangoInventoryData && typeof djangoInventoryData === 'object' && Object.keys(djangoInventoryData).length > 0) {
+            inventoryDataByGroup = djangoInventoryData;
+            console.log('✅ Real inventory data loaded from Django context!');
+            console.log(`Total groups: ${Object.keys(inventoryDataByGroup).length}`);
+            console.log('Groups available:', Object.keys(inventoryDataByGroup));
+            
+            // Check All Product Groups data structure
+            const allGroupsData = inventoryDataByGroup['All Product Groups'];
+            if (allGroupsData) {
+                console.log('All Product Groups data:', {
+                    labels: allGroupsData.labels?.length || 0,
+                    revenue: allGroupsData.revenue?.length || 0,
+                    cogs: allGroupsData.cogs?.length || 0,
+                    production: allGroupsData.production?.length || 0,
+                    inventoryProjection: allGroupsData.inventoryProjection?.length || 0,
+                    actualInventory: allGroupsData.actualInventory?.length || 0,
+                    totalValue: allGroupsData.totalValue || 0
+                });
+                
+                // 🔍 DETAILED DJANGO DATA TESTING
+                console.log('🔍 TESTING DJANGO DATA LENGTHS:');
+                console.log(`📅 Django Labels (${allGroupsData.labels?.length || 0} months):`, allGroupsData.labels);
+                console.log(`💰 Django Revenue (${allGroupsData.revenue?.length || 0} values):`, allGroupsData.revenue);
+                console.log(`📊 Django COGS (${allGroupsData.cogs?.length || 0} values):`, allGroupsData.cogs);
+                console.log(`🏭 Django Production (${allGroupsData.production?.length || 0} values):`, allGroupsData.production);
+                console.log(`📈 Django Projection (${allGroupsData.inventoryProjection?.length || 0} values):`, allGroupsData.inventoryProjection);
+                
+                // Test Django data consistency
+                const djangoExpectedLength = allGroupsData.labels?.length || 0;
+                const djangoRevenueLength = allGroupsData.revenue?.length || 0;
+                const djangoCogsLength = allGroupsData.cogs?.length || 0;
+                const djangoProductionLength = allGroupsData.production?.length || 0;
+                const djangoProjectionLength = allGroupsData.inventoryProjection?.length || 0;
+                
+                console.log('🧪 DJANGO DATA CONSISTENCY CHECK:');
+                console.log(`Django expected length: ${djangoExpectedLength}`);
+                console.log(`Django revenue length: ${djangoRevenueLength} ${djangoRevenueLength === djangoExpectedLength ? '✅' : '❌'}`);
+                console.log(`Django COGS length: ${djangoCogsLength} ${djangoCogsLength === djangoExpectedLength ? '✅' : '❌'}`);
+                console.log(`Django production length: ${djangoProductionLength} ${djangoProductionLength === djangoExpectedLength ? '✅' : '❌'}`);
+                console.log(`Django projection length: ${djangoProjectionLength} ${djangoProjectionLength === djangoExpectedLength ? '✅' : '❌'}`);
+                
+                if (djangoExpectedLength === 24) {
+                    console.log('✅ DJANGO PASS: Real data has 24 months');
+                } else {
+                    console.log(`❌ DJANGO FAIL: Real data only has ${djangoExpectedLength} months, will fallback to static data`);
+                }
+                
+                // Show first few data points for verification
+                if (allGroupsData.revenue && allGroupsData.revenue.length > 0) {
+                    console.log('Sample revenue data:', allGroupsData.revenue.slice(0, 3));
+                }
+            } else {
+                console.warn('⚠️ No "All Product Groups" found in Django data');
+                console.warn('Available groups:', Object.keys(inventoryDataByGroup));
+                loadStaticData();
+            }
+        } else {
+            console.warn('⚠️ Django inventory data is empty, null, or invalid type');
+            console.warn('⚠️ Using fallback static data - no Django context data available');
+            loadStaticData();
+        }
+    } catch (error) {
+        console.error('❌ Error parsing Django inventory data:', error);
+        console.error('❌ Stack trace:', error.stack);
+        console.warn('⚠️ Loading static fallback data due to error');
+        loadStaticData();
+    }
+
+    // Fallback static data (your existing hard-coded data)
+    function loadStaticData() {
+        console.log('🔄 Loading static fallback data...');
+        
+        inventoryDataByGroup = {
+            'All Product Groups': {
+            labels: ['Jul 2025', 'Aug 2025', 'Sep 2025', 'Oct 2025', 'Nov 2025', 'Dec 2025', 'Jan 2026', 'Feb 2026', 'Mar 2026', 'Apr 2026', 'May 2026', 'Jun 2026', 'Jul 2026', 'Aug 2026', 'Sep 2026', 'Oct 2026', 'Nov 2026', 'Dec 2026', 'Jan 2027', 'Feb 2027', 'Mar 2027', 'Apr 2027', 'May 2027', 'Jun 2027'],
+            revenue: [15000000, 16500000, 14800000, 17200000, 16000000, 18500000, 19200000, 17800000, 20100000, 18900000, 21200000, 19600000, 20800000, 22100000, 19900000, 23200000, 21600000, 24500000, 25200000, 23800000, 26100000, 24900000, 27200000, 25600000],
+            cogs: [9500000, 10200000, 9100000, 10800000, 9900000, 11500000, 12000000, 11100000, 12600000, 11800000, 13300000, 12300000, 13000000, 13800000, 12500000, 14400000, 13600000, 15300000, 15800000, 14900000, 16400000, 15600000, 17100000, 16200000],
+            production: [7200000, 7800000, 6900000, 8100000, 7500000, 8700000, 9100000, 8400000, 9500000, 8800000, 10000000, 9300000, 9800000, 10500000, 9600000, 11200000, 10400000, 11800000, 12300000, 11500000, 12800000, 12000000, 13500000, 12700000],
+            inventoryProjection: [190500000, 186200000, 184100000, 188300000, 185900000, 192100000, 195000000, 191800000, 197500000, 194200000, 200000000, 196700000, 202500000, 198800000, 205000000, 201200000, 208500000, 204700000, 211000000, 207300000, 213500000, 209800000, 216000000, 212300000],
+            totalValue: 190500000
+        },
+        'Mining Fabrication': {
+            labels: ['Jul 2025', 'Aug 2025', 'Sep 2025', 'Oct 2025', 'Nov 2025', 'Dec 2025', 'Jan 2026', 'Feb 2026', 'Mar 2026', 'Apr 2026', 'May 2026', 'Jun 2026', 'Jul 2026', 'Aug 2026', 'Sep 2026', 'Oct 2026', 'Nov 2026', 'Dec 2026', 'Jan 2027', 'Feb 2027', 'Mar 2027', 'Apr 2027', 'May 2027', 'Jun 2027'],
+            revenue: [4500000, 4950000, 4440000, 5160000, 4800000, 5550000, 5760000, 5340000, 6030000, 5670000, 6360000, 5880000, 6240000, 6630000, 6100000, 7020000, 6480000, 7410000, 7680000, 7140000, 8070000, 7560000, 8460000, 7800000],
+            cogs: [2850000, 3060000, 2730000, 3240000, 2970000, 3450000, 3600000, 3330000, 3780000, 3510000, 3960000, 3690000, 3900000, 4170000, 3800000, 4440000, 4080000, 4710000, 4800000, 4470000, 5040000, 4740000, 5310000, 4950000],
+            production: [2160000, 2340000, 2070000, 2430000, 2250000, 2610000, 2730000, 2520000, 2850000, 2640000, 2970000, 2760000, 2940000, 3120000, 2880000, 3300000, 3060000, 3480000, 3600000, 3360000, 3720000, 3540000, 3840000, 3660000],
+            inventoryProjection: [45000000, 44000000, 43500000, 44200000, 43800000, 45100000, 46000000, 45200000, 46800000, 46000000, 47500000, 46700000, 48200000, 47400000, 48900000, 48100000, 49600000, 48800000, 50300000, 49500000, 51000000, 50200000, 51700000, 50900000],
+            totalValue: 45000000
+        },
+        'Fixed Plant': {
+            labels: ['Jul 2025', 'Aug 2025', 'Sep 2025', 'Oct 2025', 'Nov 2025', 'Dec 2025', 'Jan 2026', 'Feb 2026', 'Mar 2026', 'Apr 2026', 'May 2026', 'Jun 2026', 'Jul 2026', 'Aug 2026', 'Sep 2026', 'Oct 2026', 'Nov 2026', 'Dec 2026', 'Jan 2027', 'Feb 2027', 'Mar 2027', 'Apr 2027', 'May 2027', 'Jun 2027'],
+            revenue: [3600000, 3960000, 3552000, 4128000, 3840000, 4440000, 4608000, 4272000, 4824000, 4488000, 5040000, 4680000, 4968000, 5292000, 4828000, 5580000, 5148000, 5868000, 6084000, 5652000, 6372000, 5928000, 6660000, 6120000],
+            cogs: [2280000, 2448000, 2184000, 2592000, 2376000, 2760000, 2880000, 2664000, 3024000, 2808000, 3168000, 2952000, 3126000, 3330000, 3036000, 3510000, 3234000, 3693000, 3828000, 3558000, 4014000, 3730500, 4194000, 3852000],
+            production: [1728000, 1872000, 1656000, 1944000, 1800000, 2088000, 2184000, 2016000, 2280000, 2112000, 2376000, 2208000, 2346000, 2499000, 2280000, 2628000, 2430000, 2769000, 2871000, 2667000, 3010500, 2797000, 3145500, 2889000],
+            inventoryProjection: [42000000, 41200000, 40800000, 41500000, 41100000, 42200000, 43000000, 42300000, 43600000, 42900000, 44200000, 43500000, 44600000, 43900000, 45200000, 44500000, 45800000, 45100000, 46400000, 45700000, 47000000, 46300000, 47600000, 46900000],
+            totalValue: 42000000
+        },
+        'GET': {
+            labels: ['Jul 2025', 'Aug 2025', 'Sep 2025', 'Oct 2025', 'Nov 2025', 'Dec 2025', 'Jan 2026', 'Feb 2026', 'Mar 2026', 'Apr 2026', 'May 2026', 'Jun 2026', 'Jul 2026', 'Aug 2026', 'Sep 2026', 'Oct 2026', 'Nov 2026', 'Dec 2026', 'Jan 2027', 'Feb 2027', 'Mar 2027', 'Apr 2027', 'May 2027', 'Jun 2027'],
+            revenue: [2800000, 3080000, 2764000, 3220000, 2992000, 3458000, 3584000, 3322000, 3752000, 3490000, 3920000, 3640000, 3864000, 4116000, 3756000, 4340000, 4004000, 4564000, 4736000, 4398000, 4956000, 4606000, 5176000, 4760000],
+            cogs: [1775000, 1904000, 1696500, 1975000, 1813000, 2097500, 2185000, 2019000, 2284000, 2118500, 2386000, 2218000, 2355000, 2510000, 2288500, 2645000, 2441000, 2783000, 2887500, 2681000, 3021000, 2805000, 3157500, 2904000],
+            production: [1344000, 1456000, 1286400, 1497600, 1388800, 1606400, 1670400, 1545600, 1747200, 1620800, 1824000, 1696000, 1804800, 1921600, 1750400, 2022400, 1867200, 2131200, 2212800, 2054400, 2316000, 2152800, 2428800, 2227200],
+            inventoryProjection: [28000000, 27400000, 27100000, 27600000, 27300000, 28100000, 28700000, 28200000, 29000000, 28500000, 29300000, 28800000, 29600000, 29100000, 29900000, 29400000, 30200000, 29700000, 30500000, 30000000, 30800000, 30300000, 31100000, 30600000],
+            totalValue: 28000000
+        },
+        'Mill Liners': {
+            labels: ['Jul 2025', 'Aug 2025', 'Sep 2025', 'Oct 2025', 'Nov 2025', 'Dec 2025', 'Jan 2026', 'Feb 2026', 'Mar 2026', 'Apr 2026', 'May 2026', 'Jun 2026', 'Jul 2026', 'Aug 2026', 'Sep 2026', 'Oct 2026', 'Nov 2026', 'Dec 2026', 'Jan 2027', 'Feb 2027', 'Mar 2027', 'Apr 2027', 'May 2027', 'Jun 2027'],
+            revenue: [2100000, 2310000, 2073000, 2415000, 2244000, 2594100, 2692000, 2495000, 2818500, 2620000, 2948000, 2738000, 2910000, 3101400, 2830500, 3265500, 3015600, 3457800, 3586500, 3328000, 3758100, 3492000, 3928200, 3610000],
+            cogs: [1330000, 1428000, 1273500, 1482500, 1361000, 1573500, 1641000, 1518500, 1716000, 1593000, 1794500, 1667500, 1773000, 1890750, 1720750, 1986750, 1834500, 2104750, 2185500, 2026000, 2288750, 2127000, 2394750, 2202000],
+            production: [1008000, 1092000, 964800, 1123200, 1041600, 1204800, 1252800, 1159200, 1310400, 1216800, 1369600, 1273600, 1356000, 1449000, 1320000, 1524000, 1407000, 1614000, 1675200, 1552000, 1752000, 1629000, 1834800, 1689600],
+            inventoryProjection: [33000000, 32300000, 31900000, 32400000, 32100000, 33000000, 33600000, 33100000, 34200000, 33700000, 34800000, 34300000, 35400000, 34900000, 36000000, 35500000, 36600000, 36100000, 37200000, 36700000, 37800000, 37300000, 38400000, 37900000],
+            totalValue: 33000000
+        },
+        'Crawler Systems': {
+            labels: ['Jul 2025', 'Aug 2025', 'Sep 2025', 'Oct 2025', 'Nov 2025', 'Dec 2025', 'Jan 2026', 'Feb 2026', 'Mar 2026', 'Apr 2026', 'May 2026', 'Jun 2026', 'Jul 2026', 'Aug 2026', 'Sep 2026', 'Oct 2026', 'Nov 2026', 'Dec 2026', 'Jan 2027', 'Feb 2027', 'Mar 2027', 'Apr 2027', 'May 2027', 'Jun 2027'],
+            revenue: [1350000, 1485000, 1333500, 1553400, 1443600, 1668360, 1732800, 1605600, 1814400, 1686000, 1896000, 1761600, 1871400, 1994940, 1819260, 2103380, 1944480, 2225400, 2309100, 2141700, 2418000, 2247600, 2529000, 2325600],
+            cogs: [855000, 918000, 818700, 953100, 875700, 1013100, 1054500, 976650, 1103700, 1024050, 1154100, 1072650, 1139550, 1216950, 1108275, 1283125, 1186650, 1357725, 1408725, 1303275, 1473750, 1367250, 1540575, 1418700],
+            production: [648000, 702000, 619200, 720720, 669600, 774720, 805248, 745200, 842400, 781920, 881280, 818880, 870912, 929340, 848352, 981504, 907200, 1044336, 1085760, 1005840, 1135800, 1054080, 1188000, 1096896],
+            inventoryProjection: [27000000, 26400000, 26100000, 26500000, 26200000, 26900000, 27400000, 27000000, 27800000, 27400000, 28200000, 27800000, 28600000, 28200000, 29000000, 28600000, 29400000, 29000000, 29800000, 29400000, 30200000, 29800000, 30600000, 30200000],
+            totalValue: 27000000
+        },
+        'Rail': {
+            labels: ['Jul 2025', 'Aug 2025', 'Sep 2025', 'Oct 2025', 'Nov 2025', 'Dec 2025', 'Jan 2026', 'Feb 2026', 'Mar 2026', 'Apr 2026', 'May 2026', 'Jun 2026', 'Jul 2026', 'Aug 2026', 'Sep 2026', 'Oct 2026', 'Nov 2026', 'Dec 2026', 'Jan 2027', 'Feb 2027', 'Mar 2027', 'Apr 2027', 'May 2027', 'Jun 2027'],
+            revenue: [1250000, 1375000, 1235000, 1438000, 1336000, 1544400, 1603200, 1485000, 1678800, 1560000, 1755600, 1630000, 1731200, 1845600, 1685000, 1948000, 1800000, 2064000, 2140800, 1984000, 2241600, 2083200, 2346000, 2162400],
+            cogs: [792500, 850000, 758750, 883700, 812800, 939650, 977950, 905250, 1023550, 950400, 1071000, 994500, 1055750, 1126350, 1028125, 1188500, 1098000, 1259000, 1306000, 1210000, 1366500, 1270750, 1431000, 1319000],
+            production: [600000, 650000, 573000, 667800, 620400, 717300, 745200, 690000, 780000, 724000, 816000, 757200, 805200, 858240, 792000, 920000, 852000, 979200, 1016000, 942000, 1064000, 988800, 1113600, 1031040],
+            inventoryProjection: [25000000, 24500000, 24200000, 24600000, 24300000, 25000000, 25500000, 25100000, 25800000, 25400000, 26100000, 25700000, 26400000, 26000000, 26700000, 26300000, 27000000, 26600000, 27300000, 26900000, 27600000, 27200000, 27900000, 27500000],
+            totalValue: 25000000
+        }
+        };
+        
+        // 🔍 TESTING STATIC DATA LENGTHS
+        const staticAllGroups = inventoryDataByGroup['All Product Groups'];
+        console.log('🔍 TESTING STATIC FALLBACK DATA LENGTHS:');
+        console.log(`📅 Static Labels (${staticAllGroups.labels?.length || 0} months):`, staticAllGroups.labels);
+        console.log(`💰 Static Revenue (${staticAllGroups.revenue?.length || 0} values):`, staticAllGroups.revenue);
+        console.log(`📊 Static COGS (${staticAllGroups.cogs?.length || 0} values):`, staticAllGroups.cogs);
+        console.log(`🏭 Static Production (${staticAllGroups.production?.length || 0} values):`, staticAllGroups.production);
+        console.log(`📈 Static Projection (${staticAllGroups.inventoryProjection?.length || 0} values):`, staticAllGroups.inventoryProjection);
+        
+        // Test static data consistency
+        const staticExpectedLength = staticAllGroups.labels?.length || 0;
+        const staticRevenueLength = staticAllGroups.revenue?.length || 0;
+        const staticCogsLength = staticAllGroups.cogs?.length || 0;
+        const staticProductionLength = staticAllGroups.production?.length || 0;
+        const staticProjectionLength = staticAllGroups.inventoryProjection?.length || 0;
+        
+        console.log('🧪 STATIC DATA CONSISTENCY CHECK:');
+        console.log(`Static expected length: ${staticExpectedLength}`);
+        console.log(`Static revenue length: ${staticRevenueLength} ${staticRevenueLength === staticExpectedLength ? '✅' : '❌'}`);
+        console.log(`Static COGS length: ${staticCogsLength} ${staticCogsLength === staticExpectedLength ? '✅' : '❌'}`);
+        console.log(`Static production length: ${staticProductionLength} ${staticProductionLength === staticExpectedLength ? '✅' : '❌'}`);
+        console.log(`Static projection length: ${staticProjectionLength} ${staticProjectionLength === staticExpectedLength ? '✅' : '❌'}`);
+        
+        if (staticExpectedLength === 24) {
+            console.log('✅ STATIC PASS: Fallback data has 24 months');
+        } else {
+            console.log(`❌ STATIC FAIL: Fallback data only has ${staticExpectedLength} months`);
+        }
+    }
+
+    // Initialize chart with all groups data
+    function initializeChart() {
+        console.log('DEBUG: Initializing chart...');
+        console.log('DEBUG: inventoryDataByGroup keys:', Object.keys(inventoryDataByGroup));
+        
+        const ctx = document.getElementById('simpleCostChart');
+        if (!ctx) {
+            console.error('❌ Chart canvas element not found!');
+            return;
+        }
+        
+        const currentData = inventoryDataByGroup['All Product Groups'];
+        if (!currentData) {
+            console.error('❌ No "All Product Groups" data found!');
+            console.error('Available groups:', Object.keys(inventoryDataByGroup));
+            return;
+        }
+        
+        console.log('DEBUG: Current data structure:', {
+            labels: currentData.labels?.length || 0,
+            revenue: currentData.revenue?.length || 0,
+            cogs: currentData.cogs?.length || 0,
+            production: currentData.production?.length || 0,
+            inventoryProjection: currentData.inventoryProjection?.length || 0,
+            actualInventory: currentData.actualInventory?.length || 0,
+            totalValue: currentData.totalValue || 0
+        });
+        
+        // 🔍 DETAILED DATA LENGTH TESTING
+        console.log('🔍 TESTING DATA LENGTHS FOR CHART:');
+        console.log(`📅 Labels (${currentData.labels?.length || 0} months):`, currentData.labels);
+        console.log(`💰 Revenue (${currentData.revenue?.length || 0} values):`, currentData.revenue);
+        console.log(`📊 COGS (${currentData.cogs?.length || 0} values):`, currentData.cogs);
+        console.log(`🏭 Production (${currentData.production?.length || 0} values):`, currentData.production);
+        console.log(`📈 Inventory Projection (${currentData.inventoryProjection?.length || 0} values):`, currentData.inventoryProjection);
+        
+        // Test if all arrays have the same length
+        const expectedLength = currentData.labels?.length || 0;
+        const revenueLength = currentData.revenue?.length || 0;
+        const cogsLength = currentData.cogs?.length || 0;
+        const productionLength = currentData.production?.length || 0;
+        const projectionLength = currentData.inventoryProjection?.length || 0;
+        
+        console.log('🧪 DATA CONSISTENCY CHECK:');
+        console.log(`Expected length (from labels): ${expectedLength}`);
+        console.log(`Revenue length: ${revenueLength} ${revenueLength === expectedLength ? '✅' : '❌'}`);
+        console.log(`COGS length: ${cogsLength} ${cogsLength === expectedLength ? '✅' : '❌'}`);
+        console.log(`Production length: ${productionLength} ${productionLength === expectedLength ? '✅' : '❌'}`);
+        console.log(`Projection length: ${projectionLength} ${projectionLength === expectedLength ? '✅' : '❌'}`);
+        
+        if (expectedLength === 24) {
+            console.log('✅ PASS: Chart should display 24 months of data');
+        } else {
+            console.log(`❌ FAIL: Chart will only display ${expectedLength} months instead of expected 24 months`);
+        }
+        
+        if (!currentData.labels || currentData.labels.length === 0) {
+            console.error('❌ No labels found in current data!');
+            return;
+        }
+        
+        try {
+            costChart = new Chart(ctx.getContext('2d'), {
+                type: 'line',
+                data: {
+                    labels: currentData.labels,
+                    datasets: [
+                        {
+                            label: 'Revenue (AUD)',
+                            data: currentData.revenue,
+                            borderColor: '#28a745',
+                            backgroundColor: 'rgba(40, 167, 69, 0.1)',
+                            tension: 0.1,
+                            fill: false
+                        },
+                        {
+                            label: 'COGS (AUD)',
+                            data: currentData.cogs,
+                            borderColor: '#dc3545',
+                            backgroundColor: 'rgba(220, 53, 69, 0.1)',
+                            tension: 0.1,
+                            fill: false
+                        },
+                        {
+                            label: 'Production Value (AUD)',
+                            data: currentData.production,
+                            borderColor: '#007bff',
+                            backgroundColor: 'rgba(0, 123, 255, 0.1)',
+                            tension: 0.1,
+                            fill: false
+                        },
+                        {
+                            label: 'Inventory Projection (AUD)',
+                            data: currentData.inventoryProjection,
+                            borderColor: '#ffc107',
+                            backgroundColor: 'rgba(255, 193, 7, 0.1)',
+                            tension: 0.1,
+                            fill: false
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    plugins: {
+                        legend: { 
+                            display: true, 
+                            position: 'top' 
+                        },
+                        title: {
+                            display: true,
+                            text: 'Inventory Cost Analysis - 4-Line Financial View (Next 24 Months - Jul 2025 to Jun 2027)'
+                        }
+                    },
+                    scales: {
+                        x: { 
+                            title: { display: true, text: 'Month' }
+                        },
+                        y: { 
+                            title: { display: true, text: 'Value (AUD)' },
+                            beginAtZero: true,
+                            ticks: {
+                                callback: function(value) {
+                                    if (value >= 1000000) {
+                                        return '$' + (value / 1000000).toFixed(1) + 'M';
+                                    } else if (value >= 1000) {
+                                        return '$' + (value / 1000).toFixed(0) + 'K';
+                                    }
+                                    return '$' + value.toFixed(0);
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+            console.log('✅ Enhanced Inventory Cost Analysis Chart loaded successfully!');
+            
+        } catch (error) {
+            console.error('❌ Error creating chart:', error);
+            console.error('Error stack:', error.stack);
+        }
+    }
+
+    // Product group filter functionality
+    const filterElement = document.getElementById('productGroupFilter');
+    if (filterElement) {
+        filterElement.addEventListener('change', function(e) {
+            const selectedGroup = e.target.value || 'All Product Groups';
+            const data = inventoryDataByGroup[selectedGroup];
+            
+            if (data && costChart) {
+                // Update chart data
+                costChart.data.datasets[0].data = data.revenue;
+                costChart.data.datasets[1].data = data.cogs;
+                costChart.data.datasets[2].data = data.production;
+                costChart.data.datasets[3].data = data.inventoryProjection;
+                costChart.update();
+                
+                // Update total inventory value display
+                const totalValueElement = document.getElementById('totalInventoryValue');
+                const groupInfoElement = document.getElementById('selectedGroupInfo');
+                
+                if (totalValueElement) {
+                    if (data.totalValue >= 1000000) {
+                        totalValueElement.textContent = `$${(data.totalValue / 1000000).toFixed(1)}M AUD`;
+                    } else if (data.totalValue >= 1000) {
+                        totalValueElement.textContent = `$${(data.totalValue / 1000).toFixed(0)}K AUD`;
+                    } else {
+                        totalValueElement.textContent = `$${data.totalValue.toFixed(0)} AUD`;
+                    }
+                }
+            
+            if (groupInfoElement) {
+                groupInfoElement.textContent = selectedGroup;
+            }
+            
+            console.log(`✅ Chart updated for group: ${selectedGroup}`);
+        }
+        });
+    } else {
+        console.warn('⚠️ Product group filter element not found');
+    }
+
+    // Export functionality - Real CSV/Excel export with parent product group details
+    window.exportInventoryData = function(format) {
+        const filterElement = document.getElementById('productGroupFilter');
+        const selectedGroup = filterElement ? filterElement.value || 'All Product Groups' : 'All Product Groups';
+        
+        console.log(`Exporting ${selectedGroup} inventory data to ${format.toUpperCase()}...`);
+        
+        try {
+            // Prepare data for export
+            let exportData = [];
+            
+            if (selectedGroup === 'All Product Groups' || selectedGroup === '') {
+                // Export all groups with granular details
+                exportData = prepareAllGroupsExportData();
+            } else {
+                // Export specific group data
+                exportData = prepareGroupExportData(selectedGroup);
+            }
+            
+            if (exportData.length === 0) {
+                alert('No data available for export');
+                return;
+            }
+            
+            // Generate and download file
+            if (format.toLowerCase() === 'csv') {
+                downloadCSV(exportData, `inventory_analysis_${selectedGroup.replace(/\s+/g, '_')}_${getCurrentDateString()}.csv`);
+            } else if (format.toLowerCase() === 'excel') {
+                // For Excel, use CSV format for now (can be enhanced with a library like xlsx)
+                downloadCSV(exportData, `inventory_analysis_${selectedGroup.replace(/\s+/g, '_')}_${getCurrentDateString()}.csv`);
+            }
+            
+        } catch (error) {
+            console.error('Export error:', error);
+            alert('Error occurred during export. Please try again.');
+        }
+    };
+    
+    // Prepare export data for all groups with parent product group granularity
+    function prepareAllGroupsExportData() {
+        const exportRows = [];
+        
+        // Header row
+        exportRows.push([
+            'Parent Product Group',
+            'Month',
+            'Revenue AUD',
+            'COGS AUD', 
+            'Production Value AUD',
+            'Inventory Projection AUD',
+            'Net Inventory Value AUD'
+        ]);
+        
+        // Process each group
+        Object.keys(inventoryDataByGroup).forEach(groupName => {
+            const groupData = inventoryDataByGroup[groupName];
+            
+            if (groupData && groupData.labels) {
+                groupData.labels.forEach((month, index) => {
+                    const revenue = groupData.revenue ? groupData.revenue[index] || 0 : 0;
+                    const cogs = groupData.cogs ? groupData.cogs[index] || 0 : 0;
+                    const production = groupData.production ? groupData.production[index] || 0 : 0;
+                    const inventoryProjection = groupData.inventoryProjection ? groupData.inventoryProjection[index] || 0 : 0;
+                    const netValue = inventoryProjection; // Net inventory value
+                    
+                    exportRows.push([
+                        groupName,
+                        month,
+                        revenue.toFixed(2),
+                        cogs.toFixed(2),
+                        production.toFixed(2),
+                        inventoryProjection.toFixed(2),
+                        netValue.toFixed(2)
+                    ]);
+                });
+            }
+        });
+        
+        return exportRows;
+    }
+    
+    // Prepare export data for specific group
+    function prepareGroupExportData(groupName) {
+        const exportRows = [];
+        const groupData = inventoryDataByGroup[groupName];
+        
+        if (!groupData || !groupData.labels) {
+            return [];
+        }
+        
+        // Header row
+        exportRows.push([
+            'Month',
+            'Revenue AUD',
+            'COGS AUD',
+            'Production Value AUD', 
+            'Inventory Projection AUD',
+            'Net Inventory Value AUD'
+        ]);
+        
+        // Data rows
+        groupData.labels.forEach((month, index) => {
+            const revenue = groupData.revenue ? groupData.revenue[index] || 0 : 0;
+            const cogs = groupData.cogs ? groupData.cogs[index] || 0 : 0;
+            const production = groupData.production ? groupData.production[index] || 0 : 0;
+            const inventoryProjection = groupData.inventoryProjection ? groupData.inventoryProjection[index] || 0 : 0;
+            const netValue = inventoryProjection;
+            
+            exportRows.push([
+                month,
+                revenue.toFixed(2),
+                cogs.toFixed(2),
+                production.toFixed(2),
+                inventoryProjection.toFixed(2),
+                netValue.toFixed(2)
+            ]);
+        });
+        
+        return exportRows;
+    }
+    
+    // Download CSV file
+    function downloadCSV(data, filename) {
+        const csvContent = data.map(row => 
+            row.map(cell => {
+                // Escape quotes and wrap in quotes if contains comma or quote
+                const cellStr = String(cell);
+                if (cellStr.includes(',') || cellStr.includes('"') || cellStr.includes('\n')) {
+                    return `"${cellStr.replace(/"/g, '""')}"`;
+                }
+                return cellStr;
+            }).join(',')
+        ).join('\n');
+        
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        const link = document.createElement('a');
+        
+        if (link.download !== undefined) {
+            const url = URL.createObjectURL(blob);
+            link.setAttribute('href', url);
+            link.setAttribute('download', filename);
+            link.style.visibility = 'hidden';
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            
+            console.log(`✅ Successfully exported ${filename}`);
+            
+            // Show success message
+            const exportSuccessMsg = document.createElement('div');
+            exportSuccessMsg.innerHTML = `
+                <div class="alert alert-success alert-dismissible fade show" role="alert" style="position: fixed; top: 20px; right: 20px; z-index: 9999;">
+                    <strong>Export Successful!</strong> Downloaded ${filename}
+                    <button type="button" class="close" data-dismiss="alert" aria-label="Close">
+                        <span aria-hidden="true">&times;</span>
+                    </button>
+                </div>
+            `;
+            document.body.appendChild(exportSuccessMsg);
+            
+            // Auto-hide after 3 seconds
+            setTimeout(() => {
+                if (exportSuccessMsg.parentNode) {
+                    exportSuccessMsg.parentNode.removeChild(exportSuccessMsg);
+                }
+            }, 3000);
+        }
+    }
+    
+    // Get current date string for filename
+    function getCurrentDateString() {
+        const now = new Date();
+        const year = now.getFullYear();
+        const month = String(now.getMonth() + 1).padStart(2, '0');
+        const day = String(now.getDate()).padStart(2, '0');
+        const hour = String(now.getHours()).padStart(2, '0');
+        const minute = String(now.getMinutes()).padStart(2, '0');
+        return `${year}${month}${day}_${hour}${minute}`;
+    }
+
+    // Initialize the chart
+    console.log('DEBUG: About to initialize chart...');
+    console.log('DEBUG: Chart.js available:', typeof Chart !== 'undefined');
+    console.log('DEBUG: Canvas element exists:', !!document.getElementById('simpleCostChart'));
+    console.log('DEBUG: inventoryDataByGroup keys:', Object.keys(inventoryDataByGroup));
+    
+    // Force fallback data if real data failed
+    if (!inventoryDataByGroup || Object.keys(inventoryDataByGroup).length === 0) {
+        console.warn('⚠️ inventoryDataByGroup is empty, loading static fallback...');
+        loadStaticData();
+    }
+    
+    initializeChart();
+    
+    // 🎯 FINAL DATA SUMMARY FOR TESTING
+    console.log('🎯 FINAL SUMMARY - Data being used by chart:');
+    const finalData = inventoryDataByGroup['All Product Groups'];
+    if (finalData) {
+        console.log('📊 CHART WILL DISPLAY:');
+        console.log(`  • ${finalData.labels?.length || 0} months of labels`);
+        console.log(`  • ${finalData.revenue?.length || 0} revenue data points`);
+        console.log(`  • ${finalData.cogs?.length || 0} COGS data points`);
+        console.log(`  • ${finalData.production?.length || 0} production data points`);
+        console.log(`  • ${finalData.inventoryProjection?.length || 0} projection data points`);
+        console.log('📅 Month range:', finalData.labels?.[0], 'to', finalData.labels?.[finalData.labels?.length - 1]);
+        
+        if (finalData.labels?.length === 24) {
+            console.log('🎉 SUCCESS: Chart will display 24 months of data as expected!');
+        } else {
+            console.log(`⚠️  WARNING: Chart will only display ${finalData.labels?.length || 0} months instead of 24`);
+        }
+    } else {
+        console.log('❌ ERROR: No final data available for chart!');
+    }
+});
+</script>

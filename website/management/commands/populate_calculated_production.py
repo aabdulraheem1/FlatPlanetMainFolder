@@ -17,6 +17,7 @@ from website.models import (
     AggregatedForecast
 )
 import pandas as pd
+import polars as pl
 
 class Command(BaseCommand):
     help = "Populate data in CalculatedProductionModel from multiple sources (replenishment, fixed plant, revenue forecast)"
@@ -85,19 +86,21 @@ class Command(BaseCommand):
     def process_replenishment_data(self, scenario, inventory_threshold_date, inventory_start_date, calculated_productions):
         """Process regular replenishment data - CORRECTED production calculation"""
         
-        # Load replenishments in bulk
-        replenishments = pd.DataFrame(list(
+        # Load replenishments in bulk using pandas first for better schema handling
+        replenishments_data = list(
             CalcualtedReplenishmentModel.objects.filter(version=scenario)
             .values('Product', 'Site', 'ShippingDate', 'ReplenishmentQty')
-        ))
+        )
         
-        if replenishments.empty:
+        if not replenishments_data:
             self.stdout.write("No replenishment records found")
             return
+            
+        replenishments = pl.from_pandas(pd.DataFrame(replenishments_data))
 
         # Load product and site data
-        product_df = pd.DataFrame(list(MasterDataProductModel.objects.all().values('Product', 'DressMass', 'ProductGroup', 'ParentProductGroupDescription')))
-        site_df = pd.DataFrame(list(MasterDataPlantModel.objects.all().values('SiteName')))
+        product_df = pl.from_pandas(pd.DataFrame(list(MasterDataProductModel.objects.all().values('Product', 'DressMass', 'ProductGroup', 'ParentProductGroupDescription'))))
+        site_df = pl.from_pandas(pd.DataFrame(list(MasterDataPlantModel.objects.all().values('SiteName'))))
 
         # Load cast to despatch days
         cast_to_despatch = {
@@ -106,42 +109,40 @@ class Command(BaseCommand):
         }
 
         # Load cost data (keeping your existing cost logic)
-        cost_df = pd.DataFrame(list(
+        cost_df = pl.from_pandas(pd.DataFrame(list(
             ProductSiteCostModel.objects.filter(version=scenario)
             .values('version_id', 'product_id', 'site_id', 'cost_aud', 'revenue_cost_aud')
-        ))
+        )))
         
-        inventory_df = pd.DataFrame(list(
+        inventory_df = pl.from_pandas(pd.DataFrame(list(
             MasterDataInventory.objects.filter(version=scenario)
             .values('version_id', 'product', 'site_id', 'cost_aud')
-        ))
+        )))
 
         # Build cost lookup dicts
-        cost_lookup = {
-            str(row['product_id']): row['cost_aud']
-            for _, row in cost_df.iterrows()
-            if pd.notnull(row['cost_aud'])
-        }
-        inv_cost_lookup = {
-            str(row['product']): row['cost_aud']
-            for _, row in inventory_df.iterrows()
-            if pd.notnull(row['cost_aud'])
-        }
-        revenue_cost_lookup = {
-            str(row['product_id']): row['revenue_cost_aud']
-            for _, row in cost_df.iterrows()
-            if pd.notnull(row['revenue_cost_aud'])
-        }
+        cost_lookup = {}
+        for row in cost_df.filter(pl.col('cost_aud').is_not_null()).iter_rows(named=True):
+            cost_lookup[str(row['product_id'])] = row['cost_aud']
+            
+        inv_cost_lookup = {}
+        for row in inventory_df.filter(pl.col('cost_aud').is_not_null()).iter_rows(named=True):
+            inv_cost_lookup[str(row['product'])] = row['cost_aud']
+            
+        revenue_cost_lookup = {}
+        for row in cost_df.filter(pl.col('revenue_cost_aud').is_not_null()).iter_rows(named=True):
+            revenue_cost_lookup[str(row['product_id'])] = row['revenue_cost_aud']
 
-        product_map = {row['Product']: row for _, row in product_df.iterrows()}
-        site_map = {row['SiteName']: row for _, row in site_df.iterrows()}
+        product_map = {row['Product']: row for row in product_df.iter_rows(named=True)}
+        site_map = {row['SiteName']: row for row in site_df.iter_rows(named=True)}
 
         # Load production site inventory (opening balances)
         production_site_inventory = {}
-        for _, row in pd.DataFrame(list(
+        inventory_data = pl.from_pandas(pd.DataFrame(list(
             MasterDataInventory.objects.filter(version=scenario)
             .values('product', 'site_id', 'onhandstock_qty', 'intransitstock_qty', 'wip_stock_qty')
-        )).iterrows():
+        )))
+        
+        for row in inventory_data.iter_rows(named=True):
             key = (str(row['product']), str(row['site_id']))
             production_site_inventory[key] = {
                 'onhand': row['onhandstock_qty'] or 0,
@@ -149,24 +150,31 @@ class Command(BaseCommand):
                 'wip': row['wip_stock_qty'] or 0
             }
 
-        print(f"DEBUG: Loaded production site inventory for {len(production_site_inventory)} product-site combinations")
-
-        # Process each replenishment record individually, but aggregate by date
-        replenishments['pouring_date'] = replenishments.apply(lambda row: 
-            row['ShippingDate'] - timedelta(days=cast_to_despatch.get((row['Site'], scenario.version), 0)), axis=1)
+        replenishments = replenishments.with_columns([
+            pl.col('ShippingDate').map_elements(
+                lambda shipping_date: shipping_date - timedelta(
+                    days=cast_to_despatch.get((replenishments.filter(pl.col('ShippingDate') == shipping_date)['Site'][0], scenario.version), 0)
+                ), return_dtype=pl.Date
+            ).alias('pouring_date')
+        ])
         
         # Apply inventory date logic
         if inventory_threshold_date and inventory_start_date:
-            replenishments['pouring_date'] = replenishments['pouring_date'].apply(
-                lambda x: inventory_start_date if x < inventory_threshold_date else x
-            )
+            replenishments = replenishments.with_columns([
+                pl.col('pouring_date').map_elements(
+                    lambda x: inventory_start_date if x < inventory_threshold_date else x,
+                    return_dtype=pl.Date
+                )
+            ])
 
         # Group by product, site, and pouring_date to handle multiple shipments on same day
-        daily_replenishments = replenishments.groupby(['Product', 'Site', 'pouring_date'], as_index=False)['ReplenishmentQty'].sum()
+        daily_replenishments = replenishments.group_by(['Product', 'Site', 'pouring_date']).agg([
+            pl.col('ReplenishmentQty').sum()
+        ])
         
         # Group by product-site and sort by pouring date
         replenishment_by_product_site = {}
-        for _, row in daily_replenishments.iterrows():
+        for row in daily_replenishments.iter_rows(named=True):
             product = row['Product']
             site = row['Site']
             pouring_date = row['pouring_date']
@@ -202,8 +210,6 @@ class Command(BaseCommand):
             # Start with opening balance - this will be consumed first
             remaining_stock = opening_inventory['onhand'] + opening_inventory['intransit'] + opening_inventory['wip']
             
-            print(f"DEBUG: Processing {product} at {site} - Opening balance: {remaining_stock}")
-            
             for replenishment in replenishments_list:
                 pouring_date = replenishment['pouring_date']
                 replenishment_qty = replenishment['replenishment_qty']
@@ -218,31 +224,14 @@ class Command(BaseCommand):
                         stock_used = production_quantity
                         production_quantity = 0
                         remaining_stock -= stock_used
-                        print(f"DEBUG: {product} at {site} on {pouring_date}:")
-                        print(f"DEBUG: - Stock before: {remaining_stock + stock_used}")
-                        print(f"DEBUG: - Replenishment: {replenishment_qty}")
-                        print(f"DEBUG: - Stock used: {stock_used}")
-                        print(f"DEBUG: - Production: {production_quantity}")
-                        print(f"DEBUG: - Remaining stock: {remaining_stock}")
                     else:
                         # Use all remaining stock, still need some production
                         stock_used = remaining_stock
                         production_quantity -= remaining_stock
                         remaining_stock = 0
-                        print(f"DEBUG: {product} at {site} on {pouring_date}:")
-                        print(f"DEBUG: - Stock before: {stock_used}")
-                        print(f"DEBUG: - Replenishment: {replenishment_qty}")
-                        print(f"DEBUG: - Stock used: {stock_used}")
-                        print(f"DEBUG: - Production: {production_quantity}")
-                        print(f"DEBUG: - Remaining stock: {remaining_stock}")
                 else:
                     # No stock left, need full production
-                    print(f"DEBUG: {product} at {site} on {pouring_date}:")
-                    print(f"DEBUG: - Stock before: 0")
-                    print(f"DEBUG: - Replenishment: {replenishment_qty}")
-                    print(f"DEBUG: - Stock used: 0")
-                    print(f"DEBUG: - Production: {production_quantity}")
-                    print(f"DEBUG: - Remaining stock: 0")
+                    pass
 
                 # Calculate derived values
                 dress_mass = product_row['DressMass'] or 0
@@ -269,7 +258,6 @@ class Command(BaseCommand):
                     parent_product_group=product_row.get('ParentProductGroupDescription', ''),
                     cogs_aud=cogs_aud,
                 ))
-                print(f"DEBUG: - Created production record: {production_quantity} units")
 
         self.stdout.write(f"Processed {len(daily_replenishments)} daily replenishment records")
 

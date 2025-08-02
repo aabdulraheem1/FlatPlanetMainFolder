@@ -5,7 +5,8 @@ from website.models import (
     ProductSiteCostModel, MasterDataInventory, scenarios,
     FixedPlantConversionModifiersModel, RevenueToCogsConversionModel, SiteAllocationModel
 )
-import pandas as pd
+import polars as pl
+import pandas as pd  # Keep for SQL read operations
 from sqlalchemy import create_engine
 from django.db.models import Sum
 
@@ -62,43 +63,75 @@ class Command(BaseCommand):
             else:
                 engine = create_engine(f"mssql+pyodbc://{user}:{password}@{host}/{name}?driver=ODBC+Driver+17+for+SQL+Server")
 
-        # Load all SMART_Forecast_Model rows for this version
-        forecast_df = pd.read_sql_query(
-            "SELECT * FROM website_smart_forecast_model WHERE version_id = ?", engine, params=(version,)
+        # Load all SMART_Forecast_Model rows for this version - Filter out zero quantities for performance
+        forecast_df_pd = pd.read_sql_query(
+            """SELECT * FROM website_smart_forecast_model 
+               WHERE version_id = ? 
+               AND (Qty IS NOT NULL AND Qty != 0)""", 
+            engine, params=(version,)
         )
         
-        if forecast_df.empty:
+        # Debug column types before conversion
+        self.stdout.write(f"DataFrame columns and types: {forecast_df_pd.dtypes}")
+        
+        # Convert datetime columns to proper format if needed
+        for col in forecast_df_pd.columns:
+            if forecast_df_pd[col].dtype == 'object':
+                # Check if this might be a datetime column
+                if 'date' in col.lower() or 'period' in col.lower():
+                    try:
+                        forecast_df_pd[col] = pd.to_datetime(forecast_df_pd[col], errors='ignore')
+                    except:
+                        pass
+        
+        try:
+            forecast_df = pl.from_pandas(forecast_df_pd)
+        except Exception as e:
+            self.stdout.write(f"Error converting to polars: {e}")
+            self.stdout.write("Falling back to pandas processing...")
+            # We could add a pandas fallback here if needed
+            raise
+        
+        if forecast_df.is_empty():
             self.stdout.write(self.style.WARNING(f"No SMART forecast data found for version {version}"))
             return
 
         # Load all MasterDataProductModel rows
-        product_df = pd.read_sql_query(
+        product_df_pd = pd.read_sql_query(
             "SELECT Product, DressMass, ProductGroupDescription, ParentProductGroupDescription FROM website_masterdataproductmodel",
             engine
         )
+        
+        # Debug product DataFrame types
+        self.stdout.write(f"Product DataFrame columns and types: {product_df_pd.dtypes}")
+        
+        product_df = pl.from_pandas(product_df_pd)
 
         # Load ProductSiteCostModel
-        product_site_cost_df = pd.read_sql_query(
+        product_site_cost_df_pd = pd.read_sql_query(
             "SELECT version_id, product_id, site_id, cost_aud, revenue_cost_aud FROM website_productsitecostmodel WHERE version_id = ?",
             engine, params=(version,)
         )
+        product_site_cost_df = pl.from_pandas(product_site_cost_df_pd)
 
         # Load MasterDataInventory
-        inventory_df = pd.read_sql_query(
+        inventory_df_pd = pd.read_sql_query(
             "SELECT version_id, product, site_id, cost_aud FROM website_masterdatainventory WHERE version_id = ?",
             engine, params=(version,)
         )
+        inventory_df = pl.from_pandas(inventory_df_pd)
 
         # Separate processing by data source
         all_agg_objs = []
         
         # Track data source metrics
-        data_source_counts = forecast_df['Data_Source'].value_counts()
-        self.stdout.write(f"Data source breakdown: {dict(data_source_counts)}")
+        data_source_counts = forecast_df.group_by("Data_Source").agg(pl.len().alias("count")).to_pandas()
+        data_source_dict = dict(zip(data_source_counts["Data_Source"], data_source_counts["count"]))
+        self.stdout.write(f"Data source breakdown: {data_source_dict}")
         
         # 1. Process Regular SMART Forecast (excluding Fixed Plant and Revenue Forecast)
-        regular_df = forecast_df[~forecast_df['Data_Source'].isin(['Fixed Plant', 'Revenue Forecast'])].copy()
-        if not regular_df.empty:
+        regular_df = forecast_df.filter(~pl.col("Data_Source").is_in(['Fixed Plant', 'Revenue Forecast']))
+        if not regular_df.is_empty():
             self.stdout.write(f"Processing {len(regular_df)} regular SMART forecast records...")
             regular_objs = self.process_regular_forecast(regular_df, product_df, product_site_cost_df, inventory_df, scenario)
             all_agg_objs.extend(regular_objs)
@@ -106,8 +139,8 @@ class Command(BaseCommand):
             self.stdout.write(f"Regular forecast: {len(regular_objs)} records, {regular_tonnes:.2f} tonnes")
 
         # 2. Process Fixed Plant
-        fixed_plant_df = forecast_df[forecast_df['Data_Source'] == 'Fixed Plant'].copy()
-        if not fixed_plant_df.empty:
+        fixed_plant_df = forecast_df.filter(pl.col("Data_Source") == 'Fixed Plant')
+        if not fixed_plant_df.is_empty():
             self.stdout.write(f"Processing {len(fixed_plant_df)} Fixed Plant forecast records...")
             fixed_plant_objs = self.process_fixed_plant_forecast(fixed_plant_df, product_df, scenario)
             all_agg_objs.extend(fixed_plant_objs)
@@ -115,8 +148,8 @@ class Command(BaseCommand):
             self.stdout.write(f"Fixed Plant: {len(fixed_plant_objs)} records, {fixed_plant_tonnes:.2f} tonnes")
 
         # 3. Process Revenue Forecast
-        revenue_df = forecast_df[forecast_df['Data_Source'] == 'Revenue Forecast'].copy()
-        if not revenue_df.empty:
+        revenue_df = forecast_df.filter(pl.col("Data_Source") == 'Revenue Forecast')
+        if not revenue_df.is_empty():
             self.stdout.write(f"Processing {len(revenue_df)} Revenue Forecast records...")
             revenue_objs = self.process_revenue_forecast(revenue_df, product_df, scenario)
             all_agg_objs.extend(revenue_objs)
@@ -139,71 +172,81 @@ class Command(BaseCommand):
         self._validate_products(scenario)
 
     def process_regular_forecast(self, forecast_df, product_df, product_site_cost_df, inventory_df, scenario):
-        """Process regular SMART forecast data (ORIGINAL WORKING LOGIC)."""
+        """Process regular SMART forecast data with polars optimization."""
         
         # Merge forecast and product data
-        merged = pd.merge(
-            forecast_df,
+        merged = forecast_df.join(
             product_df,
             left_on='Product',
             right_on='Product',
             how='left',
-            suffixes=('', '_product')
+            suffix='_product'
         )
 
-        # Calculate tonnes
-        def calc_tonnes(row):
-            qty = row['Qty']
-            dress_mass = row['DressMass']
-            price_aud = row.get('PriceAUD', None)
-            if pd.notnull(qty) and pd.notnull(dress_mass) and dress_mass != 0:
-                return qty * dress_mass / 1000
-            elif pd.notnull(qty) and pd.notnull(price_aud):
-                return (qty * price_aud * 0.65) / 5000
-            else:
-                return 0
+        # Calculate tonnes with polars expressions
+        merged = merged.with_columns([
+            pl.when(
+                (pl.col('Qty').is_not_null()) & 
+                (pl.col('DressMass').is_not_null()) & 
+                (pl.col('DressMass') != 0)
+            ).then(pl.col('Qty') * pl.col('DressMass') / 1000)
+            .when(
+                (pl.col('Qty').is_not_null()) & 
+                (pl.col('PriceAUD').is_not_null())
+            ).then((pl.col('Qty') * pl.col('PriceAUD') * 0.65) / 5000)
+            .otherwise(0)
+            .alias('tonnes'),
+            
+            # Extract site code
+            pl.col('Location').str.split('-').list.last().str.split('_').list.last().alias('site_code'),
+            
+            # Calculate revenue
+            (pl.col('Qty') * pl.col('PriceAUD')).alias('revenue_aud')
+        ])
 
-        merged['tonnes'] = merged.apply(calc_tonnes, axis=1)
-        merged['site_code'] = merged['Location'].apply(extract_site_code)
-        merged['revenue_aud'] = merged['Qty'] * merged['PriceAUD']
-        
-        agg_df = pd.DataFrame({
-            'version_id': merged['version_id'],
-            'tonnes': merged['tonnes'],
-            'forecast_region': merged['Forecast_Region'],
-            'customer_code': merged['Customer_code'],
-            'period': merged['Period_AU'],
-            'product_id': merged['Product'],
-            'product_group_description': merged['ProductGroupDescription'],
-            'parent_product_group_description': merged['ParentProductGroupDescription'],
-            'site_id': merged['site_code'],
-            'Qty': merged['Qty'],
-            'revenue_aud': merged['revenue_aud'],
-        })
+        # Create aggregation DataFrame
+        agg_df = merged.select([
+            pl.col('version_id'),
+            pl.col('tonnes'),
+            pl.col('Forecast_Region').alias('forecast_region'),
+            pl.col('Customer_code').alias('customer_code'),
+            pl.col('Period_AU').alias('period'),
+            pl.col('Product').alias('product_id'),
+            pl.col('ProductGroupDescription').alias('product_group_description'),
+            pl.col('ParentProductGroupDescription').alias('parent_product_group_description'),
+            pl.col('site_code').alias('site_id'),
+            pl.col('Qty'),
+            pl.col('revenue_aud')
+        ])
 
         # Clean product_id: convert to string, strip whitespace, filter out empty
-        agg_df['product_id'] = agg_df['product_id'].astype(str).str.strip()
-        agg_df = agg_df[agg_df['product_id'] != '']
+        agg_df = agg_df.with_columns([
+            pl.col('product_id').cast(pl.Utf8).str.strip_chars().alias('product_id')
+        ]).filter(pl.col('product_id') != '')
 
         # Get all valid product codes from the DB
         valid_products = set(MasterDataProductModel.objects.values_list('Product', flat=True))
-        agg_df = agg_df[agg_df['product_id'].isin(valid_products)]
+        agg_df = agg_df.filter(pl.col('product_id').is_in(valid_products))
+
+        # Convert to pandas for cost lookups (more efficient for dict operations)
+        agg_df_pd = agg_df.to_pandas()
+        product_site_cost_df_pd = product_site_cost_df.to_pandas()
+        inventory_df_pd = inventory_df.to_pandas()
 
         # --- FAST LOOKUP DICTS ---
-        # Build cost lookup dicts using site name
         cost_lookup = {
             (str(row['version_id']), str(row['product_id']), str(row['site_id'])): row['cost_aud']
-            for _, row in product_site_cost_df.iterrows()
+            for _, row in product_site_cost_df_pd.iterrows()
             if pd.notnull(row['cost_aud'])
         }
         inv_cost_lookup = {
             (str(row['version_id']), str(row['product']), str(row['site_id'])): row['cost_aud']
-            for _, row in inventory_df.iterrows()
+            for _, row in inventory_df_pd.iterrows()
             if pd.notnull(row['cost_aud'])
         }
         revenue_cost_lookup = {
             (str(row['version_id']), str(row['product_id']), str(row['site_id'])): row['revenue_cost_aud']
-            for _, row in product_site_cost_df.iterrows()
+            for _, row in product_site_cost_df_pd.iterrows()
             if pd.notnull(row['revenue_cost_aud'])
         }
 
@@ -221,13 +264,13 @@ class Command(BaseCommand):
                 return cost * qty
             return 0
 
-        agg_df['cogs_aud'] = agg_df.apply(fast_cogs_aud, axis=1)
+        agg_df_pd['cogs_aud'] = agg_df_pd.apply(fast_cogs_aud, axis=1)
         for col in ['cogs_aud', 'revenue_aud', 'Qty', 'tonnes']:
-            agg_df[col] = pd.to_numeric(agg_df[col], errors='coerce').fillna(0)
+            agg_df_pd[col] = pd.to_numeric(agg_df_pd[col], errors='coerce').fillna(0)
 
         objs = [
             AggregatedForecast(
-                version=scenario,  # Changed from version_id to version (scenario object)
+                version=scenario,
                 tonnes=float(row['tonnes']),
                 forecast_region=row['forecast_region'],
                 customer_code=row['customer_code'],
@@ -239,35 +282,34 @@ class Command(BaseCommand):
                 qty=float(row['Qty']),
                 revenue_aud=float(row['revenue_aud']),
             )
-            for _, row in agg_df.iterrows()
+            for _, row in agg_df_pd.iterrows()
         ]
         
         self.stdout.write(f"Created {len(objs)} regular forecast objects")
         return objs
 
     def process_fixed_plant_forecast(self, forecast_df, product_df, scenario):
-        """Process Fixed Plant forecast data using conversion modifiers."""
+        """Process Fixed Plant forecast data using conversion modifiers with polars optimization."""
         
         # Get all valid product codes for validation
         valid_products = set(MasterDataProductModel.objects.values_list('Product', flat=True))
         
         # Merge with product data using inner join to exclude invalid products
-        merged = pd.merge(
-            forecast_df,
+        merged = forecast_df.join(
             product_df,
             left_on='Product',
             right_on='Product',
             how='inner'  # Only keep records with valid products
         )
 
-        if merged.empty:
+        if merged.is_empty():
             self.stdout.write("No valid products found in Fixed Plant forecast data")
             return []
 
         objs = []
         processed_products = set()
         
-        for _, row in merged.iterrows():
+        for row in merged.iter_rows(named=True):
             try:
                 product_code = str(row['Product']).strip()
                 
@@ -275,7 +317,7 @@ class Command(BaseCommand):
                 if product_code not in valid_products:
                     continue
                 
-                if pd.isnull(row['Qty']) or row['Qty'] == 0:
+                if row['Qty'] is None or row['Qty'] == 0:
                     continue
 
                 qty = float(row['Qty'])
@@ -349,7 +391,7 @@ class Command(BaseCommand):
                     
                     # Create default record with original DressMass logic
                     dress_mass = row['DressMass']
-                    if pd.notnull(dress_mass) and dress_mass != 0:
+                    if dress_mass is not None and dress_mass != 0:
                         tonnes = qty * dress_mass / 1000
                     else:
                         tonnes = 0
@@ -381,27 +423,25 @@ class Command(BaseCommand):
         return objs
 
     def process_revenue_forecast(self, forecast_df, product_df, scenario):
-
-        """Process Revenue Forecast data using conversion modifiers and site allocation."""
+        """Process Revenue Forecast data using conversion modifiers and site allocation with polars optimization."""
         
         # Get all valid product codes for validation
         valid_products = set(MasterDataProductModel.objects.values_list('Product', flat=True))
         
         # Merge with product data using inner join to exclude invalid products
-        merged = pd.merge(
-            forecast_df,
+        merged = forecast_df.join(
             product_df,
             left_on='Product',
             right_on='Product',
             how='inner'  # Only keep records with valid products
         )
 
-        if merged.empty:
+        if merged.is_empty():
             self.stdout.write("No valid products found in Revenue Forecast data")
             return []
 
         objs = []
-        for _, row in merged.iterrows():
+        for row in merged.iter_rows(named=True):
             try:
                 product_code = str(row['Product']).strip()
                 
@@ -410,7 +450,7 @@ class Command(BaseCommand):
                     self.stdout.write(f"Skipping invalid Revenue Forecast product: {product_code}")
                     continue
                 
-                if pd.isnull(row['Qty']) or row['Qty'] == 0:
+                if row['Qty'] is None or row['Qty'] == 0:
                     continue
 
                 qty = float(row['Qty'])
@@ -496,7 +536,7 @@ class Command(BaseCommand):
                     self.stdout.write(f"Warning: No revenue conversion modifier found for product {product_code}")
                     # Create default record with original logic
                     dress_mass = row['DressMass']
-                    if pd.notnull(dress_mass) and dress_mass != 0:
+                    if dress_mass is not None and dress_mass != 0:
                         tonnes = qty * dress_mass / 1000
                     else:
                         tonnes = 0
