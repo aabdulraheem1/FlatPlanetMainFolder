@@ -374,6 +374,8 @@ class CalcualtedReplenishmentModel(models.Model):
     Site = models.ForeignKey(MasterDataPlantModel, max_length=250, null=True, blank=True, on_delete=models.CASCADE)  # Allow NULL values
     ShippingDate = models.DateField()
     ReplenishmentQty = models.FloatField(default=0)
+    latest_customer_invoice = models.CharField(max_length=250, null=True, blank=True)  # Latest customer name from invoice
+    latest_customer_invoice_date = models.DateField(null=True, blank=True)  # Latest invoice date
 
     def __str__(self):
         return f"{self.version.version} - {self.Product} - {self.Site}"
@@ -391,6 +393,8 @@ class CalculatedProductionModel(models.Model):
     cost_aud = models.FloatField(default=0, null=True, blank=True)  # Keep for DB compatibility (unused)
     cogs_aud = models.FloatField(default=0, null=True, blank=True)
     revenue_aud = models.FloatField(default=0, null=True, blank=True)
+    latest_customer_invoice = models.CharField(max_length=250, null=True, blank=True)  # Latest customer name from invoice
+    latest_customer_invoice_date = models.DateField(null=True, blank=True)  # Latest invoice date
 
     def __str__(self):
         return f"{self.version.version} - {self.product.Product} - {self.site.SiteName} - {self.pouring_date}"

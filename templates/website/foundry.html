@@ -66,7 +66,10 @@
                                         const topByGroup = mtJoliTopProducts[month] && mtJoliTopProducts[month][group];
                                         if (!topByGroup || topByGroup.length === 0) return '';
                                         return 'Top 10 Products in ' + group + ':\n' + topByGroup.map(
-                                            (p, i) => `${i + 1}. ${p[0]}: ${parseInt(p[1])}`
+                                            (p, i) => {
+                                                const customer = p[2] ? ` - Customer: ${p[2]}` : ' - No Customer Data';
+                                                return `${i + 1}. ${p[0]}: ${parseInt(p[1])} tonnes${customer}`;
+                                            }
                                         ).join('\n');
                                     }
                                 }
@@ -74,7 +77,7 @@
                         },
                         scales: {
                             x: { title: { display: true, text: 'Month' } },
-                            y: { title: { display: true, text: 'Tonnes / Dress Mass' }, beginAtZero: true }
+                            y: { title: { display: true, text: 'Tonnes' }, beginAtZero: true }
                         }
                     }
                 });
@@ -117,7 +120,10 @@
                                         const topByGroup = coimbatoreTopProducts[month] && coimbatoreTopProducts[month][group];
                                         if (!topByGroup || topByGroup.length === 0) return '';
                                         return 'Top 10 Products in ' + group + ':\n' + topByGroup.map(
-                                            (p, i) => `${i + 1}. ${p[0]}: ${parseInt(p[1])}`
+                                            (p, i) => {
+                                                const customer = p[2] ? ` - Customer: ${p[2]}` : ' - No Customer Data';
+                                                return `${i + 1}. ${p[0]}: ${parseInt(p[1])} tonnes${customer}`;
+                                            }
                                         ).join('\n');
                                     }
                                 }
@@ -125,7 +131,7 @@
                         },
                         scales: {
                             x: { title: { display: true, text: 'Month' } },
-                            y: { title: { display: true, text: 'Tonnes / Dress Mass' }, beginAtZero: true }
+                            y: { title: { display: true, text: 'Tonnes' }, beginAtZero: true }
                         }
                     }
                 });
@@ -168,7 +174,10 @@
                                         const topByGroup = xuzhouTopProducts[month] && xuzhouTopProducts[month][group];
                                         if (!topByGroup || topByGroup.length === 0) return '';
                                         return 'Top 10 Products in ' + group + ':\n' + topByGroup.map(
-                                            (p, i) => `${i + 1}. ${p[0]}: ${parseInt(p[1])}`
+                                            (p, i) => {
+                                                const customer = p[2] ? ` - Customer: ${p[2]}` : ' - No Customer Data';
+                                                return `${i + 1}. ${p[0]}: ${parseInt(p[1])} tonnes${customer}`;
+                                            }
                                         ).join('\n');
                                     }
                                 }
@@ -176,7 +185,7 @@
                         },
                         scales: {
                             x: { title: { display: true, text: 'Month' } },
-                            y: { title: { display: true, text: 'Tonnes / Dress Mass' }, beginAtZero: true }
+                            y: { title: { display: true, text: 'Tonnes' }, beginAtZero: true }
                         }
                     }
                 });
@@ -219,7 +228,10 @@
                                         const topByGroup = merlimauTopProducts[month] && merlimauTopProducts[month][group];
                                         if (!topByGroup || topByGroup.length === 0) return '';
                                         return 'Top 10 Products in ' + group + ':\n' + topByGroup.map(
-                                            (p, i) => `${i + 1}. ${p[0]}: ${parseInt(p[1])}`
+                                            (p, i) => {
+                                                const customer = p[2] ? ` - Customer: ${p[2]}` : ' - No Customer Data';
+                                                return `${i + 1}. ${p[0]}: ${parseInt(p[1])} tonnes${customer}`;
+                                            }
                                         ).join('\n');
                                     }
                                 }
@@ -227,7 +239,7 @@
                         },
                         scales: {
                             x: { title: { display: true, text: 'Month' } },
-                            y: { title: { display: true, text: 'Tonnes / Dress Mass' }, beginAtZero: true }
+                            y: { title: { display: true, text: 'Tonnes' }, beginAtZero: true }
                         }
                     }
                 });
@@ -270,7 +282,10 @@
                                         const topByGroup = wod1TopProducts[month] && wod1TopProducts[month][group];
                                         if (!topByGroup || topByGroup.length === 0) return '';
                                         return 'Top 10 Products in ' + group + ':\n' + topByGroup.map(
-                                            (p, i) => `${i + 1}. ${p[0]}: ${parseInt(p[1])}`
+                                            (p, i) => {
+                                                const customer = p[2] ? ` - Customer: ${p[2]}` : ' - No Customer Data';
+                                                return `${i + 1}. ${p[0]}: ${parseInt(p[1])} tonnes${customer}`;
+                                            }
                                         ).join('\n');
                                     }
                                 }
@@ -278,7 +293,7 @@
                         },
                         scales: {
                             x: { title: { display: true, text: 'Month' } },
-                            y: { title: { display: true, text: 'Tonnes / Dress Mass' }, beginAtZero: true }
+                            y: { title: { display: true, text: 'Tonnes' }, beginAtZero: true }
                         }
                     }
                 });
@@ -321,7 +336,10 @@
                                         const topByGroup = wun1TopProducts[month] && wun1TopProducts[month][group];
                                         if (!topByGroup || topByGroup.length === 0) return '';
                                         return 'Top 10 Products in ' + group + ':\n' + topByGroup.map(
-                                            (p, i) => `${i + 1}. ${p[0]}: ${parseInt(p[1])}`
+                                            (p, i) => {
+                                                const customer = p[2] ? ` - Customer: ${p[2]}` : ' - No Customer Data';
+                                                return `${i + 1}. ${p[0]}: ${parseInt(p[1])} tonnes${customer}`;
+                                            }
                                         ).join('\n');
                                     }
                                 }
@@ -329,7 +347,7 @@
                         },
                         scales: {
                             x: { title: { display: true, text: 'Month' } },
-                            y: { title: { display: true, text: 'Tonnes / Dress Mass' }, beginAtZero: true }
+                            y: { title: { display: true, text: 'Tonnes' }, beginAtZero: true }
                         }
                     }
                 });

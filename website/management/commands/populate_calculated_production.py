@@ -18,6 +18,7 @@ from website.models import (
 )
 import pandas as pd
 import polars as pl
+from website.powerbi_invoice_integration import get_customer_mapping_dict
 
 class Command(BaseCommand):
     help = "Populate data in CalculatedProductionModel from multiple sources (replenishment, fixed plant, revenue forecast)"
@@ -46,6 +47,15 @@ class Command(BaseCommand):
         CalculatedProductionModel.objects.filter(version=scenario).delete()
         self.stdout.write("Deleted existing calculated production data")
 
+        # Fetch customer invoice mapping for this scenario
+        self.stdout.write("Fetching customer invoice data from PowerBI...")
+        try:
+            customer_mapping = get_customer_mapping_dict()
+            self.stdout.write(f"Loaded {len(customer_mapping)} customer invoice mappings")
+        except Exception as e:
+            self.stdout.write(self.style.WARNING(f"Failed to load customer data: {e}"))
+            customer_mapping = {}
+
         # Get the first inventory snapshot date and calculate the threshold date
         first_inventory = MasterDataInventory.objects.filter(version=scenario).order_by('date_of_snapshot').first()
         if first_inventory:
@@ -64,15 +74,15 @@ class Command(BaseCommand):
 
         # 1. Process Regular Replenishment Data (SMART forecast excluding Fixed Plant and Revenue Forecast)
         self.stdout.write("\n=== Processing Regular Replenishment Data ===")
-        self.process_replenishment_data(scenario, inventory_threshold_date, inventory_start_date, calculated_productions)
+        self.process_replenishment_data(scenario, inventory_threshold_date, inventory_start_date, calculated_productions, customer_mapping)
 
         # 2. Process Fixed Plant Data
         self.stdout.write("\n=== Processing Fixed Plant Data ===")
-        self.process_fixed_plant_data(scenario, inventory_start_date, calculated_productions)
+        self.process_fixed_plant_data(scenario, inventory_start_date, calculated_productions, customer_mapping)
 
         # 3. Process Revenue Forecast Data
         self.stdout.write("\n=== Processing Revenue Forecast Data ===")
-        self.process_revenue_forecast_data(scenario, inventory_start_date, calculated_productions)
+        self.process_revenue_forecast_data(scenario, inventory_start_date, calculated_productions, customer_mapping)
 
         # Bulk create all records
         if calculated_productions:
@@ -83,7 +93,7 @@ class Command(BaseCommand):
 
         self.stdout.write(self.style.SUCCESS(f"CalculatedProductionModel populated for version {version}"))
 
-    def process_replenishment_data(self, scenario, inventory_threshold_date, inventory_start_date, calculated_productions):
+    def process_replenishment_data(self, scenario, inventory_threshold_date, inventory_start_date, calculated_productions, customer_mapping):
         """Process regular replenishment data - CORRECTED production calculation"""
         
         # Load replenishments in bulk using pandas first for better schema handling
@@ -246,6 +256,11 @@ class Command(BaseCommand):
                 cost = max(costs) if any(costs) else 0
                 cogs_aud = cost * production_quantity
 
+                # Get customer invoice data
+                customer_data = customer_mapping.get(product_key, {})
+                latest_customer_invoice = customer_data.get('customer_name')
+                latest_customer_invoice_date = customer_data.get('invoice_date')
+
                 # Create production record (even if production_quantity is 0)
                 calculated_productions.append(CalculatedProductionModel(
                     version=scenario,
@@ -257,11 +272,13 @@ class Command(BaseCommand):
                     product_group=product_row['ProductGroup'],
                     parent_product_group=product_row.get('ParentProductGroupDescription', ''),
                     cogs_aud=cogs_aud,
+                    latest_customer_invoice=latest_customer_invoice,
+                    latest_customer_invoice_date=latest_customer_invoice_date,
                 ))
 
         self.stdout.write(f"Processed {len(daily_replenishments)} daily replenishment records")
 
-    def process_fixed_plant_data(self, scenario, inventory_start_date, calculated_productions):
+    def process_fixed_plant_data(self, scenario, inventory_start_date, calculated_productions, customer_mapping):
         """Process Fixed Plant data (similar to populate_aggregated_forecast logic)"""
         
         # Get Fixed Plant forecasts
@@ -333,6 +350,11 @@ class Command(BaseCommand):
 
                     self.stdout.write(f"Fixed Plant - Product: {forecast.Product}, Site: {site_name}, Revenue: {revenue_aud}, COGS: {cogs_aud}, Tonnes: {tonnes}")
 
+                    # Get customer invoice data
+                    customer_data = customer_mapping.get(forecast.Product, {})
+                    latest_customer_invoice = customer_data.get('customer_name')
+                    latest_customer_invoice_date = customer_data.get('invoice_date')
+
                     # Create record for the determined site with production_quantity = 0
                     calculated_productions.append(CalculatedProductionModel(
                         version=scenario,
@@ -345,6 +367,8 @@ class Command(BaseCommand):
                         parent_product_group=product_obj.ParentProductGroupDescription,
                         cogs_aud=cogs_aud,
                         revenue_aud=revenue_aud,
+                        latest_customer_invoice=latest_customer_invoice,
+                        latest_customer_invoice_date=latest_customer_invoice_date,
                     ))
 
                 except FixedPlantConversionModifiersModel.DoesNotExist:
@@ -361,6 +385,11 @@ class Command(BaseCommand):
                         else:
                             site_name = 'BAS1'
                         
+                        # Get customer invoice data for fallback
+                        customer_data = customer_mapping.get(forecast.Product, {})
+                        latest_customer_invoice = customer_data.get('customer_name')
+                        latest_customer_invoice_date = customer_data.get('invoice_date')
+                        
                         calculated_productions.append(CalculatedProductionModel(
                             version=scenario,
                             product_id=product_obj.Product,
@@ -372,6 +401,8 @@ class Command(BaseCommand):
                             parent_product_group=product_obj.ParentProductGroupDescription,
                             cogs_aud=0.0,
                             revenue_aud=qty,
+                            latest_customer_invoice=latest_customer_invoice,
+                            latest_customer_invoice_date=latest_customer_invoice_date,
                         ))
                     except Exception as fallback_error:
                         self.stdout.write(f"Error in DressMass fallback for {forecast.Product}: {fallback_error}")
@@ -383,7 +414,7 @@ class Command(BaseCommand):
 
         self.stdout.write(f"Processed Fixed Plant data")
 
-    def process_revenue_forecast_data(self, scenario, inventory_start_date, calculated_productions):
+    def process_revenue_forecast_data(self, scenario, inventory_start_date, calculated_productions, customer_mapping):
         """Process Revenue Forecast data (similar to populate_aggregated_forecast logic)"""
         
         # Get Revenue Forecast data
@@ -457,6 +488,11 @@ class Command(BaseCommand):
 
                             self.stdout.write(f"Revenue Allocation - Product: {forecast.Product}, Site: {allocation.Site.SiteName}, Revenue: {allocated_revenue}, COGS: {allocated_cogs}, Tonnes: {allocated_tonnes}")
 
+                            # Get customer invoice data
+                            customer_data = customer_mapping.get(forecast.Product, {})
+                            latest_customer_invoice = customer_data.get('customer_name')
+                            latest_customer_invoice_date = customer_data.get('invoice_date')
+
                             # Create record for this site with production_quantity = 0
                             calculated_productions.append(CalculatedProductionModel(
                                 version=scenario,
@@ -469,6 +505,8 @@ class Command(BaseCommand):
                                 parent_product_group=product_obj.ParentProductGroupDescription,
                                 cogs_aud=allocated_cogs,
                                 revenue_aud=allocated_revenue,
+                                latest_customer_invoice=latest_customer_invoice,
+                                latest_customer_invoice_date=latest_customer_invoice_date,
                             ))
                     else:
                         self.stdout.write(f"Warning: No site allocation found for product {forecast.Product}")

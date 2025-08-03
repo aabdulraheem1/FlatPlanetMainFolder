@@ -1082,6 +1082,31 @@ def review_scenario(request, version):
     wod1_data = foundry_sites_data.get('WOD1', {})
     wun1_data = foundry_sites_data.get('WUN1', {})
 
+    # DEBUG: Print mt_joli_monthly_pour_plan data for 'Jul 25 SPR' scenario
+    if scenario.version == 'Jul 25 SPR':
+        mt_joli_monthly_pour_plan_data = mt_joli_data.get('monthly_pour_plan', [])
+        print(f"🔍 DEBUG MTJ1 Monthly Pour Plan Data for 'Jul 25 SPR':")
+        print(f"🔍 Type: {type(mt_joli_monthly_pour_plan_data)}")
+        print(f"🔍 Length: {len(mt_joli_monthly_pour_plan_data) if hasattr(mt_joli_monthly_pour_plan_data, '__len__') else 'N/A'}")
+        print(f"🔍 Content: {mt_joli_monthly_pour_plan_data}")
+        if isinstance(mt_joli_monthly_pour_plan_data, dict):
+            print(f"🔍 Dict Keys: {list(mt_joli_monthly_pour_plan_data.keys())}")
+            for key, value in mt_joli_monthly_pour_plan_data.items():
+                print(f"🔍   {key}: {value} (type: {type(value)})")
+        elif isinstance(mt_joli_monthly_pour_plan_data, list):
+            print(f"🔍 List Items:")
+            for i, item in enumerate(mt_joli_monthly_pour_plan_data[:5]):  # Show first 5 items
+                print(f"🔍   [{i}]: {item} (type: {type(item)})")
+        
+        # Also check the overall MTJ1 data structure
+        print(f"🔍 DEBUG Overall MTJ1 Data Keys: {list(mt_joli_data.keys())}")
+        print(f"🔍 DEBUG MTJ1 Data Structure:")
+        for key, value in mt_joli_data.items():
+            if key == 'monthly_pour_plan':
+                print(f"🔍   {key}: [DETAILED ABOVE]")
+            else:
+                print(f"🔍   {key}: {type(value)} - {str(value)[:100]}{'...' if len(str(value)) > 100 else ''}")
+
     total_time = time.time() - start_time
     print(f"🎯 TOTAL REVIEW SCENARIO TIME: {total_time:.3f} seconds (vs previous 12+ minutes)")
 
@@ -5154,108 +5179,48 @@ def auto_level_optimization(request, version):
 
 @login_required
 def reset_production_plan(request, version):
-    """Reset production plan by running populate_calculated_production command and recalculating all dependent aggregations"""
-    import subprocess
-    import os
-    from django.utils import timezone
-    from .models import scenarios, ScenarioOptimizationState
-    from website.customized_function import (
-        populate_aggregated_forecast_data, 
-        populate_aggregated_foundry_data, 
-        populate_aggregated_inventory_data, 
-        populate_aggregated_financial_data
-    )
+    """Simple reset: just run populate_calculated_production for the scenario"""
+    from django.core.management import call_command
+    from django.contrib import messages
+    from io import StringIO
+    import sys
     
     if request.method == 'POST':
         try:
             scenario = get_object_or_404(scenarios, version=version)
             
-            # Step 1: Reset the optimization state first
-            opt_state, created = ScenarioOptimizationState.objects.get_or_create(
-                version=scenario,
-                defaults={'auto_optimization_applied': False}
-            )
-            opt_state.auto_optimization_applied = False
-            opt_state.last_reset_date = timezone.now()
-            opt_state.save()
+            print(f"DEBUG: Running populate_calculated_production for scenario: {version}")
             
-            # Step 2: Get the Django project root directory (SPR folder)
-            current_dir = os.path.dirname(os.path.abspath(__file__))  # website folder
-            project_root = os.path.dirname(current_dir)  # SPR folder
-            manage_py_path = os.path.join(project_root, 'manage.py')
+            # Capture command output
+            stdout = StringIO()
+            stderr = StringIO()
             
-            print(f"DEBUG: Resetting production plan for scenario: {version}")
-            
-            # Step 3: Run the populate_calculated_production command
-            result = subprocess.run([
-                'python', manage_py_path, 
-                'populate_calculated_production', 
-                version
-            ], 
-            capture_output=True, 
-            text=True, 
-            cwd=project_root
-            )
-            
-            if result.returncode == 0:
+            # Run the populate_calculated_production command using Django's call_command
+            # This runs in the same process and virtual environment
+            try:
+                call_command('populate_calculated_production', version, stdout=stdout, stderr=stderr)
+                
+                output = stdout.getvalue()
+                error_output = stderr.getvalue()
+                
+                if error_output:
+                    print(f"WARNINGS during populate_calculated_production: {error_output}")
+                
                 print(f"DEBUG: populate_calculated_production completed successfully")
+                print(f"OUTPUT: {output}")
                 
-                # Step 4: Recalculate all dependent aggregations
-                print(f"DEBUG: Recalculating dependent aggregations...")
+                messages.success(request, f"Production plan reset successfully for version {version}.")
                 
-                try:
-                    # Recalculate Forecast aggregations
-                    print("DEBUG: Recalculating forecast aggregations...")
-                    populate_aggregated_forecast_data(scenario)
-                    
-                    # Recalculate Foundry aggregations
-                    print("DEBUG: Recalculating foundry aggregations...")
-                    populate_aggregated_foundry_data(scenario)
-                    
-                    # Recalculate Inventory aggregations
-                    print("DEBUG: Recalculating inventory aggregations...")
-                    populate_aggregated_inventory_data(scenario)
-                    
-                    # Recalculate Financial aggregations (this depends on production data)
-                    print("DEBUG: Recalculating financial aggregations...")
-                    populate_aggregated_financial_data(scenario)
-                    
-                    print(f"DEBUG: All aggregations recalculated successfully")
-                    
-                    # CRITICAL: Update Control Tower cache after production plan reset
-                    print(f"DEBUG: Updating Control Tower cache after production plan reset...")
-                    try:
-                        # Run cache_review_data command to update Control Tower cache
-                        cache_cmd = [
-                            'python', manage_py_path, 
-                            'cache_review_data', 
-                            '--scenario', version, 
-                            '--force'
-                        ]
-                        cache_result = subprocess.run(cache_cmd, capture_output=True, text=True, cwd=project_root)
-                        
-                        if cache_result.returncode == 0:
-                            print(f"DEBUG: Control Tower cache updated successfully after reset")
-                            messages.success(request, f"Production plan reset successfully for version {version}. All chart data and Control Tower demand plan have been recalculated. Auto optimization is now available.")
-                        else:
-                            print(f"ERROR: Control Tower cache update failed after reset: {cache_result.stderr}")
-                            messages.warning(request, f"Production plan reset successfully, charts recalculated, but Control Tower cache may need manual refresh. Error: {cache_result.stderr}")
-                            
-                    except Exception as cache_error:
-                        print(f"ERROR: Failed to update Control Tower cache after reset: {cache_error}")
-                        messages.warning(request, f"Production plan reset successfully, charts recalculated, but Control Tower cache may need manual refresh. Error: {str(cache_error)}")
-                    
-                except Exception as agg_error:
-                    print(f"ERROR: Failed to recalculate aggregations: {agg_error}")
-                    messages.warning(request, f"Production plan reset successfully, but some chart data may need manual refresh. Error: {str(agg_error)}")
-                    
-            else:
-                messages.error(request, f"Error resetting production plan: {result.stderr}")
+            except Exception as cmd_error:
+                error_output = stderr.getvalue()
+                print(f"ERROR: populate_calculated_production failed: {str(cmd_error)}")
+                if error_output:
+                    print(f"STDERR: {error_output}")
+                messages.error(request, f"Error running populate_calculated_production: {str(cmd_error)}")
                 
         except Exception as e:
+            print(f"ERROR: Reset failed: {str(e)}")
             messages.error(request, f"Error resetting production plan: {str(e)}")
-            import traceback
-            print(f"ERROR: Reset failed: {traceback.format_exc()}")
     
     return redirect('review_scenario', version=version)
 

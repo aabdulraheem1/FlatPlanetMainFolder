@@ -18,7 +18,9 @@ def get_review_scenario_data_direct_polars(scenario_version):
     Get ALL review scenario data directly from calculated tables using polars
     NO CACHING - Direct queries only - Expected time: 1-3 seconds
     """
-    print(f"DEBUG: Starting DIRECT polars queries for review scenario: {scenario_version}")
+    # Handle both string and scenarios object
+    version_string = scenario_version.version if hasattr(scenario_version, 'version') else str(scenario_version)
+    print(f"DEBUG: Starting DIRECT polars queries for review scenario: {version_string}")
     start_time = time.time()
     
     results = {}
@@ -26,28 +28,28 @@ def get_review_scenario_data_direct_polars(scenario_version):
     try:
         # ===== 1. FORECAST DATA (Replace AggregatedForecastChartData) =====
         forecast_start = time.time()
-        forecast_data = get_forecast_data_direct_polars(scenario_version)
+        forecast_data = get_forecast_data_direct_polars(version_string)
         forecast_time = time.time() - forecast_start
         results['forecast_data'] = forecast_data
         print(f"  ✅ Forecast data: {forecast_time:.3f}s")
         
         # ===== 2. FOUNDRY DATA (Replace AggregatedFoundryChartData) =====
         foundry_start = time.time()
-        foundry_data = get_foundry_data_direct_polars(scenario_version)
+        foundry_data = get_foundry_data_direct_polars(version_string)
         foundry_time = time.time() - foundry_start
         results['foundry_data'] = foundry_data
         print(f"  ✅ Foundry data: {foundry_time:.3f}s")
         
         # ===== 3. INVENTORY DATA (Replace AggregatedInventoryChartData) =====
         inventory_start = time.time()
-        inventory_data = get_inventory_data_direct_polars(scenario_version)
+        inventory_data = get_inventory_data_direct_polars(version_string)
         inventory_time = time.time() - inventory_start
         results['inventory_data'] = inventory_data
         print(f"  ✅ Inventory data: {inventory_time:.3f}s")
         
         # ===== 4. CONTROL TOWER DATA =====
         control_start = time.time()
-        control_tower_data = get_control_tower_data_direct_polars(scenario_version)
+        control_tower_data = get_control_tower_data_direct_polars(version_string)
         control_time = time.time() - control_start
         results['control_tower_data'] = control_tower_data
         print(f"  ✅ Control tower data: {control_time:.3f}s")
@@ -248,7 +250,11 @@ def get_forecast_data_direct_polars(scenario_version):
     }
 
 def get_foundry_data_direct_polars(scenario_version):
-    """Get foundry data directly from CalculatedProductionModel - replaces AggregatedFoundryChartData"""
+    """Get foundry data directly from CalculatedProductionModel - replaces AggregatedFoundryChartData
+    
+    UPDATED: Now uses 'tonnes' field instead of 'production_quantity' to match Control Tower demand plan data.
+    This ensures foundry charts show identical data to control tower, aggregated by parent_product_group.
+    """
     
     with connection.cursor() as cursor:
         cursor.execute("""
@@ -257,8 +263,10 @@ def get_foundry_data_direct_polars(scenario_version):
                 parent_product_group,
                 product_id,
                 FORMAT(pouring_date, 'yyyy-MM') as month,
-                SUM(production_quantity) as total_tonnes,
-                SUM(cogs_aud) as total_cogs_aud
+                SUM(tonnes) as total_tonnes,
+                SUM(cogs_aud) as total_cogs_aud,
+                MAX(latest_customer_invoice) as latest_customer,
+                MAX(latest_customer_invoice_date) as latest_invoice_date
             FROM website_calculatedproductionmodel 
             WHERE version_id = %s
               AND pouring_date IS NOT NULL
@@ -267,7 +275,7 @@ def get_foundry_data_direct_polars(scenario_version):
         """, [scenario_version])
         
         data = cursor.fetchall()
-        columns = ['site_id', 'parent_product_group', 'product_id', 'month', 'total_tonnes', 'total_cogs_aud']
+        columns = ['site_id', 'parent_product_group', 'product_id', 'month', 'total_tonnes', 'total_cogs_aud', 'latest_customer', 'latest_invoice_date']
     
     if not data:
         return {'foundry_data': {}, 'site_list': [], 'total_production': 0}
@@ -350,17 +358,51 @@ def get_foundry_data_direct_polars(scenario_version):
             # Calculate total production for this foundry
             total_production = foundry_df['total_tonnes'].sum()
             
-            # Create mock top products data (simplified)
+            # Create proper top products data structure for tooltips
+            # Template expects: {month: {parent_product_group: [[product, tonnes, customer], [product, tonnes, customer], ...]}}
             top_products = {}
             for month in months:
                 month_data = foundry_df.filter(pl.col('month') == month)
+                top_products[month] = {}
+                
                 if len(month_data) > 0:
-                    top_products[month] = month_data.group_by('product_id').agg([
-                        pl.col('total_tonnes').sum()
-                    ]).sort('total_tonnes', descending=True).limit(5).to_dicts()
+                    # Group by parent_product_group for this month
+                    for group in month_data['parent_product_group'].unique().to_list():
+                        if group:  # Skip null groups
+                            group_month_data = month_data.filter(pl.col('parent_product_group') == group)
+                            
+                            # Get top 10 products by tonnes for this group and month
+                            top_products_list = group_month_data.group_by('product_id').agg([
+                                pl.col('total_tonnes').sum(),
+                                pl.col('latest_customer').first(),  # Get customer name
+                                pl.col('latest_invoice_date').first()  # Get invoice date
+                            ]).sort('total_tonnes', descending=True).limit(10)
+                            
+                            # Convert to format expected by template: [[product, tonnes, customer], [product, tonnes, customer], ...]
+                            top_products[month][group] = []
+                            for row in top_products_list.iter_rows(named=True):
+                                if row['product_id']:  # Skip null products
+                                    product_name = row['product_id'] or 'Unknown Product'
+                                    tonnes = row['total_tonnes']
+                                    customer = row['latest_customer'] or 'No Customer Data'
+                                    
+                                    # Format: [product_name, tonnes, customer_info]
+                                    top_products[month][group].append([
+                                        product_name, 
+                                        tonnes, 
+                                        customer
+                                    ])
             
-            # Create mock monthly pour plan (simplified)
-            monthly_pour_plan = [total_production / len(months) for _ in months]
+            # Get real monthly pour plan data from MasterDataPlan
+            from website.customized_function import get_monthly_pour_plan_for_site
+            try:
+                monthly_pour_plan = get_monthly_pour_plan_for_site(foundry, scenario_version, months)
+                print(f"DEBUG: {foundry} real monthly pour plan from MasterDataPlan: {monthly_pour_plan}")
+            except Exception as e:
+                print(f"DEBUG: Failed to get real monthly pour plan for {foundry}: {e}")
+                # Fallback to simplified calculation only if the real function fails
+                monthly_pour_plan = [total_production / len(months) for _ in months]
+                print(f"DEBUG: {foundry} fallback to simplified pour plan: {monthly_pour_plan}")
             
             foundry_results[foundry] = {
                 'chart_data': {'labels': months, 'datasets': datasets},
@@ -488,57 +530,24 @@ def get_control_tower_data_direct_polars(scenario_version):
         
         sites = ["MTJ1", "COI2", "XUZ1", "MER1", "WUN1", "WOD1", "CHI1"]
         
-        # Fast polars aggregation for pour plan from CalcualtedReplenishmentModel
+        # Pour plan: Use snapshot-based hybrid logic (actual + planned) to match modal
+        from website.customized_function import get_snapshot_based_pour_plan_data
+        print("DEBUG: Getting hybrid pour plan data to match modal...")
+        pour_plan_hybrid = get_snapshot_based_pour_plan_data(scenario_version)
+        
+        # Format for consistent structure
         pour_plan = {}
-        with connection.cursor() as cursor:
-            cursor.execute("""
-                SELECT 
-                    cr.Site_id as site,
-                    cr.ShippingDate as pouring_date,
-                    cr.ReplenishmentQty as tonnes
-                FROM website_calcualtedreplenishmentmodel cr
-                WHERE cr.version_id = %s 
-                    AND cr.ReplenishmentQty IS NOT NULL 
-                    AND cr.ReplenishmentQty > 0
-                    AND cr.Site_id IS NOT NULL
-            """, [scenario_version])
-            
-            pour_records = cursor.fetchall()
-            if pour_records:
-                pour_df = pl.DataFrame({
-                    'site': [r[0] for r in pour_records],
-                    'pouring_date': [r[1] for r in pour_records],
-                    'tonnes': [float(r[2]) for r in pour_records]
-                })
-                
-                for fy, (start_date, end_date) in fy_ranges.items():
-                    fy_data = pour_df.filter(
-                        (pl.col("pouring_date") >= start_date) & 
-                        (pl.col("pouring_date") <= end_date)
-                    )
-                    
-                    if len(fy_data) > 0:
-                        totals = fy_data.group_by("site").agg(
-                            pl.col("tonnes").sum().alias("total_tonnes")
-                        ).to_dict(as_series=False)
-                        
-                        pour_plan[fy] = {}
-                        for i, site in enumerate(totals.get("site", [])):
-                            tonnes = totals.get("total_tonnes", [])[i]
-                            pour_plan[fy][site] = round(float(tonnes))
-                    else:
-                        pour_plan[fy] = {}
-                    
-                    # Ensure all sites have values
-                    for site in sites:
-                        if site not in pour_plan[fy]:
-                            pour_plan[fy][site] = 0
-            else:
-                for fy in fy_ranges.keys():
-                    pour_plan[fy] = {site: 0 for site in sites}
+        for fy in fy_ranges.keys():
+            pour_plan[fy] = {}
+            for site in sites:
+                pour_plan[fy][site] = pour_plan_hybrid.get(fy, {}).get(site, 0)
+                print(f"DEBUG POUR PLAN HYBRID: {fy} {site} = {pour_plan[fy][site]} tonnes (actual + planned)")
 
-        # Fast polars aggregation for demand plan from CalculatedProductionModel  
-        demand_plan = {}
+        # Combined demand plan: Get demand from CalculatedProductionModel + actual poured from PowerBI
+        # This matches what the modal shows in the "Combined" column
+        
+        # Step 1: Get demand plan data from CalculatedProductionModel
+        demand_plan_only = {}
         with connection.cursor() as cursor:
             cursor.execute("""
                 SELECT 
@@ -571,20 +580,48 @@ def get_control_tower_data_direct_polars(scenario_version):
                             pl.col("tonnes").sum().alias("total_tonnes")
                         ).to_dict(as_series=False)
                         
-                        demand_plan[fy] = {}
+                        demand_plan_only[fy] = {}
                         for i, site in enumerate(totals.get("site", [])):
                             tonnes = totals.get("total_tonnes", [])[i]
-                            demand_plan[fy][site] = round(float(tonnes))
+                            demand_plan_only[fy][site] = round(float(tonnes))
                     else:
-                        demand_plan[fy] = {}
+                        demand_plan_only[fy] = {}
                     
                     # Ensure all sites have values
                     for site in sites:
-                        if site not in demand_plan[fy]:
-                            demand_plan[fy][site] = 0
+                        if site not in demand_plan_only[fy]:
+                            demand_plan_only[fy][site] = 0
             else:
                 for fy in fy_ranges.keys():
-                    demand_plan[fy] = {site: 0 for site in sites}
+                    demand_plan_only[fy] = {site: 0 for site in sites}
+        
+        # Step 2: Get actual poured data from PowerBI for each FY and site
+        from website.customized_function import get_monthly_poured_data_for_site_and_fy
+        poured_data_by_fy_site = {}
+        
+        for fy in fy_ranges.keys():
+            for site in sites:
+                try:
+                    poured_monthly = get_monthly_poured_data_for_site_and_fy(site, fy, scenario_version)
+                    total_poured = sum(poured_monthly.values()) if poured_monthly else 0
+                    poured_data_by_fy_site[f"{fy}_{site}"] = round(total_poured)
+                except Exception as e:
+                    print(f"DEBUG: Error getting poured data for {site} {fy}: {e}")
+                    poured_data_by_fy_site[f"{fy}_{site}"] = 0
+        
+        # Step 3: Combine demand + actual poured (matches modal "Combined" column)
+        demand_plan = {}
+        for fy in fy_ranges.keys():
+            demand_plan[fy] = {}
+            for site in sites:
+                demand_qty = demand_plan_only.get(fy, {}).get(site, 0)
+                poured_qty = poured_data_by_fy_site.get(f"{fy}_{site}", 0)
+                combined_qty = demand_qty + poured_qty
+                demand_plan[fy][site] = round(combined_qty)
+                
+                print(f"DEBUG COMBINED: {fy} {site} = Demand({demand_qty}) + Poured({poured_qty}) = {combined_qty}")
+        
+        print(f"DEBUG: Control tower now shows COMBINED data (demand + actual poured) to match modal")
         
         return {
             'combined_demand_plan': demand_plan,
