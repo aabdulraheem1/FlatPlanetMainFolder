@@ -186,8 +186,12 @@
                             <td class="fw-bold">Outsource</td>
                             <td></td>
                             <td></td>
-                            <td class="bg-light">11,182</td>
-                            <td class="bg-light">11,182</td>
+                            <td class="bg-light">0</td>
+                            <td class="bg-light">
+                                <span class="outsource-click" data-fy="FY24" data-site="OUTSOURCE" data-site-name="Outsource">
+                                    {{ outsource_totals.FY24|default:"0"|intcomma }}
+                                </span>
+                            </td>
                         </tr>
                     </tbody>
                 </table>
@@ -346,8 +350,12 @@
                             <td class="fw-bold">Outsource</td>
                             <td></td>
                             <td></td>
-                            <td class="bg-light">11,182</td>
-                            <td class="bg-light">11,182</td>
+                            <td class="bg-light">0</td>
+                            <td class="bg-light">
+                                <span class="outsource-click" data-fy="FY25" data-site="OUTSOURCE" data-site-name="Outsource">
+                                    {{ outsource_totals.FY25|default:"0"|intcomma }}
+                                </span>
+                            </td>
                         </tr>
                     </tbody>
                 </table>
@@ -506,8 +514,12 @@
                             <td class="fw-bold">Outsource</td>
                             <td></td>
                             <td></td>
-                            <td class="bg-light">11,182</td>
-                            <td class="bg-light">11,182</td>
+                            <td class="bg-light">0</td>
+                            <td class="bg-light">
+                                <span class="outsource-click" data-fy="FY26" data-site="OUTSOURCE" data-site-name="Outsource">
+                                    {{ outsource_totals.FY26|default:"0"|intcomma }}
+                                </span>
+                            </td>
                         </tr>
                     </tbody>
                 </table>
@@ -666,8 +678,12 @@
                             <td class="fw-bold">Outsource</td>
                             <td></td>
                             <td></td>
-                            <td class="bg-light">11,182</td>
-                            <td class="bg-light">11,182</td>
+                            <td class="bg-light">0</td>
+                            <td class="bg-light">
+                                <span class="outsource-click" data-fy="FY27" data-site="OUTSOURCE" data-site-name="Outsource">
+                                    {{ outsource_totals.FY27|default:"0"|intcomma }}
+                                </span>
+                            </td>
                         </tr>
                     </tbody>
                 </table>
@@ -717,14 +733,14 @@
     background-color: #e9ecef !important;
 }
 /* Updated styling for clickable demand plan and pour plan numbers */
-.demand-plan-click, .pour-plan-click {
+.demand-plan-click, .pour-plan-click, .outsource-click {
     cursor: pointer;
     text-decoration: underline;
     text-decoration-style: dotted;
     color: #0066cc;
     font-weight: bold;
 }
-.demand-plan-click:hover, .pour-plan-click:hover {
+.demand-plan-click:hover, .pour-plan-click:hover, .outsource-click:hover {
     background-color: #f8f9fa;
     border-radius: 3px;
     color: #004499;
@@ -779,14 +795,24 @@ document.addEventListener('DOMContentLoaded', function() {
     console.log('Control Tower initialized with cached data from view');
 });
 
-// Handle click events on demand plan and pour plan numbers
+// Handle click events on demand plan, pour plan, and outsource numbers
 document.addEventListener('click', function(e) {
-    if (e.target.classList.contains('demand-plan-click') || e.target.classList.contains('pour-plan-click')) {
+    if (e.target.classList.contains('demand-plan-click') || e.target.classList.contains('pour-plan-click') || e.target.classList.contains('outsource-click')) {
         const fy = e.target.getAttribute('data-fy');
         const site = e.target.getAttribute('data-site');
         const siteName = e.target.getAttribute('data-site-name');
-        const planType = e.target.classList.contains('pour-plan-click') ? 'Pour Plan' : 'Demand Plan';
-        const planTypeParam = e.target.classList.contains('pour-plan-click') ? 'pour' : 'demand';
+        
+        let planType, planTypeParam;
+        if (e.target.classList.contains('pour-plan-click')) {
+            planType = 'Pour Plan';
+            planTypeParam = 'pour';
+        } else if (e.target.classList.contains('outsource-click')) {
+            planType = 'Outsource Breakdown';
+            planTypeParam = 'outsource';
+        } else {
+            planType = 'Demand Plan';
+            planTypeParam = 'demand';
+        }
         
         console.log(`🖱️ Clicked on ${siteName} (${site}) for ${fy} - ${planType}`);
         

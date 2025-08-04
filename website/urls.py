@@ -1,5 +1,6 @@
 from django.urls import path
 from . import views
+from . import views_cached
 from .views import fetch_data_from_mssql
 from .views_ajax import get_detailed_monthly_table
 from django.shortcuts import render, redirect
@@ -30,6 +31,7 @@ urlpatterns = [
     path('edit_forecasts/<str:version>/<str:forecast_type>/', views.edit_forecasts, name='edit_forecasts'),
     
     path('scenario/review/<str:version>', views.review_scenario, name='review_scenario'),
+    path('scenario/supplier-review/<str:version>/', views_cached.supplier_review_cached, name='supplier_review'),
     path('scenario/calculate-aggregated/<str:version>/', views.calculate_aggregated_data, name='calculate_aggregated_data'),
     path('warningList/<str:version>', views.ScenarioWarningList, name='warningList'),
     path('create_product/', views.create_product, name='create_product'),

@@ -261,6 +261,13 @@ class Command(BaseCommand):
                 latest_customer_invoice = customer_data.get('customer_name')
                 latest_customer_invoice_date = customer_data.get('invoice_date')
 
+                # Check if site is outsourced
+                try:
+                    site_obj = MasterDataPlantModel.objects.get(SiteName=site_row['SiteName'])
+                    is_outsourced = site_obj.mark_as_outsource_supplier
+                except MasterDataPlantModel.DoesNotExist:
+                    is_outsourced = False
+
                 # Create production record (even if production_quantity is 0)
                 calculated_productions.append(CalculatedProductionModel(
                     version=scenario,
@@ -274,6 +281,7 @@ class Command(BaseCommand):
                     cogs_aud=cogs_aud,
                     latest_customer_invoice=latest_customer_invoice,
                     latest_customer_invoice_date=latest_customer_invoice_date,
+                    is_outsourced=is_outsourced,
                 ))
 
         self.stdout.write(f"Processed {len(daily_replenishments)} daily replenishment records")
@@ -355,6 +363,13 @@ class Command(BaseCommand):
                     latest_customer_invoice = customer_data.get('customer_name')
                     latest_customer_invoice_date = customer_data.get('invoice_date')
 
+                    # Check if site is outsourced
+                    try:
+                        site_obj = MasterDataPlantModel.objects.get(SiteName=site_name)
+                        is_outsourced = site_obj.mark_as_outsource_supplier
+                    except MasterDataPlantModel.DoesNotExist:
+                        is_outsourced = False
+
                     # Create record for the determined site with production_quantity = 0
                     calculated_productions.append(CalculatedProductionModel(
                         version=scenario,
@@ -369,6 +384,7 @@ class Command(BaseCommand):
                         revenue_aud=revenue_aud,
                         latest_customer_invoice=latest_customer_invoice,
                         latest_customer_invoice_date=latest_customer_invoice_date,
+                        is_outsourced=is_outsourced,
                     ))
 
                 except FixedPlantConversionModifiersModel.DoesNotExist:
@@ -390,6 +406,13 @@ class Command(BaseCommand):
                         latest_customer_invoice = customer_data.get('customer_name')
                         latest_customer_invoice_date = customer_data.get('invoice_date')
                         
+                        # Check if site is outsourced
+                        try:
+                            site_obj = MasterDataPlantModel.objects.get(SiteName=site_name)
+                            is_outsourced = site_obj.mark_as_outsource_supplier
+                        except MasterDataPlantModel.DoesNotExist:
+                            is_outsourced = False
+                        
                         calculated_productions.append(CalculatedProductionModel(
                             version=scenario,
                             product_id=product_obj.Product,
@@ -403,6 +426,7 @@ class Command(BaseCommand):
                             revenue_aud=qty,
                             latest_customer_invoice=latest_customer_invoice,
                             latest_customer_invoice_date=latest_customer_invoice_date,
+                            is_outsourced=is_outsourced,
                         ))
                     except Exception as fallback_error:
                         self.stdout.write(f"Error in DressMass fallback for {forecast.Product}: {fallback_error}")
@@ -493,6 +517,13 @@ class Command(BaseCommand):
                             latest_customer_invoice = customer_data.get('customer_name')
                             latest_customer_invoice_date = customer_data.get('invoice_date')
 
+                            # Check if site is outsourced
+                            try:
+                                site_obj = MasterDataPlantModel.objects.get(SiteName=allocation.Site.SiteName)
+                                is_outsourced = site_obj.mark_as_outsource_supplier
+                            except MasterDataPlantModel.DoesNotExist:
+                                is_outsourced = False
+
                             # Create record for this site with production_quantity = 0
                             calculated_productions.append(CalculatedProductionModel(
                                 version=scenario,
@@ -507,6 +538,7 @@ class Command(BaseCommand):
                                 revenue_aud=allocated_revenue,
                                 latest_customer_invoice=latest_customer_invoice,
                                 latest_customer_invoice_date=latest_customer_invoice_date,
+                                is_outsourced=is_outsourced,
                             ))
                     else:
                         self.stdout.write(f"Warning: No site allocation found for product {forecast.Product}")

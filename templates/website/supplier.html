@@ -1,46 +1,103 @@
 <!-- Supplier Review Section -->
 <div class="container mt-5">
     <h2>Supplier Review</h2>
-    <div class="row">
-        <div class="col-md-12">
-            <h4>Supplier A Production Analysis</h4>
-            <canvas id="supplierAChart" width="400" height="200"></canvas>
-            <script id="supplier-a-top-products-data" type="application/json">
-                {{ supplier_a_top_products_json|safe }}
-            </script>
-            <script>
-                const supplierAData = {{ supplier_a_chart_data|safe }};
-                const supplierATopProducts = JSON.parse(document.getElementById('supplier-a-top-products-data').textContent);
-                
-                const ctxSupplierA = document.getElementById('supplierAChart').getContext('2d');
-                new Chart(ctxSupplierA, {
-                    type: 'bar',
-                    data: supplierAData,
-                    options: {
-                        responsive: true,
-                        plugins: {
-                            legend: { display: true },
-                            tooltip: {
-                                callbacks: {
-                                    afterBody: function (context) {
-                                        const group = context[0].dataset.label;
-                                        const month = context[0].label;
-                                        const topByGroup = supplierATopProducts[month] && supplierATopProducts[month][group];
-                                        if (!topByGroup || topByGroup.length === 0) return '';
-                                        return 'Top 10 Products in ' + group + ':\n' + topByGroup.map(
-                                            (p, i) => `${i + 1}. ${p[0]}: ${parseInt(p[1])}`
-                                        ).join('\n');
+    
+    {% if supplier_data %}
+        <ul class="nav nav-tabs" id="supplierTabs" role="tablist">
+            {% for site_name, data in supplier_data.items %}
+                <li class="nav-item">
+                    <a class="nav-link {% if forloop.first %}active{% endif %}" 
+                       id="{{ site_name|lower }}-tab" 
+                       data-toggle="tab" 
+                       href="#{{ site_name|lower }}" 
+                       role="tab"
+                       aria-controls="{{ site_name|lower }}" 
+                       aria-selected="{% if forloop.first %}true{% else %}false{% endif %}">
+                        {{ data.trading_name }}
+                    </a>
+                </li>
+            {% endfor %}
+        </ul>
+
+        <div class="tab-content" id="supplierTabsContent">
+            {% for site_name, data in supplier_data.items %}
+                <!-- {{ data.trading_name }} Chart -->
+                <div class="tab-pane fade {% if forloop.first %}show active{% endif %}" 
+                     id="{{ site_name|lower }}" 
+                     role="tabpanel" 
+                     aria-labelledby="{{ site_name|lower }}-tab">
+                    <canvas id="{{ site_name|lower }}Chart" width="400" height="200"></canvas>
+                    <script id="{{ site_name|lower }}-chart-data" type="application/json">
+                        {{ data.chart_data|safe }}
+                    </script>
+                    <script id="{{ site_name|lower }}-top-products-data" type="application/json">
+                        {{ data.top_products|safe }}
+                    </script>
+                </div>
+            {% endfor %}
+        </div>
+
+        <!-- Single JavaScript block for all charts -->
+        <script>
+            document.addEventListener('DOMContentLoaded', function() {
+                // Create charts for each supplier
+                {% for site_name, data in supplier_data.items %}
+                createSupplierChart('{{ site_name|lower }}');
+                {% endfor %}
+            });
+
+            function createSupplierChart(siteName) {
+                try {
+                    const chartDataElement = document.getElementById(siteName + '-chart-data');
+                    const topProductsElement = document.getElementById(siteName + '-top-products-data');
+                    const canvasElement = document.getElementById(siteName + 'Chart');
+                    
+                    if (!chartDataElement || !topProductsElement || !canvasElement) {
+                        console.error('Missing elements for supplier chart:', siteName);
+                        return;
+                    }
+                    
+                    const chartData = JSON.parse(chartDataElement.textContent);
+                    const topProducts = JSON.parse(topProductsElement.textContent);
+                    
+                    const ctx = canvasElement.getContext('2d');
+                    new Chart(ctx, {
+                        type: 'bar',
+                        data: chartData,
+                        options: {
+                            responsive: true,
+                            plugins: {
+                                legend: { display: true },
+                                tooltip: {
+                                    callbacks: {
+                                        afterBody: function (context) {
+                                            const group = context[0].dataset.label;
+                                            const month = context[0].label;
+                                            const topByGroup = topProducts[month] && topProducts[month][group];
+                                            if (!topByGroup || topByGroup.length === 0) return '';
+                                            return 'Top 10 Products in ' + group + ':\n' + topByGroup.map(
+                                                (p, i) => `${i + 1}. ${p[0]}: ${parseInt(p[1])}`
+                                            ).join('\n');
+                                        }
                                     }
                                 }
+                            },
+                            scales: {
+                                x: { title: { display: true, text: 'Month' } },
+                                y: { title: { display: true, text: 'Tonnes' }, beginAtZero: true }
                             }
-                        },
-                        scales: {
-                            x: { title: { display: true, text: 'Month' } },
-                            y: { title: { display: true, text: 'Tonnes' }, beginAtZero: true }
                         }
-                    }
-                });
-            </script>
+                    });
+                } catch (error) {
+                    console.error('Error creating chart for supplier', siteName, ':', error);
+                }
+            }
+        </script>
+    {% else %}
+        <div class="alert alert-info">
+            <h4>No Outsource Suppliers Found</h4>
+            <p>No suppliers have been marked as outsource suppliers in the Master Data Plant Model.</p>
+            <p>To add outsource suppliers, go to the Master Data section and mark plants as outsource suppliers.</p>
         </div>
-    </div>
+    {% endif %}
 </div>

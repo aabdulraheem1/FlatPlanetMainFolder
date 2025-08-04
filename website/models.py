@@ -412,6 +412,7 @@ class CalculatedProductionModel(models.Model):
     revenue_aud = models.FloatField(default=0, null=True, blank=True)
     latest_customer_invoice = models.CharField(max_length=250, null=True, blank=True)  # Latest customer name from invoice
     latest_customer_invoice_date = models.DateField(null=True, blank=True)  # Latest invoice date
+    is_outsourced = models.BooleanField(default=False, help_text="True if this production is from an outsourced site")
 
     def __str__(self):
         return f"{self.version.version} - {self.product.Product} - {self.site.SiteName} - {self.pouring_date}"
@@ -505,6 +506,13 @@ class MasterDataEpicorBillOfMaterialModel(models.Model):
     EstimatedScrap = models.FloatField(null=True, blank=True)
     SalvageQtyPer = models.FloatField(null=True, blank=True)
 
+    # Data source tracking fields
+    is_user_created = models.BooleanField(default=False, help_text="True if this record was created manually by user")
+    last_imported_from_epicor = models.DateTimeField(null=True, blank=True, help_text="Last time this record was updated from Epicor")
+    user_modified_fields = models.JSONField(default=dict, help_text="Track which fields were modified by users")
+    created_by_user = models.CharField(max_length=100, null=True, blank=True, help_text="Username who created this record manually")
+    last_modified_by_user = models.CharField(max_length=100, null=True, blank=True, help_text="Username who last modified this record")
+    last_user_modification_date = models.DateTimeField(null=True, blank=True, help_text="When user last modified this record")
 
     def __str__(self):
         return f"{self.Company} - {self.Plant} - {self.Parent}"
@@ -587,6 +595,14 @@ class MasterDataEpicorMethodOfManufacturingModel(models.Model):
     OperationSequence = models.IntegerField(null=True, blank=True)
     OperationDesc = models.CharField(max_length=255, null=True, blank=True)
     WorkCentre = models.CharField(max_length=100, null=True, blank=True)
+    
+    # Data source tracking fields
+    is_user_created = models.BooleanField(default=False, help_text="True if this record was created manually by user")
+    last_imported_from_epicor = models.DateTimeField(null=True, blank=True, help_text="Last time this record was updated from Epicor")
+    user_modified_fields = models.JSONField(default=dict, help_text="Track which fields were modified by users")
+    created_by_user = models.CharField(max_length=100, null=True, blank=True, help_text="Username who created this record manually")
+    last_modified_by_user = models.CharField(max_length=100, null=True, blank=True, help_text="Username who last modified this record")
+    last_user_modification_date = models.DateTimeField(null=True, blank=True, help_text="When user last modified this record")
     
     class Meta:
         db_table = 'website_masterdataepicormethodofmanufacturingmodel'

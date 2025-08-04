@@ -852,9 +852,9 @@ def build_detailed_monthly_table(fy, site, scenario_version, plan_type='demand')
     
     Args:
         fy: Fiscal year (FY24, FY25, FY26, FY27)
-        site: Site code (MTJ1, COI2, etc.)
+        site: Site code (MTJ1, COI2, etc.) or 'OUTSOURCE' for outsource data
         scenario_version: Scenario object or string
-        plan_type: 'demand' for Demand Plan breakdown, 'pour' for Pour Plan breakdown
+        plan_type: 'demand' for Demand Plan breakdown, 'pour' for Pour Plan breakdown, 'outsource' for Outsource breakdown
     """
     # Handle both string and object scenario_version
     scenario_name = scenario_version if isinstance(scenario_version, str) else scenario_version.version
@@ -872,7 +872,95 @@ def build_detailed_monthly_table(fy, site, scenario_version, plan_type='demand')
     
     start, end = fy_ranges[fy]
     
-    if plan_type == 'pour':
+    if plan_type == 'outsource':
+        # Outsource breakdown - get monthly outsource data from CalculatedProductionModel
+        outsource_monthly = (
+            CalculatedProductionModel.objects
+            .filter(
+                version=scenario_version,
+                is_outsourced=True,
+                pouring_date__gte=start,
+                pouring_date__lte=end
+            )
+            .annotate(month=TruncMonth('pouring_date'))
+            .values('month')
+            .annotate(total=Sum('tonnes'))
+            .order_by('month')
+        )
+        
+        # Convert to dict for easy lookup
+        outsource_dict = {row['month'].strftime('%b %Y'): row['total'] or 0 for row in outsource_monthly}
+        print(f"DEBUG: Outsource dict for {fy}: {outsource_dict}")
+        
+        # Generate all months in the fiscal year
+        current_month = start
+        months_data = []
+        total_outsource = 0
+        
+        while current_month <= end:
+            month_str = current_month.strftime('%b %Y')
+            outsource_qty = outsource_dict.get(month_str, 0)
+            
+            # Determine if this is actual or future (for display purposes)
+            current_date = date.today()
+            is_future = current_month > current_date
+            status = 'Future' if is_future else 'Actual'
+            
+            months_data.append({
+                'month': month_str,
+                'outsource': round(outsource_qty),
+                'status': status
+            })
+            
+            total_outsource += outsource_qty
+            
+            print(f"DEBUG: {month_str} - Outsource: {outsource_qty} ({status})")
+            
+            # Move to next month
+            if current_month.month == 12:
+                current_month = current_month.replace(year=current_month.year + 1, month=1)
+            else:
+                current_month = current_month.replace(month=current_month.month + 1)
+        
+        # Build HTML table for Outsource breakdown
+        table = """
+        <table class='table table-sm table-bordered mb-0' style='font-size: 12px;'>
+            <thead style='background-color: #f8f9fa;'>
+                <tr>
+                    <th style='text-align: left; padding: 4px 8px;'>Month</th>
+                    <th style='text-align: right; padding: 4px 8px;'>Outsource Tonnes</th>
+                    <th style='text-align: center; padding: 4px 8px;'>Status</th>
+                </tr>
+            </thead>
+            <tbody>
+        """
+        
+        for month_data in months_data:
+            status_class = 'text-primary' if month_data['status'] == 'Future' else 'text-success'
+            table += f"""
+                <tr>
+                    <td style='text-align: left; padding: 4px 8px;'>{month_data['month']}</td>
+                    <td style='text-align: right; padding: 4px 8px;'><strong>{month_data['outsource']:,}</strong></td>
+                    <td style='text-align: center; padding: 4px 8px;' class='{status_class}'>{month_data['status']}</td>
+                </tr>
+            """
+        
+        # Add totals row
+        table += f"""
+            </tbody>
+            <tfoot style='background-color: #e9ecef; font-weight: bold;'>
+                <tr>
+                    <td style='text-align: left; padding: 4px 8px;'>Total</td>
+                    <td style='text-align: right; padding: 4px 8px;'><strong>{round(total_outsource):,}</strong></td>
+                    <td style='text-align: center; padding: 4px 8px;'>-</td>
+                </tr>
+            </tfoot>
+        </table>
+        """
+        
+        print(f"DEBUG: Built Outsource table for {fy} - Total: {total_outsource}")
+    
+    elif plan_type == 'pour':
         # Pour Plan breakdown - get monthly pour plan data from MasterDataPlan
         # First try current scenario, if no data found, try other scenarios with XUZ1 data
         pour_monthly = (

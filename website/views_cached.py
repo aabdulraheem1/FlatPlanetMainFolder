@@ -75,9 +75,8 @@ def review_scenario_cached(request, version):
         'chart_data_customer': json.dumps(forecast_data.get('customer', {})),
         'chart_data_data_source': json.dumps(forecast_data.get('data_source', {})),
         
-        # Supplier data
-        'supplier_a_chart_data': supplier_data.get('chart_data', {}),
-        'supplier_a_top_products_json': json.dumps(supplier_data.get('top_products', [])),
+        # Supplier data - new dynamic structure
+        'supplier_data': supplier_data,
         
         # Inventory data
         'inventory_months': inventory_data.get('inventory_months', []),
@@ -187,21 +186,70 @@ def get_cached_inventory_data(scenario):
 
 
 def get_cached_supplier_data(scenario):
-    """Get cached supplier data or fall back to real-time calculation"""
+    """Get cached supplier data for all outsource suppliers or fall back to real-time calculation"""
     try:
-        # Currently only HBZJBF02 supplier is used
-        cached = CachedSupplierData.objects.get(version=scenario, supplier_code='HBZJBF02')
-        return {
-            'chart_data': cached.chart_data,
-            'top_products': cached.top_products,
-        }
-    except CachedSupplierData.DoesNotExist:
-        # Fall back to real-time calculation
-        from website.customized_function import get_production_data_by_group, get_top_products_per_month_by_group
-        return {
-            'chart_data': get_production_data_by_group('HBZJBF02', scenario),
-            'top_products': get_top_products_per_month_by_group('HBZJBF02', scenario),
-        }
+        # Get all outsource suppliers from MasterDataPlantModel
+        from website.models import MasterDataPlantModel
+        outsource_suppliers = MasterDataPlantModel.objects.filter(mark_as_outsource_supplier=True)
+        
+        if not outsource_suppliers.exists():
+            print("DEBUG: No outsource suppliers found")
+            return {}
+        
+        supplier_data = {}
+        
+        for supplier in outsource_suppliers:
+            site_name = supplier.SiteName
+            try:
+                # Try to get cached data first
+                from website.models import CachedSupplierData
+                cached = CachedSupplierData.objects.get(version=scenario, supplier_code=site_name)
+                supplier_data[site_name] = {
+                    'site_name': site_name,
+                    'trading_name': supplier.TradingName or site_name,
+                    'chart_data': cached.chart_data,
+                    'top_products': cached.top_products,
+                }
+            except CachedSupplierData.DoesNotExist:
+                # Fall back to real-time calculation using site name
+                from website.customized_function import get_production_data_by_group, get_top_products_per_month_by_group
+                chart_data = get_production_data_by_group(site_name, scenario)
+                top_products = get_top_products_per_month_by_group(site_name, scenario)
+                
+                supplier_data[site_name] = {
+                    'site_name': site_name,
+                    'trading_name': supplier.TradingName or site_name,
+                    'chart_data': chart_data,
+                    'top_products': top_products,
+                }
+        
+        print(f"DEBUG: Generated supplier data for {len(supplier_data)} outsource suppliers")
+        return supplier_data
+        
+    except Exception as e:
+        print(f"ERROR: Failed to get supplier data: {e}")
+        # Fallback to original behavior with HBZJBF02
+        try:
+            from website.models import CachedSupplierData
+            cached = CachedSupplierData.objects.get(version=scenario, supplier_code='HBZJBF02')
+            return {
+                'HBZJBF02': {
+                    'site_name': 'HBZJBF02',
+                    'trading_name': 'Supplier A',
+                    'chart_data': cached.chart_data,
+                    'top_products': cached.top_products,
+                }
+            }
+        except CachedSupplierData.DoesNotExist:
+            from website.customized_function import get_production_data_by_group, get_top_products_per_month_by_group
+            return {
+                'HBZJBF02': {
+                    'site_name': 'HBZJBF02',
+                    'trading_name': 'Supplier A',
+                    'chart_data': get_production_data_by_group('HBZJBF02', scenario),
+                    'top_products': get_top_products_per_month_by_group('HBZJBF02', scenario),
+                }
+            }
 
 
 def get_cached_detailed_inventory_data(scenario):
@@ -216,3 +264,22 @@ def get_cached_detailed_inventory_data(scenario):
         # Fall back to real-time calculation (returns empty by default)
         from website.customized_function import detailed_view_scenario_inventory
         return detailed_view_scenario_inventory(scenario)
+
+@login_required
+def supplier_review_cached(request, version):
+    """
+    Cached supplier review view with dynamic outsource supplier tabs.
+    """
+    user_name = request.user.username
+    scenario = get_object_or_404(scenarios, version=version)
+    
+    # Get supplier data using cached function
+    supplier_data = get_cached_supplier_data(scenario)
+    
+    context = {
+        'version': scenario.version,
+        'user_name': user_name,
+        'supplier_data': supplier_data,
+    }
+    
+    return render(request, 'website/supplier.html', context)
