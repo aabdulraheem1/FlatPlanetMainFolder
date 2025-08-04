@@ -19,6 +19,15 @@ class MasterDataPlantModel(models.Model):
     PlantRegion = models.CharField(max_length=250,null=True, blank=True)
     SiteType = models.CharField(max_length=250,null=True, blank=True)
     About = models.TextField(null=True,max_length=3000, blank=True)
+    mark_as_outsource_supplier = models.BooleanField(default=False, help_text="Mark this plant as an outsource supplier")
+    
+    # Data source tracking fields
+    is_user_created = models.BooleanField(default=False, help_text="True if this record was created manually by user")
+    last_imported_from_epicor = models.DateTimeField(null=True, blank=True, help_text="Last time this record was updated from Epicor")
+    user_modified_fields = models.JSONField(default=dict, help_text="Track which fields were modified by users")
+    created_by_user = models.CharField(max_length=100, null=True, blank=True, help_text="Username who created this record manually")
+    last_modified_by_user = models.CharField(max_length=100, null=True, blank=True, help_text="Username who last modified this record")
+    last_user_modification_date = models.DateTimeField(null=True, blank=True, help_text="When user last modified this record")
 
     def __str__(self):
         return self.SiteName or "Unknown Site"
@@ -251,6 +260,14 @@ class MasterDataProductModel(models.Model):
     PartClassID = models.CharField(max_length=250, null=True,blank=True)
     PartClassDescription = models.TextField(null=True,blank=True)
     ExistsInEpicor = models.BooleanField(null=True,blank=True)
+    
+    # Data source tracking fields
+    is_user_created = models.BooleanField(default=False, help_text="True if this record was created manually by user")
+    last_imported_from_epicor = models.DateTimeField(null=True, blank=True, help_text="Last time this record was updated from Epicor")
+    user_modified_fields = models.JSONField(default=dict, help_text="Track which fields were modified by users")
+    created_by_user = models.CharField(max_length=100, null=True, blank=True, help_text="Username who created this record manually")
+    last_modified_by_user = models.CharField(max_length=100, null=True, blank=True, help_text="Username who last modified this record")
+    last_user_modification_date = models.DateTimeField(null=True, blank=True, help_text="When user last modified this record")
 
     def __str__(self):
         return self.Product
@@ -404,6 +421,14 @@ class MasterDataSuppliersModel(models.Model):
     TradingName = models.CharField(max_length=250, null=True, blank=True)
     Address1 = models.CharField(max_length=250, null=True, blank=True)
     
+    # Data source tracking fields
+    is_user_created = models.BooleanField(default=False, help_text="True if this record was created manually by user")
+    last_imported_from_epicor = models.DateTimeField(null=True, blank=True, help_text="Last time this record was updated from Epicor")
+    user_modified_fields = models.JSONField(default=dict, help_text="Track which fields were modified by users")
+    created_by_user = models.CharField(max_length=100, null=True, blank=True, help_text="Username who created this record manually")
+    last_modified_by_user = models.CharField(max_length=100, null=True, blank=True, help_text="Username who last modified this record")
+    last_user_modification_date = models.DateTimeField(null=True, blank=True, help_text="When user last modified this record")
+    
     def __str__(self):
         return self.VendorID or "Unknown Supplier"
 
@@ -412,6 +437,14 @@ class MasterDataCustomersModel(models.Model):
     CustomerName = models.CharField(max_length=250, null=True, blank=True)
     CustomerRegion = models.CharField(max_length=250, null=True, blank=True)
     ForecastRegion = models.CharField(max_length=250, null=True, blank=True)
+    
+    # Data source tracking fields
+    is_user_created = models.BooleanField(default=False, help_text="True if this record was created manually by user")
+    last_imported_from_epicor = models.DateTimeField(null=True, blank=True, help_text="Last time this record was updated from Epicor")
+    user_modified_fields = models.JSONField(default=dict, help_text="Track which fields were modified by users")
+    created_by_user = models.CharField(max_length=100, null=True, blank=True, help_text="Username who created this record manually")
+    last_modified_by_user = models.CharField(max_length=100, null=True, blank=True, help_text="Username who last modified this record")
+    last_user_modification_date = models.DateTimeField(null=True, blank=True, help_text="When user last modified this record")
 
     def __str__(self):
         return self.CustomerId or "Unknown Customer"

@@ -161,8 +161,12 @@
                 url: '{% url "auto_level_optimization" version=version %}?action=get_data',
                 type: 'GET',
                 success: function(data) {
+                    console.log('DEBUG: Optimization state response:', data);
+                    console.log('DEBUG: optimization_applied =', data.optimization_applied);
+                    
                     if (data.optimization_applied) {
                         // Optimization has been applied
+                        console.log('DEBUG: Setting button to DISABLED (green)');
                         $('#autoOptimizeBtn').addClass('disabled')
                                            .attr('title', 'Auto optimization already applied. Reset production plan to enable.')
                                            .html('<i class="fas fa-check"></i> Auto Level Optimization (Applied)')
@@ -170,6 +174,7 @@
                                            .addClass('btn-success');
                     } else {
                         // Optimization not applied
+                        console.log('DEBUG: Setting button to ENABLED (blue)');
                         $('#autoOptimizeBtn').removeClass('disabled btn-success')
                                            .addClass('btn-primary')
                                            .attr('title', 'Apply auto level optimization')

@@ -33,6 +33,10 @@
                     {{ plant_form.SiteType.label_tag }}
                     {{ plant_form.SiteType }}
                 </div>
+                <div class="mb-3 form-check">
+                    {{ plant_form.mark_as_outsource_supplier }}
+                    {{ plant_form.mark_as_outsource_supplier.label_tag }}
+                </div>
                 <button type="submit" class="btn btn-primary">Save</button>
                 <a href="{% url 'PlantsList' %}" class="btn btn-secondary">Cancel</a>
             </form>

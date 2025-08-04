@@ -2,6 +2,7 @@ asgiref==3.9.1
 certifi==2025.7.14
 chardet==3.0.4
 charset-normalizer==3.4.2
+connectorx==0.4.3
 diff-match-patch==20241021
 Django==5.0.14
 django-import-export==4.3.9
@@ -24,6 +25,9 @@ numpy==2.3.2
 openpyxl==3.1.5
 pandas==2.3.1
 pillow==11.3.0
+polars==1.31.0
+psutil==7.0.0
+pyarrow==21.0.0
 pyodbc==5.2.0
 python-dateutil==2.9.0.post0
 pytz==2025.2

@@ -19,6 +19,7 @@ class ProductForm(forms.ModelForm):
     class Meta:
         model = MasterDataProductModel
         fields = '__all__'
+        exclude = ['user_modified_fields', 'is_user_created', 'last_imported_from_epicor']
 
 class ProductPictureForm(forms.ModelForm):
     class Meta:
@@ -32,7 +33,14 @@ class ProductPictureForm(forms.ModelForm):
 class MasterDataPlantsForm(forms.ModelForm):
     class Meta:
         model = MasterDataPlantModel
-        fields = '__all__'
+        fields = ['SiteName', 'TradingName', 'Company', 'Country', 'Location', 'PlantRegion', 'SiteType', 'About', 'mark_as_outsource_supplier']
+        widgets = {
+            'mark_as_outsource_supplier': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
+            'About': forms.Textarea(attrs={'rows': 4}),
+        }
+        labels = {
+            'mark_as_outsource_supplier': 'Mark as Outsource Supplier',
+        }
 
 from django import forms
 
@@ -222,7 +230,13 @@ from .models import MasterDataPlantModel
 class PlantForm(forms.ModelForm):
     class Meta:
         model = MasterDataPlantModel
-        fields = ['SiteName', 'Company', 'Location', 'SiteType']
+        fields = ['SiteName', 'Company', 'Country', 'Location', 'PlantRegion', 'SiteType', 'mark_as_outsource_supplier']
+        widgets = {
+            'mark_as_outsource_supplier': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
+        }
+        labels = {
+            'mark_as_outsource_supplier': 'Mark as Outsource Supplier',
+        }
 
 # forms.py
 
