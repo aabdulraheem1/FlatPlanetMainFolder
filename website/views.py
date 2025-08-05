@@ -1131,32 +1131,18 @@ from django.utils.safestring import mark_safe
 
 def calculate_outsource_totals(scenario_version):
     """
-    Calculate outsource totals by fiscal year from CalculatedProductionModel
+    Calculate outsource totals by fiscal year using fast Polars queries
     """
-    from django.db.models import Sum
-    from datetime import date
+    from website.direct_polars_queries import get_outsource_data_polars
     
-    # Define fiscal year date ranges (CORRECTED: FY25 = Apr 2025 to Mar 2026)
-    fy_ranges = {
-        'FY24': (date(2024, 4, 1), date(2025, 3, 31)),  # Apr 2024 - Mar 2025
-        'FY25': (date(2025, 4, 1), date(2026, 3, 31)),  # Apr 2025 - Mar 2026 (Sep 2025 data!)
-        'FY26': (date(2026, 4, 1), date(2027, 3, 31)),  # Apr 2026 - Mar 2027
-        'FY27': (date(2027, 4, 1), date(2028, 3, 31)),  # Apr 2027 - Mar 2028
-    }
+    print(f"DEBUG: Using Polars for outsource totals calculation")
+    outsource_data = get_outsource_data_polars(scenario_version)
     
+    # Extract just the totals for each fiscal year
     outsource_totals = {}
-    
-    for fy, (start_date, end_date) in fy_ranges.items():
-        # Sum tonnes for outsourced sites within fiscal year
-        total = CalculatedProductionModel.objects.filter(
-            version=scenario_version,
-            is_outsourced=True,
-            pouring_date__gte=start_date,
-            pouring_date__lte=end_date
-        ).aggregate(total=Sum('tonnes'))['total'] or 0
-        
-        outsource_totals[fy] = round(total)
-        print(f"🏭 Outsource {fy}: {outsource_totals[fy]} tonnes")
+    for fy, fy_data in outsource_data.items():
+        outsource_totals[fy] = fy_data['totals']['combined']
+        print(f"🏭 Outsource {fy}: {outsource_totals[fy]} tonnes (Polars)")
     
     return outsource_totals
 

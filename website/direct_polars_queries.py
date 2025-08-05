@@ -69,12 +69,12 @@ def get_foundry_data_direct_polars(scenario_version):
             SELECT 
                 site_id,
                 parent_product_group,
-                DATE_FORMAT(pouring_date, '%%Y-%%m') as month,
+                FORMAT(pouring_date, 'yyyy-MM') as month,
                 SUM(production_quantity) as total_tonnes,
                 SUM(cogs_aud) as total_cogs_aud
             FROM website_calculatedproductionmodel 
-            WHERE version = %s
-            GROUP BY site_id, parent_product_group, month
+            WHERE version_id = %s
+            GROUP BY site_id, parent_product_group, FORMAT(pouring_date, 'yyyy-MM')
             ORDER BY site_id, month
         """, [scenario_version])
         
@@ -134,11 +134,11 @@ def get_inventory_analysis_direct_polars(scenario_version):
         cursor.execute("""
             SELECT 
                 parent_product_group,
-                DATE_FORMAT(pouring_date, '%%Y-%%m') as month,
+                FORMAT(pouring_date, 'yyyy-MM') as month,
                 SUM(cogs_aud) as production_aud
             FROM website_calculatedproductionmodel 
-            WHERE version = %s
-            GROUP BY parent_product_group, month
+            WHERE version_id = %s
+            GROUP BY parent_product_group, FORMAT(pouring_date, 'yyyy-MM')
             ORDER BY parent_product_group, month
         """, [scenario_version])
         
@@ -190,13 +190,13 @@ def get_forecast_breakdown_direct_polars(scenario_version):
                 parent_product_group_description,
                 customer_code,
                 forecast_region,
-                DATE_FORMAT(period, '%%Y-%%m') as month,
+                FORMAT(period, 'yyyy-MM') as month,
                 SUM(tonnes) as total_tonnes,
                 SUM(revenue_aud) as total_revenue,
                 SUM(cogs_aud) as total_cogs
             FROM website_aggregatedforecast 
-            WHERE version = %s
-            GROUP BY parent_product_group_description, customer_code, forecast_region, month
+            WHERE version_id = %s
+            GROUP BY parent_product_group_description, customer_code, forecast_region, FORMAT(period, 'yyyy-MM')
         """, [scenario_version])
         
         data = cursor.fetchall()
@@ -270,7 +270,7 @@ def get_control_tower_direct_polars(scenario_version):
                 END as fiscal_year,
                 SUM(production_quantity) as total_tonnes
             FROM website_calculatedproductionmodel 
-            WHERE version = %s
+            WHERE version_id = %s
               AND pouring_date IS NOT NULL
             GROUP BY site_id, fiscal_year
         """, [scenario_version])
@@ -321,6 +321,243 @@ def benchmark_direct_vs_cached(scenario_version):
     print(f"Time Saved: {(720-direct_time)/60:.1f} minutes")
     
     return direct_results
+
+def get_outsource_data_polars(scenario_version, snapshot_date=None):
+    """
+    Get outsource breakdown data using Polars - MUCH faster than Django ORM
+    
+    Args:
+        scenario_version: Version to query
+        snapshot_date: Date to split actual vs projected (defaults to inventory snapshot date)
+    
+    Returns:
+        dict: Monthly outsource data with demand plan + actual purchased totals
+    """
+    import polars as pl
+    from django.db import connection
+    from datetime import date
+    
+    print(f"DEBUG: Starting Polars outsource queries for {scenario_version}")
+    start_time = time.time()
+    
+    # Get snapshot date if not provided
+    if not snapshot_date:
+        with connection.cursor() as cursor:
+            cursor.execute("""
+                SELECT TOP 1 date_of_snapshot 
+                FROM website_masterdatainventory 
+                WHERE version_id = %s
+            """, [scenario_version])
+            result = cursor.fetchone()
+            snapshot_date = result[0] if result else date.today()
+    
+    print(f"DEBUG: Using snapshot date: {snapshot_date}")
+    
+    # Define fiscal year ranges
+    fy_ranges = {
+        'FY24': ('2024-04-01', '2025-03-31'),
+        'FY25': ('2025-04-01', '2026-03-31'), 
+        'FY26': ('2026-04-01', '2027-03-31'),
+        'FY27': ('2027-04-01', '2028-03-31'),
+    }
+    
+    results = {}
+    
+    for fy, (start_date, end_date) in fy_ranges.items():
+        print(f"DEBUG: Processing {fy} ({start_date} to {end_date})")
+        
+        # ===== GET OUTSOURCE DEMAND PLAN (from CalculatedProductionModel) =====
+        with connection.cursor() as cursor:
+            cursor.execute("""
+                SELECT 
+                    FORMAT(pouring_date, 'yyyy-MM-01') as month,
+                    SUM(tonnes) as total_tonnes
+                FROM website_calculatedproductionmodel 
+                WHERE version_id = %s 
+                  AND is_outsourced = 1
+                  AND pouring_date >= %s 
+                  AND pouring_date <= %s
+                GROUP BY FORMAT(pouring_date, 'yyyy-MM-01')
+                ORDER BY month
+            """, [scenario_version, start_date, end_date])
+            
+            demand_data = cursor.fetchall()
+        
+        # Convert to polars DataFrame with explicit schema
+        if demand_data:
+            demand_df = pl.DataFrame({
+                'month': [row[0] for row in demand_data],
+                'demand_tonnes': [row[1] for row in demand_data]
+            })
+        else:
+            demand_df = pl.DataFrame({
+                'month': pl.Series([], dtype=pl.String),
+                'demand_tonnes': pl.Series([], dtype=pl.Float64)
+            })
+        
+        # ===== GET ACTUAL PURCHASED (from ReceiptedQuantity) =====
+        with connection.cursor() as cursor:
+            cursor.execute("""
+                SELECT 
+                    FORMAT(month_of_supply, 'yyyy-MM-01') as month,
+                    SUM(purchased_tonnes) as total_tonnes
+                FROM website_receiptedquantity rq
+                JOIN website_masterdataplantmodel mp ON rq.supplier_id = mp.SiteName
+                WHERE mp.mark_as_outsource_supplier = 1
+                  AND month_of_supply >= %s 
+                  AND month_of_supply <= %s
+                GROUP BY FORMAT(month_of_supply, 'yyyy-MM-01')
+                ORDER BY month
+            """, [start_date, end_date])
+            
+            receipted_data = cursor.fetchall()
+        
+        # Convert to polars DataFrame with explicit schema
+        if receipted_data:
+            receipted_df = pl.DataFrame({
+                'month': [row[0] for row in receipted_data],
+                'actual_tonnes': [row[1] for row in receipted_data]
+            })
+        else:
+            receipted_df = pl.DataFrame({
+                'month': pl.Series([], dtype=pl.String),
+                'actual_tonnes': pl.Series([], dtype=pl.Float64)
+            })
+        
+        # ===== COMBINE DATA WITH SNAPSHOT LOGIC =====
+        # Create complete month range for fiscal year
+        months = pd.date_range(start_date, end_date, freq='MS').strftime('%Y-%m-01').tolist()
+        
+        # Create base DataFrame with all months (explicit string type)
+        base_df = pl.DataFrame({'month': pl.Series(months, dtype=pl.String)})
+        
+        # Left join demand and actual data
+        combined_df = (base_df
+                      .join(demand_df, on='month', how='left')
+                      .join(receipted_df, on='month', how='left')
+                      .with_columns([
+                          pl.col('demand_tonnes').fill_null(0),
+                          pl.col('actual_tonnes').fill_null(0)
+                      ]))
+        
+        # Apply snapshot date logic: actual only for months <= snapshot
+        combined_df = combined_df.with_columns([
+            pl.when(pl.col('month') <= snapshot_date.strftime('%Y-%m-01'))
+            .then(pl.col('actual_tonnes'))
+            .otherwise(0)
+            .alias('actual_filtered'),
+            
+            (pl.col('demand_tonnes') + 
+             pl.when(pl.col('month') <= snapshot_date.strftime('%Y-%m-01'))
+             .then(pl.col('actual_tonnes'))
+             .otherwise(0))
+            .alias('total_tonnes')
+        ])
+        
+        # Convert to monthly breakdown for display
+        monthly_data = []
+        total_demand = 0
+        total_actual = 0
+        total_combined = 0
+        
+        for row in combined_df.iter_rows(named=True):
+            month_str = pd.to_datetime(row['month']).strftime('%b %Y')
+            demand = round(row['demand_tonnes'])
+            actual = round(row['actual_filtered'])
+            combined = round(row['total_tonnes'])
+            
+            monthly_data.append({
+                'month': month_str,
+                'demand': demand,
+                'actual': actual,
+                'total': combined
+            })
+            
+            total_demand += demand
+            total_actual += actual
+            total_combined += combined
+        
+        results[fy] = {
+            'monthly_data': monthly_data,
+            'totals': {
+                'demand': total_demand,
+                'actual': total_actual,
+                'combined': total_combined
+            }
+        }
+        
+        print(f"DEBUG: {fy} - Demand: {total_demand}, Actual: {total_actual}, Total: {total_combined}")
+    
+    polars_time = time.time() - start_time
+    print(f"DEBUG: Polars outsource queries completed in {polars_time:.3f}s")
+    
+    return results
+
+def build_outsource_table_polars(scenario_version, fy):
+    """
+    Build HTML table for outsource breakdown using Polars data
+    
+    Args:
+        scenario_version: Version to query
+        fy: Fiscal year (e.g., 'FY25')
+    
+    Returns:
+        str: HTML table for outsource modal
+    """
+    start_time = time.time()
+    
+    # Get outsource data using Polars
+    outsource_data = get_outsource_data_polars(scenario_version)
+    
+    if fy not in outsource_data:
+        return "<p>No outsource data available for this fiscal year.</p>"
+    
+    fy_data = outsource_data[fy]
+    monthly_data = fy_data['monthly_data']
+    totals = fy_data['totals']
+    
+    # Build HTML table
+    table = """
+    <table class='table table-sm table-bordered mb-0' style='font-size: 12px;'>
+        <thead style='background-color: #f8f9fa;'>
+            <tr>
+                <th style='text-align: left; padding: 4px 8px;'>Month</th>
+                <th style='text-align: right; padding: 4px 8px;'>Demand Plan</th>
+                <th style='text-align: right; padding: 4px 8px;'>Actual Purchased</th>
+                <th style='text-align: right; padding: 4px 8px;'>Total</th>
+            </tr>
+        </thead>
+        <tbody>
+    """
+    
+    for month_data in monthly_data:
+        table += f"""
+            <tr>
+                <td style='text-align: left; padding: 4px 8px;'>{month_data['month']}</td>
+                <td style='text-align: right; padding: 4px 8px;'>{month_data['demand']:,}</td>
+                <td style='text-align: right; padding: 4px 8px;'><strong>{month_data['actual']:,}</strong></td>
+                <td style='text-align: right; padding: 4px 8px;' class='text-primary'><strong>{month_data['total']:,}</strong></td>
+            </tr>
+        """
+    
+    # Add totals row
+    table += f"""
+        </tbody>
+        <tfoot style='background-color: #e9ecef; font-weight: bold;'>
+            <tr>
+                <td style='text-align: left; padding: 4px 8px;'>Total</td>
+                <td style='text-align: right; padding: 4px 8px;'><strong>{totals['demand']:,}</strong></td>
+                <td style='text-align: right; padding: 4px 8px;'><strong>{totals['actual']:,}</strong></td>
+                <td style='text-align: right; padding: 4px 8px;' class='text-primary'><strong>{totals['combined']:,}</strong></td>
+            </tr>
+        </tfoot>
+    </table>
+    """
+    
+    polars_time = time.time() - start_time
+    print(f"DEBUG: Built outsource table with Polars in {polars_time:.3f}s")
+    
+    return table
 
 if __name__ == "__main__":
     # Test with Jul 25 SPR scenario

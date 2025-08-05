@@ -32,6 +32,32 @@ class MasterDataPlantModel(models.Model):
     def __str__(self):
         return self.SiteName or "Unknown Site"
 
+
+class ReceiptedQuantity(models.Model):
+    """Model to store receipted quantities from suppliers - not scenario related"""
+    supplier = models.ForeignKey(MasterDataPlantModel, on_delete=models.CASCADE, help_text="Supplier (VendorID from PowerBI)")
+    product = models.CharField(max_length=250, help_text="Product identifier")
+    purchased_qty = models.FloatField(help_text="Transaction Qty from PowerBI")
+    purchased_tonnes = models.FloatField(help_text="Transaction Qty * Dress Mass")
+    month_of_supply = models.DateField(help_text="Month of supply (grouped by month)")
+    receipt_date = models.DateField(help_text="Original receipt date")
+    dress_mass = models.FloatField(null=True, blank=True, help_text="Dress mass from product")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        verbose_name = "Receipted Quantity"
+        verbose_name_plural = "Receipted Quantities"
+        ordering = ['-month_of_supply', 'supplier']
+        indexes = [
+            models.Index(fields=['supplier', 'month_of_supply']),
+            models.Index(fields=['product', 'month_of_supply']),
+        ]
+    
+    def __str__(self):
+        return f"{self.supplier.SiteName} - {self.product} - {self.month_of_supply.strftime('%Y-%m')}"
+
+
 class scenarios(models.Model):
     version = models.CharField(max_length=100, primary_key=True, null=False)
     scenario_description = models.TextField(default="type your description of this version here", null=False)

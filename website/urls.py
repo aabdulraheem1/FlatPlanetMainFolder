@@ -3,6 +3,7 @@ from . import views
 from . import views_cached
 from .views import fetch_data_from_mssql
 from .views_ajax import get_detailed_monthly_table
+from .views_receipted_quantities import receipted_quantities_refresh
 from django.shortcuts import render, redirect
 
 urlpatterns = [
@@ -194,6 +195,9 @@ urlpatterns = [
     
     # Pour plan details endpoint
     path('scenario/<str:version>/pour-plan-details/<str:fy>/<str:site>/', views.pour_plan_details, name='pour_plan_details'),
+
+    # Receipted quantities management
+    path('receipted-quantities/', receipted_quantities_refresh, name='receipted_quantities_refresh'),
 
     # API endpoint for inventory chart data
     path('get_inventory_chart_data/<str:version>/', views.get_inventory_chart_data, name='get_inventory_chart_data'),

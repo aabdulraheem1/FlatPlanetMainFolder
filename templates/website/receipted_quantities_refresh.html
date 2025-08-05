@@ -1,0 +1,266 @@
+{% extends 'website/base.html' %}
+{% load static %}
+
+{% block content %}
+<div class="container-fluid mt-4">
+    <div class="row">
+        <div class="col-12">
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <h2><i class="fas fa-truck-loading me-2"></i>Receipted Quantities</h2>
+                <div>
+                    <form method="post" style="display: inline;">
+                        {% csrf_token %}
+                        <button type="submit" class="btn btn-primary">
+                            <i class="fas fa-sync-alt me-1"></i>Refresh Data from PowerBI
+                        </button>
+                    </form>
+                </div>
+            </div>
+
+            <!-- Filters -->
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h5 class="mb-0"><i class="fas fa-filter me-2"></i>Filters</h5>
+                </div>
+                <div class="card-body">
+                    <form method="get" class="row g-3">
+                        <div class="col-md-3">
+                            <label for="supplier" class="form-label">Supplier</label>
+                            <select name="supplier" id="supplier" class="form-select">
+                                <option value="">All Suppliers</option>
+                                {% for supplier in suppliers %}
+                                    <option value="{{ supplier.SiteName }}" 
+                                            {% if supplier_filter == supplier.SiteName %}selected{% endif %}>
+                                        {{ supplier.TradingName|default:supplier.SiteName }}
+                                    </option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-md-3">
+                            <label for="product" class="form-label">Product</label>
+                            <input type="text" name="product" id="product" class="form-control" 
+                                   value="{{ product_filter }}" placeholder="Search product...">
+                        </div>
+                        <div class="col-md-3">
+                            <label for="month" class="form-label">Month</label>
+                            <input type="month" name="month" id="month" class="form-control" 
+                                   value="{{ month_filter }}">
+                        </div>
+                        <div class="col-md-3 d-flex align-items-end">
+                            <button type="submit" class="btn btn-secondary me-2">
+                                <i class="fas fa-search me-1"></i>Filter
+                            </button>
+                            <a href="{% url 'receipted_quantities_refresh' %}" class="btn btn-outline-secondary">
+                                <i class="fas fa-times me-1"></i>Clear
+                            </a>
+                        </div>
+                    </form>
+                </div>
+            </div>
+
+            <!-- Summary Cards -->
+            <div class="row mb-4">
+                <div class="col-md-3">
+                    <div class="card bg-primary text-white">
+                        <div class="card-body">
+                            <div class="d-flex justify-content-between">
+                                <div>
+                                    <h6 class="card-title">Total Records</h6>
+                                    <h4>{{ total_records|floatformat:0 }}</h4>
+                                </div>
+                                <div class="align-self-center">
+                                    <i class="fas fa-list fa-2x"></i>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="card bg-success text-white">
+                        <div class="card-body">
+                            <div class="d-flex justify-content-between">
+                                <div>
+                                    <h6 class="card-title">Total Suppliers</h6>
+                                    <h4>{{ suppliers.count }}</h4>
+                                </div>
+                                <div class="align-self-center">
+                                    <i class="fas fa-building fa-2x"></i>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="card bg-info text-white">
+                        <div class="card-body">
+                            <div class="d-flex justify-content-between">
+                                <div>
+                                    <h6 class="card-title">Total Products</h6>
+                                    <h4>{{ products.count }}</h4>
+                                </div>
+                                <div class="align-self-center">
+                                    <i class="fas fa-box fa-2x"></i>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="card bg-warning text-white">
+                        <div class="card-body">
+                            <div class="d-flex justify-content-between">
+                                <div>
+                                    <h6 class="card-title">Active Months</h6>
+                                    <h4>{{ months.count }}</h4>
+                                </div>
+                                <div class="align-self-center">
+                                    <i class="fas fa-calendar fa-2x"></i>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Data Table -->
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0">
+                        <i class="fas fa-table me-2"></i>Receipted Quantities Data
+                        <small class="text-muted">({{ page_obj.start_index }} - {{ page_obj.end_index }} of {{ page_obj.paginator.count }})</small>
+                    </h5>
+                </div>
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                        <table class="table table-striped table-hover mb-0">
+                            <thead class="table-dark">
+                                <tr>
+                                    <th>Supplier</th>
+                                    <th>Trading Name</th>
+                                    <th>Product</th>
+                                    <th>Month of Supply</th>
+                                    <th>Receipt Date</th>
+                                    <th class="text-end">Purchased Qty</th>
+                                    <th class="text-end">Dress Mass (kg)</th>
+                                    <th class="text-end">Purchased Tonnes</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for item in page_obj %}
+                                <tr>
+                                    <td>
+                                        <strong>{{ item.supplier.SiteName }}</strong>
+                                        {% if item.supplier.mark_as_outsource_supplier %}
+                                            <span class="badge bg-primary ms-1">Outsource</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>{{ item.supplier.TradingName|default:"-" }}</td>
+                                    <td>
+                                        <code>{{ item.product }}</code>
+                                    </td>
+                                    <td>
+                                        <span class="badge bg-secondary">{{ item.month_of_supply|date:"M Y" }}</span>
+                                    </td>
+                                    <td>{{ item.receipt_date|date:"d M Y" }}</td>
+                                    <td class="text-end">
+                                        <strong>{{ item.purchased_qty|floatformat:2 }}</strong>
+                                    </td>
+                                    <td class="text-end">{{ item.dress_mass|floatformat:3 }}</td>
+                                    <td class="text-end">
+                                        <strong class="text-primary">{{ item.purchased_tonnes|floatformat:3 }}</strong>
+                                    </td>
+                                </tr>
+                                {% empty %}
+                                <tr>
+                                    <td colspan="8" class="text-center py-4">
+                                        <i class="fas fa-info-circle me-2"></i>No receipted quantities found.
+                                        {% if not total_records %}
+                                            <br><small class="text-muted">Click "Refresh Data from PowerBI" to load data.</small>
+                                        {% endif %}
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+                
+                <!-- Pagination -->
+                {% if page_obj.has_other_pages %}
+                <div class="card-footer">
+                    <nav aria-label="Page navigation">
+                        <ul class="pagination justify-content-center mb-0">
+                            {% if page_obj.has_previous %}
+                                <li class="page-item">
+                                    <a class="page-link" href="?page=1{% if supplier_filter %}&supplier={{ supplier_filter }}{% endif %}{% if product_filter %}&product={{ product_filter }}{% endif %}{% if month_filter %}&month={{ month_filter }}{% endif %}">First</a>
+                                </li>
+                                <li class="page-item">
+                                    <a class="page-link" href="?page={{ page_obj.previous_page_number }}{% if supplier_filter %}&supplier={{ supplier_filter }}{% endif %}{% if product_filter %}&product={{ product_filter }}{% endif %}{% if month_filter %}&month={{ month_filter }}{% endif %}">Previous</a>
+                                </li>
+                            {% endif %}
+                            
+                            <li class="page-item active">
+                                <span class="page-link">
+                                    Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }}
+                                </span>
+                            </li>
+                            
+                            {% if page_obj.has_next %}
+                                <li class="page-item">
+                                    <a class="page-link" href="?page={{ page_obj.next_page_number }}{% if supplier_filter %}&supplier={{ supplier_filter }}{% endif %}{% if product_filter %}&product={{ product_filter }}{% endif %}{% if month_filter %}&month={{ month_filter }}{% endif %}">Next</a>
+                                </li>
+                                <li class="page-item">
+                                    <a class="page-link" href="?page={{ page_obj.paginator.num_pages }}{% if supplier_filter %}&supplier={{ supplier_filter }}{% endif %}{% if product_filter %}&product={{ product_filter }}{% endif %}{% if month_filter %}&month={{ month_filter }}{% endif %}">Last</a>
+                                </li>
+                            {% endif %}
+                        </ul>
+                    </nav>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+.card {
+    box-shadow: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.075);
+    border: 1px solid rgba(0, 0, 0, 0.125);
+}
+
+.table th {
+    font-weight: 600;
+    border-top: none;
+}
+
+.badge {
+    font-size: 0.75em;
+}
+
+.btn {
+    border-radius: 0.375rem;
+}
+
+.form-control, .form-select {
+    border-radius: 0.375rem;
+}
+
+.card-header {
+    background-color: #f8f9fa;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.125);
+}
+</style>
+
+<script>
+// Auto-submit form on filter change for better UX
+document.addEventListener('DOMContentLoaded', function() {
+    const supplierSelect = document.getElementById('supplier');
+    if (supplierSelect) {
+        supplierSelect.addEventListener('change', function() {
+            this.form.submit();
+        });
+    }
+});
+</script>
+
+{% endblock %}
