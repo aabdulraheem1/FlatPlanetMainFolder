@@ -481,14 +481,14 @@ class MasterDataSupplyOptionsModel(models.Model):
     InhouseOrOutsource = models.CharField(max_length=250, default='Inhouse')  # Default value set to 'Inhouse'
     Supplier = models.ForeignKey(
         MasterDataSuppliersModel,
-       
+        related_name='supply_options',
         on_delete=models.CASCADE,
         null=True,  # Allow NULL values
         blank=True  # Allow blank values in forms
     )
     Site = models.ForeignKey(
         MasterDataPlantModel,
-        
+        related_name='supply_options',
         on_delete=models.CASCADE,
         null=True,  # Allow NULL values
         blank=True  # Allow blank values in forms

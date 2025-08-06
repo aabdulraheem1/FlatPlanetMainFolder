@@ -7,6 +7,86 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <link href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css">
+    
+    <style>
+        /* Custom Extra Large Modal */
+        .modal-xl-custom {
+            max-width: 95vw !important;
+            width: 95vw !important;
+            margin: 1rem auto;
+        }
+        
+        .modal-xl-custom .modal-content {
+            height: 90vh;
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .modal-xl-custom .modal-body {
+            flex: 1;
+            overflow-y: auto;
+            padding: 1.5rem;
+        }
+        
+        /* Work Transfer Modal Styles */
+        #workTransferModal .table-responsive {
+            border: 1px solid #dee2e6;
+            max-height: 65vh;
+            overflow-y: auto;
+        }
+        
+        #workTransferModal .table th {
+            background-color: #343a40;
+            color: white;
+            border-color: #454d55;
+            font-size: 0.9em;
+            padding: 0.75rem 0.5rem;
+            position: sticky;
+            top: 0;
+            z-index: 10;
+        }
+        
+        #workTransferModal .table td {
+            padding: 0.6rem 0.5rem;
+            font-size: 0.9em;
+            vertical-align: middle;
+        }
+        
+        #workTransferModal .site-selector {
+            min-width: 120px;
+        }
+        
+        #workTransferModal .badge {
+            font-size: 0.75em;
+            margin-right: 3px;
+            margin-bottom: 2px;
+        }
+        
+        #workTransferModal .form-control-sm {
+            font-size: 0.9rem;
+        }
+        
+        #workTransferModal .btn {
+            padding: 0.5rem 1rem;
+        }
+        
+        /* Pagination styling */
+        #workTransferModal .pagination-info {
+            font-size: 0.9rem;
+            color: #6c757d;
+        }
+        
+        #workTransferModal .pagination .page-link {
+            padding: 0.4rem 0.75rem;
+            font-size: 0.85rem;
+        }
+        
+        .sticky-top {
+            position: sticky;
+            top: 0;
+            z-index: 10;
+        }
+    </style>
 </head>
 
 {% if messages %}
@@ -21,8 +101,12 @@
     <div class="container mt-3">
         <h1 class="text-center mb-4">Review Scenario: {{ version }}</h1>
         
-        <!-- Auto Level Optimization Button -->
+        <!-- Control Buttons -->
         <div class="text-center mb-4">
+            <button type="button" class="btn btn-info mr-2" id="workTransferBtn" data-toggle="modal" data-target="#workTransferModal">
+                <i class="fas fa-exchange-alt"></i> Work Transfer between Sites
+            </button>
+            
             <button type="button" class="btn btn-primary mr-2" id="autoOptimizeBtn" data-toggle="modal" data-target="#autoLevelModal">
                 Auto Level Optimization
             </button>
@@ -42,6 +126,129 @@
         {% include 'website/foundry.html' %}
         {% include 'website/supplier.html' %}
         {% include 'website/simple_inventory.html' %}
+    </div>
+
+    <!-- Work Transfer Modal -->
+    <div class="modal fade" id="workTransferModal" tabindex="-1" role="dialog" aria-labelledby="workTransferModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-xl-custom" role="document">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="workTransferModalLabel">Work Transfer between Sites</h5>
+                    <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                        <span aria-hidden="true">&times;</span>
+                    </button>
+                </div>
+                <div class="modal-body">
+                    <div id="workTransferLoader" class="text-center">
+                        <i class="fas fa-spinner fa-spin"></i> Loading production data...
+                    </div>
+                    <div id="workTransferContent" style="display: none;">
+                        <!-- Filter Form (Server-side filtering) -->
+                        <form id="filterForm" method="get" class="mb-3">
+                            <div class="row">
+                                <div class="col-md-3">
+                                    <label for="filterProduct">Filter by Product:</label>
+                                    <input type="text" 
+                                           id="filterProduct" 
+                                           name="product" 
+                                           class="form-control form-control-sm" 
+                                           placeholder="Enter product name..."
+                                           value="{{ request.GET.product|default:'' }}">
+                                </div>
+                                <div class="col-md-3">
+                                    <label for="filterSite">Filter by Current Site:</label>
+                                    <input type="text" 
+                                           id="filterSite" 
+                                           name="site" 
+                                           class="form-control form-control-sm" 
+                                           placeholder="Enter site name..."
+                                           value="{{ request.GET.site|default:'' }}">
+                                </div>
+                                <div class="col-md-3">
+                                    <label for="filterGroup">Filter by Product Group:</label>
+                                    <input type="text" 
+                                           id="filterGroup" 
+                                           name="group" 
+                                           class="form-control form-control-sm" 
+                                           placeholder="Enter product group..."
+                                           value="{{ request.GET.group|default:'' }}">
+                                </div>
+                                <div class="col-md-3">
+                                    <label for="filterSupplyOption">Filter by Supply Option:</label>
+                                    <input type="text" 
+                                           id="filterSupplyOption" 
+                                           name="supply_option" 
+                                           class="form-control form-control-sm" 
+                                           placeholder="Enter supply option..."
+                                           value="{{ request.GET.supply_option|default:'' }}">
+                                </div>
+                            </div>
+                            <div class="row mt-2">
+                                <div class="col-md-12 d-flex align-items-end">
+                                    <button type="submit" class="btn btn-sm btn-primary mr-2">
+                                        <i class="fas fa-search"></i> Filter
+                                    </button>
+                                    <button type="button" class="btn btn-sm btn-secondary" id="clearFilters">
+                                        <i class="fas fa-times"></i> Clear
+                                    </button>
+                                </div>
+                            </div>
+                        </form>
+                        
+                        <!-- Work Transfer Form -->
+                        <form id="workTransferForm" method="post">
+                            {% csrf_token %}
+                            
+                            <!-- Records Info and Pagination Controls -->
+                            <div class="d-flex justify-content-between align-items-center mb-2">
+                                <div>
+                                    <small class="text-muted">
+                                        Showing <span id="recordsInfo">0</span> records 
+                                        <span id="filterInfo" style="display: none;">(filtered from <span id="totalRecords">0</span> total)</span>
+                                    </small>
+                                </div>
+                                <div>
+                                    <nav aria-label="Page navigation">
+                                        <ul class="pagination pagination-sm mb-0" id="paginationControls">
+                                            <!-- Pagination will be generated here -->
+                                        </ul>
+                                    </nav>
+                                </div>
+                            </div>
+                            
+                            <div class="table-responsive" style="max-height: 400px; overflow-y: auto;">
+                                <table class="table table-bordered table-sm table-striped">
+                                    <thead class="thead-dark sticky-top">
+                                        <tr>
+                                            <th style="width: 100px;">Product</th>
+                                            <th style="width: 100px;">Pouring Date</th>
+                                            <th style="width: 80px;">Qty</th>
+                                            <th style="width: 80px;">Tonnes</th>
+                                            <th style="width: 120px;">Product Group</th>
+                                            <th style="width: 120px;">Parent Group</th>
+                                            <th style="width: 90px;">COGS AUD</th>
+                                            <th style="width: 90px;">Revenue AUD</th>
+                                            <th style="width: 120px;">Current Site</th>
+                                            <th style="width: 120px;">Transfer To</th>
+                                            <th style="width: 200px;">Supply Options</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="productionTableBody">
+                                        <!-- Dynamic content will be loaded here -->
+                                    </tbody>
+                                </table>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-dismiss="modal">Close</button>
+                    <button type="button" class="btn btn-success" id="saveTransfers">
+                        <i class="fas fa-save"></i> Save Transfers
+                    </button>
+                </div>
+            </div>
+        </div>
     </div>
 
     <!-- Auto Level Modal -->
@@ -220,6 +427,293 @@
                     submitBtn.prop('disabled', false).html(originalText);
                 }
             });
+        });
+        
+        // Work Transfer Modal JavaScript
+        let currentPage = 1;
+        const recordsPerPage = 20;
+        let totalRecords = 0;
+        let filteredRecords = 0;
+        let currentFilters = {product: '', site: '', group: '', supply_option: ''}; // Add supply_option filter
+        let changesWereMade = false; // Track if any transfers were saved
+        
+        $('#workTransferModal').on('show.bs.modal', function (e) {
+            console.log('🔍 Modal opening, resetting to page 1...');
+            currentPage = 1;
+            changesWereMade = false; // Reset changes flag when modal opens
+            console.log('🔍 Calling loadWorkTransferData...');
+            loadWorkTransferData();
+        });
+
+        // Handle modal close - refresh page if changes were made
+        $('#workTransferModal').on('hidden.bs.modal', function (e) {
+            console.log('🔍 Modal closing, changesWereMade:', changesWereMade);
+            if (changesWereMade) {
+                console.log('🔄 Changes detected, refreshing page...');
+                window.location.reload();
+            }
+        });
+        
+        // Handle filter form submission
+        $('#filterForm').on('submit', function(e) {
+            e.preventDefault();
+            currentPage = 1; // Reset to first page when filtering
+            loadWorkTransferData();
+        });
+        
+        // Handle clear filters button
+        $('#clearFilters').on('click', function() {
+            $('#filterForm')[0].reset();
+            currentPage = 1;
+            loadWorkTransferData();
+        });
+        
+        function loadWorkTransferData() {
+            console.log('🔍 loadWorkTransferData called, currentPage:', currentPage);
+            $('#workTransferLoader').show();
+            $('#workTransferContent').hide();
+            
+            // Get filter values from form
+            const productFilter = $('#filterProduct').val().trim();
+            const siteFilter = $('#filterSite').val().trim();
+            const groupFilter = $('#filterGroup').val().trim();
+            const supplyOptionFilter = $('#filterSupplyOption').val().trim();
+            
+            // Update currentFilters object
+            currentFilters = {
+                product: productFilter,
+                site: siteFilter,
+                group: groupFilter,
+                supply_option: supplyOptionFilter
+            };
+            
+            console.log('🔍 Filters:', currentFilters);
+            
+            const params = new URLSearchParams({
+                action: 'load_data',
+                page: currentPage,
+                per_page: recordsPerPage
+            });
+            
+            // Add filters only if they have values
+            if (productFilter) params.append('product', productFilter);
+            if (siteFilter) params.append('site', siteFilter);
+            if (groupFilter) params.append('group', groupFilter);
+            if (supplyOptionFilter) params.append('supply_option', supplyOptionFilter);
+            
+            console.log('🔍 Loading work transfer data...', params.toString());
+            
+            $.ajax({
+                url: '{% url "work_transfer_between_sites" version=version %}?' + params.toString(),
+                type: 'GET',
+                timeout: 30000, // 30 second timeout
+                success: function(data) {
+                    console.log('🔍 AJAX Success:', data);
+                    if (data.success) {
+                        totalRecords = data.total_records;
+                        filteredRecords = data.filtered_records;
+                        
+                        populateWorkTransferTable(data.production_records);
+                        updatePagination(data.pagination);
+                        updateRecordsInfo();
+                        
+                        $('#workTransferLoader').hide();
+                        $('#workTransferContent').show();
+                    } else {
+                        console.error('🔍 Server Error:', data.error);
+                        alert('Error loading data: ' + (data.error || 'Unknown error'));
+                        $('#workTransferLoader').hide();
+                        $('#workTransferContent').show();
+                    }
+                },
+                error: function(xhr, status, error) {
+                    console.error('🔍 AJAX Error:', xhr.status, status, error);
+                    console.error('🔍 Response Text:', xhr.responseText);
+                    alert('Error loading data: ' + error + ' (Status: ' + xhr.status + ')');
+                    $('#workTransferLoader').hide();
+                    $('#workTransferContent').show();
+                }
+            });
+        }
+        
+        function populateWorkTransferTable(records) {
+            const tbody = $('#productionTableBody');
+            tbody.empty();
+            
+            if (records.length === 0) {
+                tbody.append('<tr><td colspan="11" class="text-center text-muted">No records found</td></tr>');
+                return;
+            }
+            
+            records.forEach(function(record) {
+                // Get unique supply options (remove duplicates) and show raw source IDs only
+                const uniqueSources = [...new Set(record.supply_options
+                    .filter(option => {
+                        const source = option.source || '';
+                        return !(source.length === 6 && source.startsWith('BK'));
+                    })
+                    .map(option => option.source || 'Unknown')
+                )];
+                
+                const supplyOptions = uniqueSources
+                    .map(source => `<span class="badge badge-secondary mr-1">${source}</span>`)
+                    .join('');
+                
+                const row = `
+                    <tr data-record-id="${record.id}" data-product="${record.product}" 
+                        data-site="${record.current_site}" data-group="${record.product_group}">
+                        <td title="${record.product}">${record.product.length > 12 ? record.product.substring(0, 12) + '...' : record.product}</td>
+                        <td>${record.pouring_date}</td>
+                        <td>${parseFloat(record.production_quantity).toFixed(1)}</td>
+                        <td>${parseFloat(record.tonnes).toFixed(1)}</td>
+                        <td title="${record.product_group}">${record.product_group ? (record.product_group.length > 15 ? record.product_group.substring(0, 15) + '...' : record.product_group) : '-'}</td>
+                        <td title="${record.parent_product_group}">${record.parent_product_group ? (record.parent_product_group.length > 15 ? record.parent_product_group.substring(0, 15) + '...' : record.parent_product_group) : '-'}</td>
+                        <td>${record.cogs_aud ? parseFloat(record.cogs_aud).toFixed(0) : '0'}</td>
+                        <td>${record.revenue_aud ? parseFloat(record.revenue_aud).toFixed(0) : '0'}</td>
+                        <td><span class="badge badge-primary">${record.current_site}</span></td>
+                        <td>
+                            <select name="new_site_${record.id}" class="form-control form-control-sm site-selector">
+                                ${record.available_sites.map(site => 
+                                    `<option value="${site}" ${site === record.current_site ? 'selected' : ''}>${site}</option>`
+                                ).join('')}
+                            </select>
+                        </td>
+                        <td style="font-size: 0.8em;">${supplyOptions || '<span class="text-muted">No options</span>'}</td>
+                    </tr>
+                `;
+                tbody.append(row);
+            });
+        }
+        
+        function updatePagination(pagination) {
+            const paginationContainer = $('#paginationControls');
+            paginationContainer.empty();
+            
+            if (pagination.total_pages <= 1) {
+                return;
+            }
+            
+            // Previous button
+            const prevDisabled = pagination.current_page === 1 ? 'disabled' : '';
+            paginationContainer.append(`
+                <li class="page-item ${prevDisabled}">
+                    <a class="page-link" href="#" data-page="${pagination.current_page - 1}">Previous</a>
+                </li>
+            `);
+            
+            // Page numbers
+            const startPage = Math.max(1, pagination.current_page - 2);
+            const endPage = Math.min(pagination.total_pages, pagination.current_page + 2);
+            
+            if (startPage > 1) {
+                paginationContainer.append('<li class="page-item"><a class="page-link" href="#" data-page="1">1</a></li>');
+                if (startPage > 2) {
+                    paginationContainer.append('<li class="page-item disabled"><span class="page-link">...</span></li>');
+                }
+            }
+            
+            for (let i = startPage; i <= endPage; i++) {
+                const active = i === pagination.current_page ? 'active' : '';
+                paginationContainer.append(`
+                    <li class="page-item ${active}">
+                        <a class="page-link" href="#" data-page="${i}">${i}</a>
+                    </li>
+                `);
+            }
+            
+            if (endPage < pagination.total_pages) {
+                if (endPage < pagination.total_pages - 1) {
+                    paginationContainer.append('<li class="page-item disabled"><span class="page-link">...</span></li>');
+                }
+                paginationContainer.append(`<li class="page-item"><a class="page-link" href="#" data-page="${pagination.total_pages}">${pagination.total_pages}</a></li>`);
+            }
+            
+            // Next button
+            const nextDisabled = pagination.current_page === pagination.total_pages ? 'disabled' : '';
+            paginationContainer.append(`
+                <li class="page-item ${nextDisabled}">
+                    <a class="page-link" href="#" data-page="${pagination.current_page + 1}">Next</a>
+                </li>
+            `);
+        }
+        
+        function updateRecordsInfo() {
+            const hasFilters = currentFilters.product || currentFilters.site || currentFilters.group || currentFilters.supply_option;
+            
+            if (hasFilters) {
+                $('#recordsInfo').text(filteredRecords);
+                $('#totalRecords').text(totalRecords);
+                $('#filterInfo').show();
+            } else {
+                $('#recordsInfo').text(totalRecords);
+                $('#filterInfo').hide();
+            }
+        }
+        
+        // Pagination click handler
+        $(document).on('click', '#paginationControls .page-link', function(e) {
+            e.preventDefault();
+            const page = parseInt($(this).data('page'));
+            if (page && page !== currentPage) {
+                currentPage = page;
+                loadWorkTransferData();
+            }
+        });
+        
+        // Save transfers
+        $('#saveTransfers').on('click', function() {
+            const transfers = [];
+            const changedRows = $('#productionTableBody tr').filter(function() {
+                const recordId = $(this).data('record-id');
+                const currentSite = $(this).data('site');
+                const newSite = $(this).find(`select[name="new_site_${recordId}"]`).val();
+                return currentSite !== newSite && recordId; // Ensure recordId exists
+            });
+            
+            if (changedRows.length === 0) {
+                alert('No transfers to save. Please select different sites for the products you want to transfer.');
+                return;
+            }
+            
+            changedRows.each(function() {
+                const recordId = $(this).data('record-id');
+                const newSite = $(this).find(`select[name="new_site_${recordId}"]`).val();
+                transfers.push({
+                    record_id: recordId,
+                    new_site: newSite
+                });
+            });
+            
+            if (confirm(`Save ${transfers.length} production transfers?`)) {
+                const saveBtn = $('#saveTransfers');
+                const originalText = saveBtn.html();
+                saveBtn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Saving...');
+                
+                $.ajax({
+                    url: '{% url "work_transfer_between_sites" version=version %}',
+                    type: 'POST',
+                    data: {
+                        'csrfmiddlewaretoken': $('[name=csrfmiddlewaretoken]').val(),
+                        'transfers': JSON.stringify(transfers)
+                    },
+                    success: function(response) {
+                        if (response.success) {
+                            changesWereMade = true; // Mark that changes were made
+                            alert(`Successfully transferred ${response.transferred_count} production records.`);
+                            // Reload current page to show updated data
+                            loadWorkTransferData();
+                        } else {
+                            alert('Error saving transfers: ' + (response.error || 'Unknown error'));
+                        }
+                        saveBtn.prop('disabled', false).html(originalText);
+                    },
+                    error: function(xhr, status, error) {
+                        console.error('Error saving transfers:', error);
+                        alert('Error saving transfers. Please try again.');
+                        saveBtn.prop('disabled', false).html(originalText);
+                    }
+                });
+            }
         });
     </script>
 </body>

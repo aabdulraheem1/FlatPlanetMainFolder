@@ -136,6 +136,7 @@ urlpatterns = [
     path('balance_hard_green_sand/<str:version>/', views.balance_hard_green_sand, name='balance_hard_green_sand'),
     path('create_balanced_pour_plan/<str:version>/', views.create_balanced_pour_plan, name='create_balanced_pour_plan'),
     path('auto_level_optimization/<str:version>/', views.auto_level_optimization, name='auto_level_optimization'),
+    path('work_transfer_between_sites/<str:version>/', views.work_transfer_between_sites, name='work_transfer_between_sites'),
     path('reset_production_plan/<str:version>/', views.reset_production_plan, name='reset_production_plan'),
     
     # AJAX endpoint for detailed monthly tables

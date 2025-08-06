@@ -5441,7 +5441,7 @@ def reset_production_plan(request, version):
     from django.contrib import messages
     from django.utils import timezone
     from io import StringIO
-    import sys
+    from .models import ScenarioOptimizationState
     
     if request.method == 'POST':
         try:
@@ -5451,13 +5451,22 @@ def reset_production_plan(request, version):
             
             # Reset optimization state to allow auto-level to be used again
             try:
+                print(f"DEBUG RESET: About to reset optimization state for scenario: {version}")
                 optimization_state, created = ScenarioOptimizationState.objects.get_or_create(version=scenario)
+                print(f"DEBUG RESET: Before reset - auto_optimization_applied: {optimization_state.auto_optimization_applied}")
+                
                 optimization_state.auto_optimization_applied = False
                 optimization_state.last_reset_date = timezone.now()
                 optimization_state.save()
-                print(f"DEBUG: Reset optimization state for scenario: {version}")
+                
+                # Verify the reset worked
+                optimization_state.refresh_from_db()
+                print(f"DEBUG RESET: After reset - auto_optimization_applied: {optimization_state.auto_optimization_applied}")
+                print(f"DEBUG RESET: Reset optimization state for scenario: {version}")
             except Exception as opt_error:
                 print(f"WARNING: Could not reset optimization state: {str(opt_error)}")
+                import traceback
+                print(f"TRACEBACK: {traceback.format_exc()}")
             
             # Capture command output
             stdout = StringIO()
@@ -5491,6 +5500,105 @@ def reset_production_plan(request, version):
             messages.error(request, f"Error resetting production plan: {str(e)}")
     
     return redirect('review_scenario', version=version)
+
+
+@login_required
+def work_transfer_between_sites(request, version):
+    """
+    Handle work transfer between sites for CalculatedProductionModel with Polars optimization
+    """
+    import json
+    from django.http import JsonResponse
+    from .work_transfer_polars import get_work_transfer_data_polars, save_transfers_polars
+    
+    print(f"🔍 DEBUG: work_transfer_between_sites called - Method: {request.method}, Version: {version}")
+    print(f"🔍 DEBUG: GET parameters: {dict(request.GET)}")
+    
+    scenario = get_object_or_404(scenarios, version=version)
+    
+    if request.method == 'GET' and request.GET.get('action') == 'load_data':
+        try:
+            print("🔍 DEBUG: Processing load_data action")
+            
+            # Get pagination parameters
+            page = int(request.GET.get('page', 1))
+            per_page = int(request.GET.get('per_page', 20))
+            
+            print(f"🔍 DEBUG: Pagination - Page: {page}, Per page: {per_page}")
+            
+            # Get filter parameters
+            filters = {}
+            if request.GET.get('product'):
+                filters['product'] = request.GET.get('product')
+            if request.GET.get('site'):
+                filters['site'] = request.GET.get('site')
+            if request.GET.get('group'):
+                filters['group'] = request.GET.get('group')
+            if request.GET.get('supply_option'):
+                filters['supply_option'] = request.GET.get('supply_option')
+            
+            print(f"🔍 DEBUG: Filters: {filters}")
+            
+            # Use Polars-based function for high performance
+            print("🔍 DEBUG: Calling get_work_transfer_data_polars...")
+            result = get_work_transfer_data_polars(
+                scenario_version=version,
+                page=page,
+                per_page=per_page,
+                filters=filters
+            )
+            
+            print(f"🔍 DEBUG: Polars function returned: success={result.get('success', False)}")
+            if result.get('success'):
+                print(f"🔍 DEBUG: Records count: {len(result.get('production_records', []))}")
+            
+            return JsonResponse(result)
+            
+        except Exception as e:
+            print(f"❌ ERROR in work_transfer_between_sites: {e}")
+            import traceback
+            traceback.print_exc()
+            return JsonResponse({
+                'success': False,
+                'error': str(e)
+            })
+    
+    elif request.method == 'POST':
+        try:
+            print("🔍 DEBUG: Processing POST request for transfers")
+            transfers_json = request.POST.get('transfers')
+            if not transfers_json:
+                return JsonResponse({
+                    'success': False,
+                    'error': 'No transfer data provided'
+                })
+            
+            transfers = json.loads(transfers_json)
+            
+            # Use Polars-based function for high performance batch processing
+            result = save_transfers_polars(
+                scenario_version=version,
+                transfers=transfers
+            )
+            
+            return JsonResponse(result)
+            
+        except Exception as e:
+            print(f"❌ ERROR saving transfers: {e}")
+            import traceback
+            traceback.print_exc()
+            return JsonResponse({
+                'success': False,
+                'error': str(e)
+            })
+    
+    else:
+        print(f"🔍 DEBUG: Invalid request - Method: {request.method}, Action: {request.GET.get('action')}")
+        return JsonResponse({
+            'success': False,
+            'error': f'Invalid request method: {request.method}'
+        })
+
 
 # ...existing code...
 
