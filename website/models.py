@@ -778,3 +778,30 @@ class AggregatedFinancialChartData(models.Model):
     
     def __str__(self):
         return f"Financial Chart Data - {self.version.version}"
+
+
+class InventoryProjectionModel(models.Model):
+    """Model to store monthly inventory projections by parent product group only"""
+    version = models.ForeignKey(scenarios, on_delete=models.CASCADE, related_name='inventory_projections')
+    month = models.DateField(help_text="Month for this projection")
+    parent_product_group = models.CharField(max_length=250, help_text="Parent Product Group Description")
+    production_aud = models.DecimalField(max_digits=15, decimal_places=2, default=0, help_text="Production value in AUD")
+    cogs_aud = models.DecimalField(max_digits=15, decimal_places=2, default=0, help_text="Cost of Goods Sold in AUD")
+    revenue_aud = models.DecimalField(max_digits=15, decimal_places=2, default=0, help_text="Revenue in AUD")
+    opening_inventory_aud = models.DecimalField(max_digits=15, decimal_places=2, default=0, help_text="Opening inventory value in AUD")
+    closing_inventory_aud = models.DecimalField(max_digits=15, decimal_places=2, default=0, help_text="Closing inventory value in AUD")
+    
+    # Metadata
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        unique_together = [['version', 'month', 'parent_product_group']]
+        ordering = ['version', 'parent_product_group', 'month']
+        indexes = [
+            models.Index(fields=['version', 'parent_product_group']),
+            models.Index(fields=['version', 'month']),
+        ]
+    
+    def __str__(self):
+        return f"{self.version.version} - {self.parent_product_group} - {self.month.strftime('%Y-%m')}"

@@ -9,10 +9,13 @@ from website.models import ReceiptedQuantity, MasterDataPlantModel, MasterDataPr
 from django.core.paginator import Paginator
 from django.db.models import Q
 import traceback
+from django.contrib.auth.decorators import login_required
 
-
+@login_required
 def receipted_quantities_refresh(request):
     """View to refresh receipted quantities data from PowerBI database"""
+
+    user_name = request.user.username if request.user.is_authenticated else 'Guest'
     
     if request.method == 'POST':
         try:
@@ -165,6 +168,7 @@ def receipted_quantities_refresh(request):
         'product_filter': product_filter,
         'month_filter': month_filter,
         'total_records': receipted_data.count(),
+        'user_name': user_name,
     }
     
     return render(request, 'website/receipted_quantities_refresh.html', context)

@@ -1162,12 +1162,15 @@ def review_scenario(request, version):
 
     # Get snapshot date
     snapshot_date = None
+    inventory_snapshot_date = None
     try:
         inventory_snapshot = MasterDataInventory.objects.filter(version=scenario).first()
         if inventory_snapshot:
             snapshot_date = inventory_snapshot.date_of_snapshot.strftime('%B %d, %Y')
+            inventory_snapshot_date = inventory_snapshot.date_of_snapshot  # Keep the date object for template
     except:
         snapshot_date = "Date not available"
+        inventory_snapshot_date = None
 
     print(f"DEBUG: Loading data using DIRECT POLARS QUERIES for scenario: {scenario.version}")
 
@@ -1291,6 +1294,75 @@ def review_scenario(request, version):
     # Get supplier data for dynamic supplier tabs
     supplier_data = get_cached_supplier_data(scenario)
 
+    # Get inventory projection data for enhanced inventory charts
+    from website.customized_function import get_inventory_projection_data
+    inventory_projection_data = get_inventory_projection_data(scenario.version)
+    
+    # Use projection data for chart if available, otherwise fallback to existing data
+    if inventory_projection_data['chart_data'].get('All Product Groups'):
+        all_groups_data = inventory_projection_data['chart_data']['All Product Groups']
+        inventory_chart_data = {
+            'labels': all_groups_data['labels'],
+            'datasets': [
+                {
+                    'label': 'Revenue (AUD)',
+                    'data': all_groups_data['revenue'],
+                    'borderColor': 'rgb(34, 197, 94)',
+                    'backgroundColor': 'rgba(34, 197, 94, 0.1)',
+                    'yAxisID': 'y'
+                },
+                {
+                    'label': 'COGS (AUD)',
+                    'data': all_groups_data['cogs'],
+                    'borderColor': 'rgb(239, 68, 68)',
+                    'backgroundColor': 'rgba(239, 68, 68, 0.1)',
+                    'yAxisID': 'y'
+                },
+                {
+                    'label': 'Production Value (AUD)',
+                    'data': all_groups_data['production'],
+                    'borderColor': 'rgb(59, 130, 246)',
+                    'backgroundColor': 'rgba(59, 130, 246, 0.1)',
+                    'yAxisID': 'y'
+                },
+                {
+                    'label': 'Inventory Projection (AUD)',
+                    'data': all_groups_data['inventoryProjection'],
+                    'borderColor': 'rgb(251, 191, 36)',
+                    'backgroundColor': 'rgba(251, 191, 36, 0.1)',
+                    'yAxisID': 'y2'
+                }
+            ]
+        }
+    else:
+        # Fallback to existing inventory data format
+        inventory_chart_data = {
+            'labels': inventory_months,
+            'datasets': [
+                {
+                    'label': 'COGS (AUD)',
+                    'data': inventory_cogs,
+                    'borderColor': 'rgb(75, 192, 192)',
+                    'backgroundColor': 'rgba(75, 192, 192, 0.1)',
+                    'yAxisID': 'y'
+                },
+                {
+                    'label': 'Revenue (AUD)',
+                    'data': inventory_revenue,
+                    'borderColor': 'rgb(255, 99, 132)',
+                    'backgroundColor': 'rgba(255, 99, 132, 0.1)',
+                    'yAxisID': 'y'
+                },
+                {
+                    'label': 'Production (AUD)',
+                    'data': production_aud,
+                    'borderColor': 'rgb(54, 162, 235)',
+                    'backgroundColor': 'rgba(54, 162, 235, 0.1)',
+                    'yAxisID': 'y'
+                }
+            ]
+        }
+
     context = {
         'version': scenario.version,
         'user_name': user_name,
@@ -1350,33 +1422,8 @@ def review_scenario(request, version):
         'supplier_a_chart_data': json.dumps({'labels': [], 'datasets': []}),
         'supplier_a_top_products_json': json.dumps({}),
         
-        # Inventory data (simple format)
-        'inventory_chart_data': json.dumps({
-            'labels': inventory_months,
-            'datasets': [
-                {
-                    'label': 'COGS (AUD)',
-                    'data': inventory_cogs,
-                    'borderColor': 'rgb(75, 192, 192)',
-                    'backgroundColor': 'rgba(75, 192, 192, 0.1)',
-                    'yAxisID': 'y'
-                },
-                {
-                    'label': 'Revenue (AUD)',
-                    'data': inventory_revenue,
-                    'borderColor': 'rgb(255, 99, 132)',
-                    'backgroundColor': 'rgba(255, 99, 132, 0.1)',
-                    'yAxisID': 'y'
-                },
-                {
-                    'label': 'Production (AUD)',
-                    'data': production_aud,
-                    'borderColor': 'rgb(54, 162, 235)',
-                    'backgroundColor': 'rgba(54, 162, 235, 0.1)',
-                    'yAxisID': 'y'
-                }
-            ]
-        }),
+        # Inventory data (enhanced with projections)
+        'inventory_chart_data': json.dumps(inventory_chart_data),
         'inventory_months': json.dumps(inventory_months),
         'inventory_cogs': json.dumps(inventory_cogs),
         'inventory_revenue': json.dumps(inventory_revenue),
@@ -1414,7 +1461,12 @@ def review_scenario(request, version):
         }),
         
         # Supplier data for dynamic supplier tabs
-        'supplier_data': supplier_data
+        'supplier_data': supplier_data,
+        
+        # Enhanced inventory data with projections and table support
+        'inventory_projection_chart_data': json.dumps(inventory_projection_data['chart_data']),
+        'inventory_projection_table_data': json.dumps(inventory_projection_data['table_data']),
+        'available_parent_groups': list(inventory_projection_data['chart_data'].keys())
     }
 
     return render(request, 'website/review_scenario.html', context)
@@ -1607,8 +1659,18 @@ def review_scenario(request, version):
         # Simple inventory data - no complex processing needed for simple_inventory.html
         'snapshot_date': snapshot_date,
         
+        # NEW: Context variables for summary card in simple_inventory.html
+        'inventory_snapshot_date': inventory_snapshot_date,  # Date object for the snapshot
+        
         # Enhanced inventory data for simple_inventory.html chart
         'inventory_chart_data': json.dumps(get_enhanced_inventory_chart_data(scenario)),
+        
+        # NEW: Add inventory projection data for chart and table
+        'inventory_projection_chart_data': json.dumps(get_enhanced_inventory_chart_data(scenario)),
+        'inventory_projection_table_data': json.dumps(get_inventory_projection_table_data_for_template(scenario)),
+        
+        # Get available parent groups from the table data
+        'available_parent_groups': get_parent_groups_from_table_data(scenario),
         
         # Supplier data (empty for now)
         'supplier_a_chart_data': {},
@@ -4266,6 +4328,50 @@ def get_enhanced_inventory_chart_data(scenario):
         print(f"INFO: Enhanced inventory data not available, using fallback: {e}")
         return get_fallback_inventory_data()
 
+def get_parent_groups_from_table_data(scenario):
+    """Get parent groups from inventory projection table data (fast, no additional queries)"""
+    try:
+        table_data = get_inventory_projection_table_data_for_template(scenario)
+        parent_groups = set()
+        
+        for row in table_data:
+            if row.get('parent_product_group'):
+                parent_groups.add(row['parent_product_group'])
+        
+        return sorted(list(parent_groups))
+        
+    except Exception as e:
+        print(f"ERROR: Failed to get parent groups from table data: {e}")
+        return []
+
+
+def get_inventory_projection_table_data_for_template(scenario):
+    """Get inventory projection data formatted for table display"""
+    try:
+        from website.customized_function import get_inventory_projection_data
+        projection_data = get_inventory_projection_data(scenario.version)
+        
+        # Convert to table format expected by the template
+        table_data = []
+        if projection_data and 'table_data' in projection_data:
+            for row in projection_data['table_data']:
+                table_data.append({
+                    'month': row.get('month', ''),
+                    'parent_product_group': row.get('parent_product_group', ''),
+                    'production_aud': row.get('production_aud', 0),
+                    'cogs_aud': row.get('cogs_aud', 0),
+                    'revenue_aud': row.get('revenue_aud', 0),
+                    'opening_inventory_aud': row.get('opening_inventory_aud', 0),
+                    'closing_inventory_aud': row.get('closing_inventory_aud', 0),
+                })
+        
+        return table_data
+        
+    except Exception as e:
+        print(f"ERROR: Failed to get inventory projection table data: {e}")
+        return []
+
+
 def get_fallback_inventory_data():
     """Fallback static inventory data"""
     return {
@@ -4423,7 +4529,16 @@ def calculate_model(request, version):
         
         messages.success(request, f"Control Tower cache calculation SKIPPED for version '{version}' - now using real-time polars queries.")
 
-        # Step 6: Reset optimization state to allow Auto Level Optimization again
+        # Step 6: Populate inventory projections
+        print("Running populate_inventory_projection_model")
+        from website.customized_function import populate_inventory_projection_model
+        projection_success = populate_inventory_projection_model(version)
+        if projection_success:
+            messages.success(request, f"Inventory projections have been successfully populated for version '{version}'.")
+        else:
+            messages.warning(request, f"Failed to populate inventory projections for version '{version}'. Check debug logs.")
+
+        # Step 7: Reset optimization state to allow Auto Level Optimization again
         try:
             from .models import scenarios, ScenarioOptimizationState
             scenario = scenarios.objects.get(version=version)
@@ -5412,6 +5527,16 @@ def auto_level_optimization(request, version):
                         
                         if result.returncode == 0:
                             print(f"DEBUG: Control Tower cache updated successfully")
+                            
+                            # Regenerate inventory projections after optimization
+                            print("DEBUG: Regenerating inventory projections after optimization")
+                            from website.customized_function import populate_inventory_projection_model
+                            projection_success = populate_inventory_projection_model(version)
+                            if projection_success:
+                                print("DEBUG: Inventory projections regenerated successfully")
+                            else:
+                                print("WARNING: Failed to regenerate inventory projections")
+                            
                             messages.success(request, f"Successfully filled pour plan gaps by moving {optimized_count} production records forward across all product groups, totaling {total_tonnes_moved:.2f} tonnes. All charts and Control Tower demand plan have been updated to reflect the optimization. Auto optimization is now locked until reset.")
                         else:
                             print(f"ERROR: Control Tower cache update failed: {result.stderr}")
@@ -5485,6 +5610,15 @@ def reset_production_plan(request, version):
                 
                 print(f"DEBUG: populate_calculated_production completed successfully")
                 print(f"OUTPUT: {output}")
+                
+                # Regenerate inventory projections after production plan reset
+                print("DEBUG: Regenerating inventory projections after reset")
+                from website.customized_function import populate_inventory_projection_model
+                projection_success = populate_inventory_projection_model(version)
+                if projection_success:
+                    print("DEBUG: Inventory projections regenerated successfully")
+                else:
+                    print("WARNING: Failed to regenerate inventory projections")
                 
                 messages.success(request, f"Production plan reset successfully for version {version}.")
                 

@@ -38,9 +38,9 @@
         <div class="col-12">
             <div class="card bg-info text-white">
                 <div class="card-body text-center">
-                    <h4 id="totalInventoryValue">Loading...</h4>
+                    <h4 id="totalInventoryValue">$190.5M AUD</h4>
                     <p class="mb-0">
-                        <span id="inventoryDate">Loading...</span><br>
+                        <span id="inventoryDate">As of: July 24, 2025</span><br>
                         <span id="selectedGroupName">All Product Groups</span>
                     </p>
                 </div>
@@ -127,6 +127,7 @@
                                 <tr>
                                     <th>Month</th>
                                     <th>Parent Product Group</th>
+                                    <th>Product Group</th>
                                     <th>Production AUD</th>
                                     <th>COGS AUD</th>
                                     <th>Revenue AUD</th>
@@ -168,21 +169,6 @@ document.addEventListener('DOMContentLoaded', function() {
     let currentTablePage = 1;
     let tablePageSize = 25;
     let inventoryChart;
-    
-    // Get snapshot date from Django context
-    let inventorySnapshotDate = null;
-    
-    try {
-        // Get snapshot date from Django context
-        {% if inventory_snapshot_date %}
-            inventorySnapshotDate = '{{ inventory_snapshot_date|date:"Y-m-d" }}';
-        {% endif %}
-        
-        console.log('DEBUG: Inventory snapshot date:', inventorySnapshotDate);
-        
-    } catch (error) {
-        console.error('Error loading Django context data:', error);
-    }
 
     // Load data from Django context
     try {
@@ -356,90 +342,10 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // Update summary card with current data
     function updateSummaryCard(groupName, data) {
-        // Get the snapshot date from the model (populated from populate_inventory_projection_model)
-        let snapshotDate = 'Loading...';
-        let totalInventoryValue = 0;
-        
-        // Use the snapshot date from Django context (from MasterDataInventory)
-        if (inventorySnapshotDate) {
-            try {
-                const modelSnapshotDate = new Date(inventorySnapshotDate);
-                snapshotDate = 'As of: ' + modelSnapshotDate.toLocaleDateString('en-AU', {
-                    year: 'numeric',
-                    month: 'long', 
-                    day: 'numeric'
-                });
-            } catch (error) {
-                console.error('Error parsing snapshot date:', error);
-                snapshotDate = 'As of: 7 August 2025'; // Fallback
-            }
-        } else {
-            // Fallback to current date if no snapshot date available
-            const fallbackDate = new Date();
-            snapshotDate = 'As of: ' + fallbackDate.toLocaleDateString('en-AU', {
-                year: 'numeric',
-                month: 'long', 
-                day: 'numeric'
-            });
-        }
-        
-        // Calculate opening inventory value from the existing table data (much faster!)
-        if (inventoryTableData && inventoryTableData.length > 0) {
-            // Filter table data for the selected group
-            const relevantData = inventoryTableData.filter(row => 
-                groupName === 'All Product Groups' || row.parent_product_group === groupName
-            );
-            
-            if (relevantData.length > 0) {
-                // Get the first month's opening inventory for each group (this represents the snapshot opening inventory)
-                const groupInventory = {};
-                relevantData.forEach(row => {
-                    const group = row.parent_product_group;
-                    if (!groupInventory[group]) {
-                        // Use the first occurrence (earliest month) opening inventory for each group
-                        groupInventory[group] = parseFloat(row.opening_inventory_aud || 0);
-                    }
-                });
-                
-                // Sum all groups if "All Product Groups", otherwise get specific group
-                if (groupName === 'All Product Groups') {
-                    totalInventoryValue = Object.values(groupInventory).reduce((sum, value) => sum + value, 0);
-                } else {
-                    totalInventoryValue = groupInventory[groupName] || 0;
-                }
-            }
-        } else {
-            console.warn('No inventory table data available');
-            totalInventoryValue = 0;
-        }
-        
-        // Update the UI elements
-        const totalValueElement = document.getElementById('totalInventoryValue');
-        const dateElement = document.getElementById('inventoryDate');
-        const groupNameElement = document.getElementById('selectedGroupName');
-        
-        if (totalValueElement) {
-            if (totalInventoryValue > 0) {
-                totalValueElement.textContent = '$' + (totalInventoryValue / 1000000).toFixed(1) + 'M AUD';
-            } else {
-                totalValueElement.textContent = '$0.0M AUD';
-            }
-        }
-        
-        if (dateElement) {
-            dateElement.textContent = snapshotDate;
-        }
-        
-        if (groupNameElement) {
-            groupNameElement.textContent = groupName;
-        }
-        
-        console.log('DEBUG: Updated summary card:', {
-            group: groupName,
-            date: snapshotDate,
-            value: totalInventoryValue,
-            valueFormatted: '$' + (totalInventoryValue / 1000000).toFixed(1) + 'M AUD'
-        });
+        const totalValue = data ? (data.totalValue || 0) : 0;
+        document.getElementById('totalInventoryValue').textContent = 
+            '$' + (totalValue / 1000000).toFixed(1) + 'M AUD';
+        document.getElementById('selectedGroupName').textContent = groupName;
     }
     
     // Filter functionality
@@ -465,10 +371,6 @@ document.addEventListener('DOMContentLoaded', function() {
         
         currentTablePage = 1;
         renderTable();
-        
-        // Update summary card with filtered data
-        const currentData = inventoryProjectionData[selectedGroup];
-        updateSummaryCard(selectedGroup, currentData);
     }
     
     function renderTable() {
@@ -484,6 +386,7 @@ document.addEventListener('DOMContentLoaded', function() {
             tr.innerHTML = 
                 '<td>' + row.month + '</td>' +
                 '<td>' + row.parent_product_group + '</td>' +
+                '<td>' + row.product_group + '</td>' +
                 '<td>$' + parseFloat(row.production_aud).toLocaleString('en-AU', {minimumFractionDigits: 2}) + '</td>' +
                 '<td>$' + parseFloat(row.cogs_aud).toLocaleString('en-AU', {minimumFractionDigits: 2}) + '</td>' +
                 '<td>$' + parseFloat(row.revenue_aud).toLocaleString('en-AU', {minimumFractionDigits: 2}) + '</td>' +
@@ -590,7 +493,7 @@ document.addEventListener('DOMContentLoaded', function() {
         
         const exportRows = [];
         exportRows.push([
-            'Month', 'Parent Product Group', 
+            'Month', 'Parent Product Group', 'Product Group', 
             'Production AUD', 'COGS AUD', 'Revenue AUD', 
             'Opening Inventory AUD', 'Closing Inventory AUD'
         ]);
@@ -599,6 +502,7 @@ document.addEventListener('DOMContentLoaded', function() {
             exportRows.push([
                 row.month,
                 row.parent_product_group,
+                row.product_group,
                 parseFloat(row.production_aud).toFixed(2),
                 parseFloat(row.cogs_aud).toFixed(2),
                 parseFloat(row.revenue_aud).toFixed(2),
