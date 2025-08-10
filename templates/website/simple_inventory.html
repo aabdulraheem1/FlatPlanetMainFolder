@@ -40,7 +40,7 @@
                 <div class="card-body text-center">
                     <h4 id="totalInventoryValue">Loading...</h4>
                     <p class="mb-0">
-                        <span id="inventoryDate">Loading...</span><br>
+                        <span id="inventoryDate">{% if snapshot_date %}As of: {{ snapshot_date }}{% else %}Date not available{% endif %}</span><br>
                         <span id="selectedGroupName">Product Groups</span>
                     </p>
                 </div>
@@ -356,32 +356,9 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // Update summary card with current data
     function updateSummaryCard(groupName, data) {
-        // Get the snapshot date from the model (populated from populate_inventory_projection_model)
-        let snapshotDate = 'Loading...';
         let totalInventoryValue = 0;
         
-        // Use the snapshot date from Django context (from MasterDataInventory)
-        if (inventorySnapshotDate) {
-            try {
-                const modelSnapshotDate = new Date(inventorySnapshotDate);
-                snapshotDate = 'As of: ' + modelSnapshotDate.toLocaleDateString('en-AU', {
-                    year: 'numeric',
-                    month: 'long', 
-                    day: 'numeric'
-                });
-            } catch (error) {
-                console.error('Error parsing snapshot date:', error);
-                snapshotDate = 'As of: 7 August 2025'; // Fallback
-            }
-        } else {
-            // Fallback to current date if no snapshot date available
-            const fallbackDate = new Date();
-            snapshotDate = 'As of: ' + fallbackDate.toLocaleDateString('en-AU', {
-                year: 'numeric',
-                month: 'long', 
-                day: 'numeric'
-            });
-        }
+        // Date is now handled directly in the HTML template - no JavaScript needed
         
         // Calculate opening inventory value from the existing table data (much faster!)
         if (inventoryTableData && inventoryTableData.length > 0) {
@@ -415,7 +392,6 @@ document.addEventListener('DOMContentLoaded', function() {
         
         // Update the UI elements
         const totalValueElement = document.getElementById('totalInventoryValue');
-        const dateElement = document.getElementById('inventoryDate');
         const groupNameElement = document.getElementById('selectedGroupName');
         
         if (totalValueElement) {
@@ -426,17 +402,12 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         }
         
-        if (dateElement) {
-            dateElement.textContent = snapshotDate;
-        }
-        
         if (groupNameElement) {
             groupNameElement.textContent = groupName;
         }
         
         console.log('DEBUG: Updated summary card:', {
             group: groupName,
-            date: snapshotDate,
             value: totalInventoryValue,
             valueFormatted: '$' + (totalInventoryValue / 1000000).toFixed(1) + 'M AUD'
         });

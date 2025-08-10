@@ -1301,7 +1301,11 @@ def review_scenario(request, version):
         if inventory_snapshot:
             snapshot_date = inventory_snapshot.date_of_snapshot.strftime('%B %d, %Y')
             inventory_snapshot_date = inventory_snapshot.date_of_snapshot  # Keep the date object for template
-    except:
+            print(f"DEBUG: inventory_snapshot_date = {inventory_snapshot_date} (type: {type(inventory_snapshot_date)})")
+        else:
+            print(f"DEBUG: No inventory_snapshot found for scenario {scenario.version}")
+    except Exception as e:
+        print(f"DEBUG: Exception getting inventory snapshot: {e}")
         snapshot_date = "Date not available"
         inventory_snapshot_date = None
 
@@ -1757,6 +1761,7 @@ def review_scenario(request, version):
     
     # SIMPLE INVENTORY PROCESSING - No complex calculations
     print(f"DEBUG: Using simple inventory data for scenario: {scenario.version}")
+    print(f"DEBUG: About to pass inventory_snapshot_date to context: {inventory_snapshot_date} (type: {type(inventory_snapshot_date)})")
 
     context = {
         'version': scenario.version,
