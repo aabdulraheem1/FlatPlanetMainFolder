@@ -52,7 +52,7 @@ get_monthly_production_cogs_by_group, get_monthly_production_cogs_by_parent_grou
     get_inventory_data_with_start_date, get_foundry_chart_data, get_forecast_data_by_data_source, get_forecast_data_by_customer, translate_to_english_cached,
     get_stored_inventory_data, get_enhanced_inventory_data, get_monthly_cogs_by_parent_group,
     search_detailed_view_data)
-from website.fast_control_tower import get_fast_control_tower_data
+
 
 from . models import (RevenueToCogsConversionModel, FixedPlantConversionModifiersModel, MasterDataManuallyAssignProductionRequirement)
 
@@ -7780,7 +7780,7 @@ def export_production_by_product(request):
             queryset
             .annotate(month=TruncMonth('pouring_date'))
             .values('parent_product_group', 'product', 'month')
-            .annotate(total_production_aud=Sum('cogs_aud'))
+            .annotate(total_production_aud=Sum('production_aud'))
             .order_by('parent_product_group', 'product', 'month')
         )
         
@@ -7905,10 +7905,10 @@ def production_insights_dashboard(request, version):
             pouring_date__gte='2025-07-01',
             pouring_date__lt='2025-12-01'
         ).values('parent_product_group').annotate(
-            total_cogs=Sum('cogs_aud'),
+            total_cogs=Sum('production_aud'),
             total_tonnes=Sum('tonnes'),
             total_records=Count('id'),
-            avg_monthly_cogs=Sum('cogs_aud')/5  # 5 months
+            avg_monthly_cogs=Sum('production_aud')/5  # 5 months
         ).order_by('-total_cogs')[:10]
         
         # ========================================
@@ -7926,7 +7926,7 @@ def production_insights_dashboard(request, version):
             ).values(
                 'pouring_date__year', 'pouring_date__month'
             ).annotate(
-                monthly_cogs=Sum('cogs_aud'),
+                monthly_cogs=Sum('production_aud'),
                 monthly_tonnes=Sum('tonnes')
             ).order_by('pouring_date__year', 'pouring_date__month')
             
@@ -7997,7 +7997,7 @@ def production_insights_dashboard(request, version):
                 pouring_date__year=2025,
                 pouring_date__month=month
             ).aggregate(
-                total_cogs=Sum('cogs_aud'),
+                total_cogs=Sum('production_aud'),
                 total_tonnes=Sum('tonnes')
             )
             
@@ -8025,7 +8025,7 @@ def production_insights_dashboard(request, version):
             pouring_date__gte='2025-07-01',
             pouring_date__lt='2025-12-01'
         ).values('site').annotate(
-            total_cogs=Sum('cogs_aud'),
+            total_cogs=Sum('production_aud'),
             total_tonnes=Sum('tonnes'),
             record_count=Count('id'),
             product_variety=Count('product', distinct=True)

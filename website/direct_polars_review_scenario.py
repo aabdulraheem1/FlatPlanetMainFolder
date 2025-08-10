@@ -529,6 +529,15 @@ def get_control_tower_data_direct_polars(scenario_version):
         import polars as pl
         from django.db import connection
         from datetime import date
+        from website.models import scenarios
+        
+        # Handle both string and scenarios object
+        if hasattr(scenario_version, 'version'):
+            scenario_obj = scenario_version
+            version_string = scenario_version.version
+        else:
+            version_string = str(scenario_version)
+            scenario_obj = scenarios.objects.get(version=version_string)
         
         # Define fiscal year ranges
         fy_ranges = {
@@ -543,7 +552,7 @@ def get_control_tower_data_direct_polars(scenario_version):
         # Pour plan: Use snapshot-based hybrid logic (actual + planned) to match modal
         from website.customized_function import get_snapshot_based_pour_plan_data
         print("DEBUG: Getting hybrid pour plan data to match modal...")
-        pour_plan_hybrid = get_snapshot_based_pour_plan_data(scenario_version)
+        pour_plan_hybrid = get_snapshot_based_pour_plan_data(version_string)
         
         # Format for consistent structure
         pour_plan = {}
@@ -569,7 +578,7 @@ def get_control_tower_data_direct_polars(scenario_version):
                     AND cp.tonnes IS NOT NULL 
                     AND cp.tonnes > 0
                     AND cp.site_id IS NOT NULL
-            """, [scenario_version])
+            """, [scenario_obj.pk])
             
             demand_records = cursor.fetchall()
             if demand_records:
@@ -605,19 +614,20 @@ def get_control_tower_data_direct_polars(scenario_version):
                 for fy in fy_ranges.keys():
                     demand_plan_only[fy] = {site: 0 for site in sites}
         
-        # Step 2: Get actual poured data from PowerBI for each FY and site
-        from website.customized_function import get_monthly_poured_data_for_site_and_fy
+        # Step 2: Get actual poured data from MonthlyPouredDataModel (NO FALLBACK)
+        from website.models import MonthlyPouredDataModel
         poured_data_by_fy_site = {}
         
         for fy in fy_ranges.keys():
             for site in sites:
-                try:
-                    poured_monthly = get_monthly_poured_data_for_site_and_fy(site, fy, scenario_version)
-                    total_poured = sum(poured_monthly.values()) if poured_monthly else 0
-                    poured_data_by_fy_site[f"{fy}_{site}"] = round(total_poured)
-                except Exception as e:
-                    print(f"DEBUG: Error getting poured data for {site} {fy}: {e}")
-                    poured_data_by_fy_site[f"{fy}_{site}"] = 0
+                # Use MonthlyPouredDataModel - NO TRY-CATCH, errors occur naturally
+                monthly_records = MonthlyPouredDataModel.objects.filter(
+                    version=scenario_obj,
+                    site_name=site,
+                    fiscal_year=fy
+                )
+                total_poured = sum(record.monthly_tonnes for record in monthly_records)
+                poured_data_by_fy_site[f"{fy}_{site}"] = round(total_poured)
         
         # Step 3: Combine demand + actual poured (matches modal "Combined" column)
         demand_plan = {}

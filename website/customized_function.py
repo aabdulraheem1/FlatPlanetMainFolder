@@ -195,7 +195,7 @@ def get_monthly_production_cogs(scenario, start_date=None):
         queryset
         .annotate(month=TruncMonth('pouring_date'))
         .values('month')
-        .annotate(total_production_cogs=Sum('cogs_aud'))
+        .annotate(total_production_cogs=Sum('production_aud'))
         .order_by('month')
     )
     
@@ -210,7 +210,7 @@ def get_monthly_production_cogs_by_group(scenario):
         .filter(version=scenario)
         .annotate(month=TruncMonth('pouring_date'))
         .values('month', 'product_group')
-        .annotate(total_cogs_aud=Sum('cogs_aud'))
+        .annotate(total_cogs_aud=Sum('production_aud'))
         .order_by('month', 'product_group')
     )
     # Build data structure: {group: {month: total}}, labels: [months]
@@ -254,7 +254,7 @@ def get_monthly_production_cogs_by_parent_group(scenario, start_date=None):
         queryset
         .annotate(month=TruncMonth('pouring_date'))
         .values('month', 'parent_product_group')
-        .annotate(total_production_cogs=Sum('cogs_aud'))
+        .annotate(total_production_cogs=Sum('production_aud'))
         .order_by('month', 'parent_product_group')
     )
     
@@ -310,8 +310,8 @@ def get_top_products_by_parent_group_and_month(scenario, start_date=None):
     queryset = (
         queryset
         .annotate(month=TruncMonth('pouring_date'))
-        .values('month', 'parent_product_group', 'product', 'cogs_aud')
-        .order_by('month', 'parent_product_group', '-cogs_aud')
+        .values('month', 'parent_product_group', 'product', 'production_aud')
+        .order_by('month', 'parent_product_group', '-production_aud')
     )
     
     # Build data structure: {parent_group: {month: [top 15 products]}}
@@ -321,7 +321,7 @@ def get_top_products_by_parent_group_and_month(scenario, start_date=None):
         month_str = item['month'].strftime('%b %Y')
         group = item['parent_product_group']
         product = item['product']
-        cogs = item['cogs_aud'] or 0
+        cogs = item['production_aud'] or 0
         
         if group not in result:
             result[group] = {}
@@ -352,6 +352,45 @@ from datetime import date, datetime
 import pandas as pd
 from django.db.models import Sum
 from website.models import MasterDataInventory, scenarios
+
+def get_poured_data_from_monthly_model(scenario):
+    """
+    Get poured data from local MonthlyPouredDataModel grouped by fiscal year and site.
+    NO FALLBACK LOGIC - Replaces PowerBI queries with local database access.
+    """
+    from website.models import MonthlyPouredDataModel
+    
+    # Get scenario object
+    if hasattr(scenario, 'id'):
+        scenario_obj = scenario
+    else:
+        from website.models import scenarios
+        scenario_obj = scenarios.objects.get(version=scenario)
+    
+    # Get all monthly poured data for this scenario
+    monthly_records = MonthlyPouredDataModel.objects.filter(version=scenario_obj)
+    
+    # Group by fiscal year and site
+    poured_data = {}
+    for record in monthly_records:
+        fy = record.fiscal_year
+        site = record.site_name
+        
+        if fy not in poured_data:
+            poured_data[fy] = {}
+        if site not in poured_data[fy]:
+            poured_data[fy][site] = 0
+        
+        poured_data[fy][site] += record.monthly_tonnes
+    
+    # Round the values
+    for fy in poured_data:
+        for site in poured_data[fy]:
+            poured_data[fy][site] = round(poured_data[fy][site])
+    
+    print(f"DEBUG: Retrieved poured data from MonthlyPouredDataModel: {poured_data}")
+    return poured_data
+
 
 def get_poured_data_by_fy_and_site(scenario, user_inventory_date=None):
     """
@@ -493,8 +532,8 @@ def get_combined_demand_and_poured_data(scenario):
             )
             demand_plan[fy][site] = round(total_tonnes)
 
-    # Get poured data
-    poured_data = get_poured_data_by_fy_and_site(scenario)
+    # Get poured data from MonthlyPouredDataModel (NO PowerBI)
+    poured_data = get_poured_data_from_monthly_model(scenario)
 
     # Combine demand plan with poured data
     combined_data = {}
@@ -511,32 +550,25 @@ def get_combined_demand_and_poured_data(scenario):
 def get_snapshot_based_pour_plan_data(scenario_version, poured_data=None):
     """
     Get pour plan data using snapshot-based logic:
-    - PowerBI actual production data for snapshot month and earlier (reuses poured_data if provided)
+    - Local MonthlyPouredDataModel actual production data for snapshot month and earlier 
     - MasterDataPlan data for future months after snapshot
+    NO FALLBACK LOGIC - Errors will be raised if data is missing
     """
-    from website.models import MasterDataPlan, MasterDataInventory
+    from website.models import MasterDataPlan, MasterDataInventory, MonthlyPouredDataModel
     from datetime import date
     from dateutil.relativedelta import relativedelta
-    from sqlalchemy import create_engine, text
-    from calendar import monthrange
     
     # Handle both string and object scenario_version
     scenario_name = scenario_version if isinstance(scenario_version, str) else scenario_version.version
     print(f"DEBUG: Starting snapshot-based pour plan calculation for scenario {scenario_name}")
     
-    # Get snapshot date for actual vs planned logic
-    snapshot_date = None
-    try:
-        inventory_snapshot = MasterDataInventory.objects.filter(version=scenario_name).first()
-        if inventory_snapshot:
-            snapshot_date = inventory_snapshot.date_of_snapshot
-            print(f"DEBUG: Using snapshot date: {snapshot_date}")
-        else:
-            print("DEBUG: No inventory snapshot found, using current date")
-            snapshot_date = date.today()
-    except Exception as e:
-        print(f"DEBUG: Error getting snapshot date: {e}")
-        snapshot_date = date.today()
+    # Get snapshot date for actual vs planned logic - NO FALLBACK
+    inventory_snapshot = MasterDataInventory.objects.filter(version=scenario_name).first()
+    if not inventory_snapshot:
+        raise ValueError(f"No inventory snapshot found for scenario {scenario_name}. Upload inventory data first.")
+    
+    snapshot_date = inventory_snapshot.date_of_snapshot
+    print(f"DEBUG: Using snapshot date: {snapshot_date}")
     
     # Calculate snapshot month cutoff
     snapshot_month_start = snapshot_date.replace(day=1)
@@ -555,29 +587,15 @@ def get_snapshot_based_pour_plan_data(scenario_version, poured_data=None):
     # Initialize pour plan data structure
     pour_plan_data = {}
     
-    # If poured_data is not provided, get it from the database (fallback)
-    if poured_data is None:
-        print("DEBUG: No poured_data provided, getting from database as fallback")
-        poured_data = get_poured_data_by_fy_and_site(scenario_name)
+    # NO FALLBACK - Use only MonthlyPouredDataModel for actual data, MasterDataPlan for planned data
+    print("DEBUG: Using ONLY local MonthlyPouredDataModel for actual poured data (NO fallbacks)")
+    
+    # Get scenario object for MonthlyPouredDataModel queries
+    if hasattr(scenario_name, 'id'):
+        scenario_obj = scenario_name
     else:
-        print("DEBUG: Using provided poured_data to avoid duplicate database queries")
-    
-    # For PowerBI actual data, we need more granular month-by-month breakdown
-    # The poured_data gives us totals by FY, but we need to split based on snapshot date
-    
-    # Database connection for detailed monthly PowerBI queries (only if needed)
-    db_available = True
-    engine = None
-    try:
-        Server = 'bknew-sql02'
-        Database = 'Bradken_Data_Warehouse'
-        Driver = 'ODBC Driver 17 for SQL Server'
-        Database_Con = f'mssql+pyodbc://@{Server}/{Database}?driver={Driver}'
-        engine = create_engine(Database_Con)
-        print(f"DEBUG: Database connection established for monthly breakdown")
-    except Exception as e:
-        print(f"DEBUG: Database connection failed: {e}")
-        db_available = False
+        from website.models import scenarios
+        scenario_obj = scenarios.objects.get(version=scenario_name)
     
     # Process each fiscal year
     for fy, (fy_start, fy_end) in fy_ranges.items():
@@ -590,78 +608,44 @@ def get_snapshot_based_pour_plan_data(scenario_version, poured_data=None):
             actual_total = 0.0
             planned_total = 0.0
             
-            # Calculate actual production from PowerBI (snapshot month and before)
-            if next_month_start > fy_start and db_available:
-                print(f"DEBUG: Getting monthly PowerBI breakdown for {site} in {fy}")
+            # Calculate actual production from local MonthlyPouredDataModel (fast local query)
+            if next_month_start > fy_start:
+                print(f"DEBUG: Getting actual poured data from MonthlyPouredDataModel for {site} in {fy}")
                 
-                # Process each month from FY start up to snapshot month
-                current_month = fy_start.replace(day=1)
-                actual_cutoff = min(next_month_start, fy_end + relativedelta(days=1))
+                # Get monthly poured data records for this site and fiscal year - NO TRY-CATCH
+                monthly_records = MonthlyPouredDataModel.objects.filter(
+                    version=scenario_obj,
+                    site_name=site,
+                    fiscal_year=fy
+                )
                 
-                try:
-                    with engine.connect() as connection:
-                        while current_month < actual_cutoff:
-                            # Calculate month boundaries
-                            last_day = monthrange(current_month.year, current_month.month)[1]
-                            month_end = current_month.replace(day=last_day)
-                            
-                            query = text("""
-                                SELECT 
-                                    SUM(hp.CastQty * p.DressMass / 1000) as TotalTonnes,
-                                    COUNT(*) as RecordCount
-                                FROM PowerBI.HeatProducts hp
-                                INNER JOIN PowerBI.Products p ON hp.skProductId = p.skProductId
-                                INNER JOIN PowerBI.Site s ON hp.SkSiteId = s.skSiteId
-                                WHERE hp.TapTime IS NOT NULL 
-                                    AND p.DressMass IS NOT NULL 
-                                    AND s.SiteName = :site_name
-                                    AND hp.TapTime >= :start_date
-                                    AND hp.TapTime <= :end_date
-                            """)
-                            
-                            result = connection.execute(query, {
-                                'site_name': site,
-                                'start_date': current_month,
-                                'end_date': month_end
-                            })
-                            
-                            row = result.fetchone()
-                            if row and row.TotalTonnes:
-                                month_actual = float(row.TotalTonnes)
-                                actual_total += month_actual
-                                print(f"DEBUG: {fy} {site} {current_month.strftime('%b %Y')} - PowerBI: {round(month_actual)} tonnes")
-                            else:
-                                print(f"DEBUG: {fy} {site} {current_month.strftime('%b %Y')} - No PowerBI data")
-                            
-                            # Move to next month
-                            if current_month.month == 12:
-                                current_month = current_month.replace(year=current_month.year + 1, month=1)
-                            else:
-                                current_month = current_month.replace(month=current_month.month + 1)
+                # Sum up all monthly tonnes for actual production within snapshot period
+                for record in monthly_records:
+                    # Check if this month is within our actual period (up to snapshot)
+                    record_date = date(record.year, record.month, 1)
+                    if record_date < next_month_start:
+                        actual_total += record.monthly_tonnes
+                        print(f"DEBUG: {fy} {site} {record.month_year_display} - Local: {round(record.monthly_tonnes)} tonnes")
                 
-                except Exception as e:
-                    print(f"DEBUG ERROR: PowerBI query failed for {fy} {site}: {e}")
-                    actual_total = 0.0
+                print(f"DEBUG: {fy} {site} - Total actual from MonthlyPouredDataModel: {round(actual_total)} tonnes")
             else:
-                print(f"DEBUG: No PowerBI actuals needed for {site} in {fy} (snapshot after FY start or DB unavailable)")
+                print(f"DEBUG: No actual poured data needed for {site} in {fy} (snapshot after FY start)")
             
             # Calculate planned pours from MasterDataPlan (after snapshot month)
             if next_month_start <= fy_end:
                 # FIXED: Ensure we don't query before fiscal year start
                 query_start_month = max(next_month_start, fy_start)
                 print(f"DEBUG: Getting MasterDataPlan data for {site} in {fy} from {query_start_month} (max of {next_month_start} and {fy_start})")
-                try:
-                    planned_plans = MasterDataPlan.objects.filter(
-                        version=scenario_name,
-                        Foundry__SiteName=site,
-                        Month__gte=query_start_month,
-                        Month__lte=fy_end
-                    )
-                    planned_total = float(sum(plan.PlanDressMass for plan in planned_plans))
-                    print(f"DEBUG: {fy} {site} - MasterDataPlan records: {planned_plans.count()}, Total: {round(planned_total)}")
-                except Exception as e:
-                    print(f"DEBUG ERROR: MasterDataPlan query failed for {fy} {site}: {e}")
-                    planned_total = 0.0
+                
+                # NO TRY-CATCH - Let errors occur naturally
+                planned_plans = MasterDataPlan.objects.filter(
+                    version=scenario_obj,
+                    Foundry__SiteName=site,
+                    Month__gte=query_start_month,
+                    Month__lte=fy_end
+                )
+                planned_total = float(sum(plan.PlanDressMass for plan in planned_plans))
+                print(f"DEBUG: {fy} {site} - MasterDataPlan records: {planned_plans.count()}, Total: {round(planned_total)}")
             else:
                 print(f"DEBUG: No future plan data needed for {site} in {fy} (snapshot after FY end)")
             
@@ -1005,8 +989,8 @@ def build_detailed_monthly_table(fy, site, scenario_version, plan_type='demand')
         demand_dict = {row['month'].strftime('%b %Y'): row['total'] or 0 for row in demand_monthly}
         print(f"DEBUG: Demand dict for {fy}/{site}: {demand_dict}")
         
-        # Get monthly poured data (from PowerBI database)
-        poured_monthly = get_monthly_poured_data_for_site_and_fy(site, fy, scenario_version)
+        # Get monthly poured data (from local MonthlyPouredDataModel)
+        poured_monthly = get_monthly_poured_data_for_site_and_fy(site, fy, scenario_name)
         print(f"DEBUG: Poured monthly for {fy}/{site}: {poured_monthly}")
         
         # Generate all months in the fiscal year
@@ -1634,7 +1618,7 @@ def get_inventory_data_with_start_date(scenario_version):
             prod_qs
             .annotate(month=TruncMonth('pouring_date'))
             .values('month')
-            .annotate(total_production_aud=Sum('cogs_aud'))
+            .annotate(total_production_aud=Sum('production_aud'))
             .order_by('month')
         )
         
@@ -1661,12 +1645,12 @@ def get_inventory_data_with_start_date(scenario_version):
                         parent_product_group=group,
                         pouring_date__gte=month_start,
                         pouring_date__lte=month_end
-                    ).values('product_id', 'site_id', 'cogs_aud', 'production_quantity').order_by('-cogs_aud')
+                    ).values('product_id', 'site_id', 'production_aud', 'production_quantity').order_by('-production_aud')
                     
                     print(f"    Top production records for {month}:")
                     for j, record in enumerate(detailed_prod[:5]):
                         print(f"      Product: {record['product_id']}, Site: {record['site_id']}")
-                        print(f"      COGS AUD: ${record['cogs_aud']:,.2f}, Qty: {record['production_quantity']}")
+                        print(f"      Production AUD: ${record['production_aud']:,.2f}, Qty: {record['production_quantity']}")
             
             # Compare COGS vs Production for same months
             for month in set(months) & set(prod_months):
@@ -2853,7 +2837,7 @@ def get_enhanced_inventory_data(scenario_version):
                 version=scenario_version,
                 parent_product_group=group
             ).annotate(month=TruncMonth('pouring_date')).values('month').annotate(
-                total_production_aud=Sum('cogs_aud')
+                total_production_aud=Sum('production_aud')
             ).order_by('month')
             
             prod_months = [d['month'].strftime('%b %Y') for d in prod_qs]
@@ -3002,7 +2986,7 @@ def get_monthly_cogs_by_parent_group(scenario, start_date=None):
         production_records = CalculatedProductionModel.objects.filter(
             version=scenario,
             pouring_date__isnull=False,
-            cogs_aud__isnull=False
+            production_aud__isnull=False
         ).select_related('product')
         
         if start_date:
@@ -3022,7 +3006,7 @@ def get_monthly_cogs_by_parent_group(scenario, start_date=None):
                 if month_key not in cogs_by_group[group]:
                     cogs_by_group[group][month_key] = 0
                 
-                cogs_by_group[group][month_key] += record.cogs_aud or 0
+                cogs_by_group[group][month_key] += record.production_aud or 0
         
         # Convert to consistent month format
         result = {}
@@ -3207,7 +3191,7 @@ def populate_aggregated_financial_data(scenario):
                 .filter(version=scenario, parent_product_group=group)
                 .annotate(month=TruncMonth('pouring_date'))
                 .values('month')
-                .annotate(total_production_aud=Sum('cogs_aud'))
+                .annotate(total_production_aud=Sum('production_aud'))
                 .order_by('month')
             )
             
