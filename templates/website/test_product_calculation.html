@@ -1,72 +1,917 @@
-{% extends 'website/base.html' %}
-
-{% block title %}Test Product Calculation{% endblock %}
-
-{% block content %}
-<div class="container-fluid mt-4">
-    <div class="row">
-        <div class="col-md-8">
-            <div class="card">
-                <div class="card-header">
-                    <h4><i class="fas fa-calculator"></i> Test Product Calculation</h4>
-                    <p class="mb-0 text-muted">Run replenishment calculation for a specific product (much faster than full calculation)</p>
-                </div>
-                <div class="card-body">
-                    <div class="alert alert-info">
-                        <strong>Version:</strong> {{ version }}<br>
-                        <strong>Scenario:</strong> {{ scenario.scenario_description }}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Product Calculation - {{ version }}</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        .timing-info {
+            background-color: #f8f9fa;
+            border-left: 4px solid #007bff;
+            padding: 15px;
+            margin: 20px 0;
+            border-radius: 5px;
+        }
+        .performance-badge {
+            font-size: 0.9rem;
+            padding: 0.5rem 1rem;
+        }
+        .table-container {
+            max-height: 500px;
+            overflow-y: auto;
+            border: 1px solid #dee2e6;
+            border-radius: 5px;
+        }
+        .data-summary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border-radius: 10px;
+            padding: 20px;
+            margin: 20px 0;
+        }
+        .metric-card {
+            background: white;
+            border-radius: 8px;
+            padding: 15px;
+            margin: 10px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .loading-spinner {
+            display: none;
+            text-align: center;
+            padding: 50px;
+        }
+        .results-container {
+            display: none;
+        }
+        /* Search dropdown styling */
+        #productSuggestions {
+            position: absolute;
+            top: 100%;
+            left: 0;
+            z-index: 1000;
+            border: 1px solid #ced4da;
+            border-radius: 0.375rem;
+            box-shadow: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.075);
+            background-color: white;
+        }
+        #productSuggestions .dropdown-item {
+            padding: 0.5rem 1rem;
+            border: none;
+            background: none;
+            width: 100%;
+            text-align: left;
+            cursor: pointer;
+            transition: background-color 0.15s ease-in-out;
+        }
+        #productSuggestions .dropdown-item:hover,
+        #productSuggestions .dropdown-item.active {
+            background-color: #f8f9fa;
+        }
+        #productSuggestions .dropdown-item strong {
+            color: #007bff;
+        }
+        .timing-breakdown {
+            background-color: #e9ecef;
+            border-radius: 5px;
+            padding: 15px;
+            margin: 15px 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container-fluid py-4">
+        <!-- Header -->
+        <div class="row mb-4">
+            <div class="col-12">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <h1 class="display-4"><i class="fas fa-calculator text-primary"></i> Test Product Calculation</h1>
+                        <p class="lead text-muted">Version: <strong>{{ version }}</strong></p>
                     </div>
-                    
-                    <form method="POST">
-                        {% csrf_token %}
-                        <div class="form-group">
-                            <label for="product_name"><strong>Product Name:</strong></label>
-                            <input type="text" class="form-control" id="product_name" name="product_name" 
-                                   placeholder="e.g., DEWB135-1" required>
-                            <small class="form-text text-muted">
-                                Enter the exact product name (case-sensitive). Example: DEWB135-1
-                            </small>
-                        </div>
-                        
-                        <div class="alert alert-warning">
-                            <strong><i class="fas fa-info-circle"></i> Note:</strong> 
-                            This will only run the replenishment calculation for the specified product. 
-                            It's much faster than the full calculation (seconds vs minutes) and useful for testing.
-                        </div>
-                        
-                        <button type="submit" class="btn btn-primary">
-                            <i class="fas fa-play"></i> Run Test Calculation
-                        </button>
-                        <a href="{% url 'list_scenarios' %}" class="btn btn-secondary">
-                            <i class="fas fa-arrow-left"></i> Back to Scenarios
+                    <div>
+                        <a href="/list-scenario/{{ version|urlencode }}/" class="btn btn-outline-secondary">
+                            <i class="fas fa-arrow-left"></i> Back to Scenario
                         </a>
-                    </form>
+                    </div>
                 </div>
             </div>
         </div>
-        
-        <div class="col-md-4">
-            <div class="card">
-                <div class="card-header">
-                    <h5><i class="fas fa-lightbulb"></i> Quick Test Examples</h5>
-                </div>
-                <div class="card-body">
-                    <p><strong>Common products to test:</strong></p>
-                    <ul>
-                        <li><code>DEWB135-1</code> - The product we've been debugging</li>
-                        <li><code>DEWB125-1</code> - Another example</li>
-                        <li><code>DEWB145-1</code> - Another example</li>
-                    </ul>
-                    
-                    <div class="alert alert-success">
-                        <small>
-                            <strong>Tip:</strong> Use this to quickly test individual products 
-                            instead of waiting 10 minutes for the full calculation.
-                        </small>
+
+        <!-- Product Selection Form -->
+        <div class="row mb-4">
+            <div class="col-md-6">
+                <div class="card shadow-sm">
+                    <div class="card-header bg-primary text-white">
+                        <h5 class="mb-0"><i class="fas fa-cogs"></i> Product Selection & Execution</h5>
+                    </div>
+                    <div class="card-body">
+                        <form id="testProductForm">
+                            <div class="mb-3">
+                                <label for="productSearch" class="form-label">Search Product:</label>
+                                <div class="position-relative">
+                                    <input type="text" 
+                                           class="form-control" 
+                                           id="productSearch" 
+                                           name="product" 
+                                           placeholder="Type to search for a product..." 
+                                           value="{% if selected_product %}{{ selected_product }}{% endif %}"
+                                           autocomplete="off"
+                                           required>
+                                    <div id="productSuggestions" class="dropdown-menu w-100" style="max-height: 200px; overflow-y: auto; display: none;">
+                                        <!-- Suggestions will be populated here -->
+                                    </div>
+                                </div>
+                            </div>
+                            <button type="submit" class="btn btn-success btn-lg w-100" id="runButton">
+                                <i class="fas fa-play"></i> Run Calculate Model
+                            </button>
+                        </form>
                     </div>
                 </div>
             </div>
+            <div class="col-md-6">
+                <div class="card shadow-sm">
+                    <div class="card-header bg-info text-white">
+                        <h5 class="mb-0"><i class="fas fa-info-circle"></i> Process Information</h5>
+                    </div>
+                    <div class="card-body">
+                        <p><strong>What this does:</strong></p>
+                        <ul class="list-unstyled">
+                            <li><i class="fas fa-check text-success"></i> Runs calculate_model for selected product only</li>
+                            <li><i class="fas fa-check text-success"></i> Processes all 3 management commands</li>
+                            <li><i class="fas fa-check text-success"></i> Shows comprehensive timing analysis</li>
+                            <li><i class="fas fa-check text-success"></i> Displays complete results in 4 data tables</li>
+                        </ul>
+                        <div class="alert alert-warning mt-3">
+                            <i class="fas fa-clock"></i> <strong>Expected time:</strong> 15-30 seconds
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Error Messages -->
+        {% if error %}
+        <div class="alert alert-danger">
+            <i class="fas fa-exclamation-triangle"></i> {{ error }}
+        </div>
+        {% endif %}
+
+        <!-- Loading Spinner -->
+        <div class="loading-spinner" id="loadingSpinner">
+            <div class="spinner-border text-primary" role="status" style="width: 3rem; height: 3rem;">
+                <span class="visually-hidden">Loading...</span>
+            </div>
+            <h4 class="mt-3">Processing Calculate Model...</h4>
+            <p class="text-muted">This may take 15-30 seconds. Please wait...</p>
+            <div class="progress mt-3" style="height: 20px;">
+                <div class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" style="width: 100%"></div>
+            </div>
+        </div>
+
+        <!-- Results Container -->
+        <div class="results-container" id="resultsContainer">
+            {% if timing_info %}
+            <!-- Timing Information -->
+            <div class="timing-info">
+                <h4><i class="fas fa-stopwatch text-primary"></i> Performance Analysis</h4>
+                <div class="row">
+                    <div class="col-md-3">
+                        <div class="metric-card text-center">
+                            <h5 class="text-primary">Total Time</h5>
+                            <h3><span class="badge bg-primary performance-badge">{{ timing_info.total_time }}s</span></h3>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="metric-card text-center">
+                            <h5 class="text-success">Forecast</h5>
+                            <h3><span class="badge bg-success performance-badge">{{ timing_info.aggregated_forecast_time }}s</span></h3>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="metric-card text-center">
+                            <h5 class="text-warning">Replenishment</h5>
+                            <h3><span class="badge bg-warning performance-badge">{{ timing_info.replenishment_time }}s</span></h3>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="metric-card text-center">
+                            <h5 class="text-info">Production</h5>
+                            <h3><span class="badge bg-info performance-badge">{{ timing_info.production_time }}s</span></h3>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="timing-breakdown mt-3">
+                    <h6><i class="fas fa-chart-line"></i> Timing Breakdown:</h6>
+                    <div class="row">
+                        <div class="col-md-6">
+                            <ul class="list-unstyled">
+                                <li><strong>Backend Processing:</strong> {{ timing_info.backend_time }}s</li>
+                                <li><strong>Database Queries:</strong> {{ timing_info.query_time }}s</li>
+                            </ul>
+                        </div>
+                        <div class="col-md-6">
+                            <ul class="list-unstyled">
+                                <li><strong>Records Processed:</strong> {{ timing_info.total_records|default:0 }}</li>
+                                <li><strong>Performance:</strong> 
+                                    {% if timing_info.total_time|floatformat:0|add:0 < 30 %}
+                                        <span class="badge bg-success">Excellent</span>
+                                    {% elif timing_info.total_time|floatformat:0|add:0 < 60 %}
+                                        <span class="badge bg-warning">Good</span>
+                                    {% else %}
+                                        <span class="badge bg-danger">Needs Optimization</span>
+                                    {% endif %}
+                                </li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            {% endif %}
+
+            {% if selected_product %}
+            <!-- Data Summary -->
+            <div class="data-summary">
+                <h3><i class="fas fa-chart-bar"></i> Data Summary for {{ selected_product }}</h3>
+                <div class="row text-center">
+                    <div class="col-md-2">
+                        <h4>{{ safety_stocks_count|default:0 }}</h4>
+                        <p>Safety Stocks</p>
+                    </div>
+                    <div class="col-md-2">
+                        <h4>{{ inventory_count|default:0 }}</h4>
+                        <p>Inventory Data</p>
+                    </div>
+                    <div class="col-md-2">
+                        <h4>{{ aggregated_forecast_count|default:0 }}</h4>
+                        <p>Forecast Records</p>
+                    </div>
+                    <div class="col-md-2">
+                        <h4>{{ replenishment_count|default:0 }}</h4>
+                        <p>Replenishment Records</p>
+                    </div>
+                    <div class="col-md-2">
+                        <h4>{{ production_count|default:0 }}</h4>
+                        <p>Production Records</p>
+                    </div>
+                    <div class="col-md-2">
+                        <h4>{{ master_data_count|default:0 }}</h4>
+                        <p>Master Data Records</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Master Data Tables -->
+            <div class="row">
+                <!-- Safety Stocks Table -->
+                <div class="col-lg-6 mb-4">
+                    <div class="card shadow-sm">
+                        <div class="card-header bg-primary text-white">
+                            <h5 class="mb-0"><i class="fas fa-shield-alt"></i> Safety Stocks Data</h5>
+                            <small>{{ safety_stocks_count|default:0 }} records</small>
+                        </div>
+                        <div class="card-body p-0">
+                            <!-- Filter Row -->
+                            <div class="container-fluid p-3 bg-light">
+                                <div class="row g-2">
+                                    <div class="col-md-4">
+                                        <input type="text" id="safetyStocksPlantFilter" class="form-control form-control-sm" placeholder="Filter Plant...">
+                                    </div>
+                                    <div class="col-md-4">
+                                        <input type="text" id="safetyStocksMinQtyFilter" class="form-control form-control-sm" placeholder="Filter Min Qty...">
+                                    </div>
+                                    <div class="col-md-4">
+                                        <input type="text" id="safetyStocksSafetyQtyFilter" class="form-control form-control-sm" placeholder="Filter Safety Qty...">
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="table-container">
+                                <table class="table table-striped table-hover mb-0" id="safetyStocksTable">
+                                    <thead class="table-dark">
+                                        <tr>
+                                            <th>Plant</th>
+                                            <th>Minimum Qty</th>
+                                            <th>Safety Qty</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {% for item in safety_stocks_data %}
+                                            <tr>
+                                                <td>{{ item.Plant|default:"N/A" }}</td>
+                                                <td>{{ item.MinimumQty|floatformat:2|default:"N/A" }}</td>
+                                                <td>{{ item.SafetyQty|floatformat:2|default:"N/A" }}</td>
+                                            </tr>
+                                        {% empty %}
+                                            <tr>
+                                                <td colspan="3" class="text-center text-muted">No safety stocks data available</td>
+                                            </tr>
+                                        {% endfor %}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Inventory Data Table -->
+                <div class="col-lg-6 mb-4">
+                    <div class="card shadow-sm">
+                        <div class="card-header bg-dark text-white">
+                            <h5 class="mb-0"><i class="fas fa-boxes"></i> Inventory Data</h5>
+                            <small>{{ inventory_count|default:0 }} records</small>
+                        </div>
+                        <div class="card-body p-0">
+                            <!-- Filter Row -->
+                            <div class="container-fluid p-3 bg-light">
+                                <div class="row g-2">
+                                    <div class="col-md-3">
+                                        <input type="text" id="inventoryDateFilter" class="form-control form-control-sm" placeholder="Filter Date...">
+                                    </div>
+                                    <div class="col-md-3">
+                                        <input type="text" id="inventorySiteFilter" class="form-control form-control-sm" placeholder="Filter Site...">
+                                    </div>
+                                    <div class="col-md-3">
+                                        <input type="text" id="inventoryOnhandFilter" class="form-control form-control-sm" placeholder="Filter Onhand...">
+                                    </div>
+                                    <div class="col-md-3">
+                                        <input type="text" id="inventoryCostFilter" class="form-control form-control-sm" placeholder="Filter Cost...">
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="table-container">
+                                <table class="table table-striped table-hover mb-0" id="inventoryTable">
+                                    <thead class="table-dark">
+                                        <tr>
+                                            <th>Snapshot Date</th>
+                                            <th>Site</th>
+                                            <th>Onhand Qty</th>
+                                            <th>Cost AUD</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {% for item in inventory_data %}
+                                            <tr>
+                                                <td>{{ item.date_of_snapshot|default:"N/A" }}</td>
+                                                <td>{{ item.site.SiteName|default:"N/A" }}</td>
+                                                <td>{{ item.onhandstock_qty|floatformat:2|default:"N/A" }}</td>
+                                                <td>${{ item.cost_aud|floatformat:2|default:"0.00" }}</td>
+                                            </tr>
+                                        {% empty %}
+                                            <tr>
+                                                <td colspan="4" class="text-center text-muted">No inventory data available</td>
+                                            </tr>
+                                        {% endfor %}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Data Tables -->
+            <div class="row">
+                <!-- Aggregated Forecast Table -->
+                <div class="col-lg-6 mb-4">
+                    <div class="card shadow-sm">
+                        <div class="card-header bg-success text-white">
+                            <h5 class="mb-0"><i class="fas fa-chart-line"></i> Aggregated Forecast Data</h5>
+                            <small>{{ aggregated_forecast_count|default:0 }} records</small>
+                        </div>
+                        <div class="card-body p-0">
+                            <!-- Filter inputs for Aggregated Forecast -->
+                            <div class="p-3 bg-light border-bottom">
+                                <div class="row g-2">
+                                    <div class="col-md-2">
+                                        <input type="text" class="form-control form-control-sm" id="forecastPeriodFilter" placeholder="Filter Period AU...">
+                                    </div>
+                                    <div class="col-md-2">
+                                        <input type="text" class="form-control form-control-sm" id="forecastCustomerFilter" placeholder="Filter Customer...">
+                                    </div>
+                                    <div class="col-md-2">
+                                        <input type="text" class="form-control form-control-sm" id="forecastLocationFilter" placeholder="Filter Location...">
+                                    </div>
+                                    <div class="col-md-2">
+                                        <input type="text" class="form-control form-control-sm" id="forecastDataSourceFilter" placeholder="Filter Data Source...">
+                                    </div>
+                                    <div class="col-md-2">
+                                        <input type="text" class="form-control form-control-sm" id="forecastQuantityFilter" placeholder="Filter Quantities...">
+                                    </div>
+                                    <div class="col-md-2">
+                                        <button class="btn btn-sm btn-outline-secondary w-100" onclick="clearForecastFilters()">Clear</button>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="table-container">
+                                <table class="table table-striped table-hover mb-0" id="forecastTable">
+                                    <thead class="table-dark">
+                                        <tr>
+                                            <th>Period AU</th>
+                                            <th>Customer Code</th>
+                                            <th>Location</th>
+                                            <th>Data Source</th>
+                                            <th>Quantities</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {% for item in aggregated_forecast %}
+                                            <tr>
+                                                <td>{{ item.Period_AU|date:"M Y"|default:"N/A" }}</td>
+                                                <td>{{ item.Customer_code|default:"N/A" }}</td>
+                                                <td>{{ item.Location|default:"N/A" }}</td>
+                                                <td>{{ item.Data_Source|default:"N/A" }}</td>
+                                                <td>{{ item.Qty|floatformat:2 }}</td>
+                                            </tr>
+                                        {% empty %}
+                                            <tr>
+                                                <td colspan="5" class="text-center text-muted">No forecast data available</td>
+                                            </tr>
+                                        {% endfor %}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Replenishment Table -->
+                <div class="col-lg-6 mb-4">
+                    <div class="card shadow-sm">
+                        <div class="card-header bg-warning text-dark">
+                            <h5 class="mb-0"><i class="fas fa-truck"></i> Replenishment Data</h5>
+                            <small>{{ replenishment_count|default:0 }} records</small>
+                        </div>
+                        <div class="card-body p-0">
+                            <!-- Filter inputs for Replenishment -->
+                            <div class="p-3 bg-light border-bottom">
+                                <div class="row g-2">
+                                    <div class="col-md-4">
+                                        <input type="text" class="form-control form-control-sm" id="replenishmentPeriodFilter" placeholder="Filter Period...">
+                                    </div>
+                                    <div class="col-md-4">
+                                        <input type="text" class="form-control form-control-sm" id="replenishmentSiteFilter" placeholder="Filter Site...">
+                                    </div>
+                                    <div class="col-md-4">
+                                        <button class="btn btn-sm btn-outline-secondary w-100" onclick="clearReplenishmentFilters()">Clear</button>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="table-container">
+                                <table class="table table-striped table-hover mb-0" id="replenishmentTable">
+                                    <thead class="table-dark">
+                                        <tr>
+                                            <th>Period</th>
+                                            <th>Site</th>
+                                            <th>Quantities</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {% for item in replenishment_data %}
+                                            <tr>
+                                                <td>{{ item.ShippingDate|date:"M Y" }}</td>
+                                                <td>{{ item.Location }}</td>
+                                                <td>{{ item.ReplenishmentQty|floatformat:2 }}</td>
+                                            </tr>
+                                        {% empty %}
+                                            <tr>
+                                                <td colspan="5" class="text-center text-muted">No replenishment data available</td>
+                                            </tr>
+                                        {% endfor %}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Production Table -->
+                <div class="col-lg-6 mb-4">
+                    <div class="card shadow-sm">
+                        <div class="card-header bg-info text-white">
+                            <h5 class="mb-0"><i class="fas fa-industry"></i> Production Data</h5>
+                            <small>{{ production_count|default:0 }} records</small>
+                        </div>
+                        <div class="card-body p-0">
+                            <!-- Filter inputs for Production -->
+                            <div class="p-3 bg-light border-bottom">
+                                <div class="row g-2">
+                                    <div class="col-md-3">
+                                        <input type="text" class="form-control form-control-sm" id="productionPeriodFilter" placeholder="Filter Period...">
+                                    </div>
+                                    <div class="col-md-3">
+                                        <input type="text" class="form-control form-control-sm" id="productionSiteFilter" placeholder="Filter Site...">
+                                    </div>
+                                    <div class="col-md-3">
+                                        <input type="text" class="form-control form-control-sm" id="productionCustomerFilter" placeholder="Filter Customer...">
+                                    </div>
+                                    <div class="col-md-3">
+                                        <button class="btn btn-sm btn-outline-secondary w-100" onclick="clearProductionFilters()">Clear</button>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="table-container">
+                                <table class="table table-striped table-hover mb-0" id="productionTable">
+                                    <thead class="table-dark">
+                                        <tr>
+                                            <th>Period</th>
+                                            <th>Site</th>
+                                            <th>Quantities</th>
+                                            <th>Customer</th>
+                                            <th>Data Source</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {% for item in production_data %}
+                                            <tr>
+                                                <td>{{ item.pouring_date|date:"M Y" }}</td>
+                                                <td>{{ item.site|default:"N/A" }}</td>
+                                                <td>{{ item.production_quantity|floatformat:2 }}</td>
+                                                <td>{{ item.customer_mapping|default:"N/A" }}</td>
+                                                <td>{{ item.data_source|default:"Regular" }}</td>
+                                            </tr>
+                                        {% empty %}
+                                            <tr>
+                                                <td colspan="5" class="text-center text-muted">No production data available</td>
+                                            </tr>
+                                        {% endfor %}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Master Data Table -->
+                <div class="col-lg-6 mb-4">
+                    <div class="card shadow-sm">
+                        <div class="card-header bg-secondary text-white">
+                            <h5 class="mb-0"><i class="fas fa-database"></i> Master Data</h5>
+                            <small>{{ master_data_count|default:0 }} records</small>
+                        </div>
+                        <div class="card-body p-0">
+                            <div class="table-container">
+                                <table class="table table-striped table-hover mb-0">
+                                    <thead class="table-dark">
+                                        <tr>
+                                            <th>Product</th>
+                                            <th>Description</th>
+                                            <th>Dress Mass</th>
+                                            <th>Product Group</th>
+                                            <th>Parent Group</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {% for item in master_data %}
+                                            <tr>
+                                                <td><strong>{{ item.Product }}</strong></td>
+                                                <td>{{ item.ProductDescription|default:"N/A"|truncatechars:30 }}</td>
+                                                <td>{{ item.DressMass|floatformat:2|default:"N/A" }}</td>
+                                                <td>{{ item.ProductGroupDescription|default:"N/A"|truncatechars:20 }}</td>
+                                                <td>{{ item.ParentProductGroupDescription|default:"N/A"|truncatechars:20 }}</td>
+                                            </tr>
+                                        {% empty %}
+                                            <tr>
+                                                <td colspan="5" class="text-center text-muted">No master data available</td>
+                                            </tr>
+                                        {% endfor %}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            {% endif %}
         </div>
     </div>
-</div>
-{% endblock %}
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        // Initialize autocomplete functionality with AJAX search
+        document.addEventListener('DOMContentLoaded', function() {
+            const productSearch = document.getElementById('productSearch');
+            const suggestions = document.getElementById('productSuggestions');
+            let searchTimeout;
+
+            // Handle input changes for autocomplete
+            productSearch.addEventListener('input', function() {
+                const query = this.value.trim();
+                
+                // Clear any existing timeout
+                if (searchTimeout) {
+                    clearTimeout(searchTimeout);
+                }
+                
+                if (query.length === 0) {
+                    suggestions.style.display = 'none';
+                    return;
+                }
+
+                // Add a small delay to avoid too many requests
+                searchTimeout = setTimeout(() => {
+                    searchProducts(query);
+                }, 300);
+            });
+
+            // Function to search products via AJAX
+            function searchProducts(query) {
+                fetch(`/search-products/?q=${encodeURIComponent(query)}`)
+                    .then(response => response.json())
+                    .then(data => {
+                        const products = data.products || [];
+                        
+                        if (products.length > 0) {
+                            suggestions.innerHTML = products.map(product => 
+                                `<button type="button" class="dropdown-item" data-product="${product}">
+                                    ${highlightMatch(product, query)}
+                                </button>`
+                            ).join('');
+                            suggestions.style.display = 'block';
+                        } else {
+                            suggestions.innerHTML = '<div class="dropdown-item-text text-muted">No products found</div>';
+                            suggestions.style.display = 'block';
+                        }
+                    })
+                    .catch(error => {
+                        console.error('Search error:', error);
+                        suggestions.innerHTML = '<div class="dropdown-item-text text-danger">Search error occurred</div>';
+                        suggestions.style.display = 'block';
+                    });
+            }
+
+            // Handle suggestion clicks
+            suggestions.addEventListener('click', function(e) {
+                if (e.target.classList.contains('dropdown-item') && e.target.dataset.product) {
+                    productSearch.value = e.target.dataset.product;
+                    suggestions.style.display = 'none';
+                }
+            });
+
+            // Hide suggestions when clicking outside
+            document.addEventListener('click', function(e) {
+                if (!productSearch.contains(e.target) && !suggestions.contains(e.target)) {
+                    suggestions.style.display = 'none';
+                }
+            });
+
+            // Handle keyboard navigation
+            productSearch.addEventListener('keydown', function(e) {
+                const items = suggestions.querySelectorAll('.dropdown-item');
+                let activeIndex = Array.from(items).findIndex(item => item.classList.contains('active'));
+
+                if (e.key === 'ArrowDown') {
+                    e.preventDefault();
+                    if (activeIndex < items.length - 1) activeIndex++;
+                    else activeIndex = 0;
+                } else if (e.key === 'ArrowUp') {
+                    e.preventDefault();
+                    if (activeIndex > 0) activeIndex--;
+                    else activeIndex = items.length - 1;
+                } else if (e.key === 'Enter') {
+                    e.preventDefault();
+                    if (activeIndex >= 0 && items[activeIndex] && items[activeIndex].dataset.product) {
+                        productSearch.value = items[activeIndex].dataset.product;
+                        suggestions.style.display = 'none';
+                    }
+                } else if (e.key === 'Escape') {
+                    suggestions.style.display = 'none';
+                }
+
+                // Update active class
+                items.forEach((item, index) => {
+                    item.classList.toggle('active', index === activeIndex);
+                });
+            });
+        });
+
+        // Highlight matching text in suggestions
+        function highlightMatch(text, query) {
+            const regex = new RegExp(`(${query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi');
+            return text.replace(regex, '<strong>$1</strong>');
+        }
+
+        // Handle form submission
+        document.getElementById('testProductForm').addEventListener('submit', function(e) {
+            e.preventDefault();
+            
+            const productSearch = document.getElementById('productSearch');
+            const selectedProduct = productSearch.value.trim();
+            
+            if (!selectedProduct) {
+                alert('Please enter a product name!');
+                return;
+            }
+            
+            // Show loading spinner
+            document.getElementById('loadingSpinner').style.display = 'block';
+            document.getElementById('resultsContainer').style.display = 'none';
+            document.getElementById('runButton').disabled = true;
+            document.getElementById('runButton').innerHTML = '<i class="fas fa-spinner fa-spin"></i> Processing...';
+            
+            // Redirect to the same page with the selected product
+            const currentUrl = new URL(window.location);
+            currentUrl.searchParams.set('product', selectedProduct);
+            currentUrl.searchParams.set('run', 'true');
+            
+            // Add a small delay to show the loading state, then redirect
+            setTimeout(() => {
+                window.location.href = currentUrl.toString();
+            }, 500);
+        });
+
+        // Table filtering functions
+        function filterTable(tableId, filters) {
+            const table = document.getElementById(tableId);
+            if (!table) return;
+            
+            const tbody = table.querySelector('tbody');
+            const rows = tbody.querySelectorAll('tr');
+            
+            rows.forEach(row => {
+                let showRow = true;
+                const cells = row.querySelectorAll('td');
+                
+                filters.forEach((filter, index) => {
+                    if (filter && cells[index]) {
+                        const cellText = cells[index].textContent.toLowerCase();
+                        const filterText = filter.toLowerCase();
+                        if (!cellText.includes(filterText)) {
+                            showRow = false;
+                        }
+                    }
+                });
+                
+                row.style.display = showRow ? '' : 'none';
+            });
+        }
+
+        // Forecast table filters
+        function initializeForecastFilters() {
+            const periodFilter = document.getElementById('forecastPeriodFilter');
+            const customerFilter = document.getElementById('forecastCustomerFilter');
+            const locationFilter = document.getElementById('forecastLocationFilter');
+            const dataSourceFilter = document.getElementById('forecastDataSourceFilter');
+            const quantityFilter = document.getElementById('forecastQuantityFilter');
+            
+            [periodFilter, customerFilter, locationFilter, dataSourceFilter, quantityFilter].forEach(input => {
+                if (input) {
+                    input.addEventListener('input', () => {
+                        const filters = [
+                            periodFilter.value,
+                            customerFilter.value,
+                            locationFilter.value,
+                            dataSourceFilter.value,
+                            quantityFilter.value
+                        ];
+                        filterTable('forecastTable', filters);
+                    });
+                }
+            });
+        }
+
+        function clearForecastFilters() {
+            document.getElementById('forecastPeriodFilter').value = '';
+            document.getElementById('forecastCustomerFilter').value = '';
+            document.getElementById('forecastLocationFilter').value = '';
+            document.getElementById('forecastDataSourceFilter').value = '';
+            document.getElementById('forecastQuantityFilter').value = '';
+            filterTable('forecastTable', ['', '', '', '', '']);
+        }
+
+        // Replenishment table filters
+        function initializeReplenishmentFilters() {
+            const periodFilter = document.getElementById('replenishmentPeriodFilter');
+            const siteFilter = document.getElementById('replenishmentSiteFilter');
+            
+            [periodFilter, siteFilter].forEach(input => {
+                if (input) {
+                    input.addEventListener('input', () => {
+                        const filters = [
+                            periodFilter.value,
+                            siteFilter.value
+                        ];
+                        filterTable('replenishmentTable', filters);
+                    });
+                }
+            });
+        }
+
+        function clearReplenishmentFilters() {
+            document.getElementById('replenishmentPeriodFilter').value = '';
+            document.getElementById('replenishmentSiteFilter').value = '';
+            filterTable('replenishmentTable', ['', '']);
+        }
+
+        // Production table filters
+        function initializeProductionFilters() {
+            const periodFilter = document.getElementById('productionPeriodFilter');
+            const siteFilter = document.getElementById('productionSiteFilter');
+            const customerFilter = document.getElementById('productionCustomerFilter');
+            
+            [periodFilter, siteFilter, customerFilter].forEach(input => {
+                if (input) {
+                    input.addEventListener('input', () => {
+                        const filters = [
+                            periodFilter.value,
+                            siteFilter.value,
+                            '', // Skip quantities column
+                            customerFilter.value
+                        ];
+                        filterTable('productionTable', filters);
+                    });
+                }
+            });
+        }
+
+        function clearProductionFilters() {
+            document.getElementById('productionPeriodFilter').value = '';
+            document.getElementById('productionSiteFilter').value = '';
+            document.getElementById('productionCustomerFilter').value = '';
+            filterTable('productionTable', ['', '', '', '']);
+        }
+
+        // Safety Stocks table filters
+        function initializeSafetyStocksFilters() {
+            const plantFilter = document.getElementById('safetyStocksPlantFilter');
+            const minQtyFilter = document.getElementById('safetyStocksMinQtyFilter');
+            const safetyQtyFilter = document.getElementById('safetyStocksSafetyQtyFilter');
+            
+            [plantFilter, minQtyFilter, safetyQtyFilter].forEach(input => {
+                if (input) {
+                    input.addEventListener('input', () => {
+                        const filters = [
+                            plantFilter.value,
+                            minQtyFilter.value,
+                            safetyQtyFilter.value
+                        ];
+                        filterTable('safetyStocksTable', filters);
+                    });
+                }
+            });
+        }
+
+        // Inventory table filters  
+        function initializeInventoryFilters() {
+            const dateFilter = document.getElementById('inventoryDateFilter');
+            const siteFilter = document.getElementById('inventorySiteFilter');
+            const onhandFilter = document.getElementById('inventoryOnhandFilter');
+            const costFilter = document.getElementById('inventoryCostFilter');
+            
+            [dateFilter, siteFilter, onhandFilter, costFilter].forEach(input => {
+                if (input) {
+                    input.addEventListener('input', () => {
+                        const filters = [
+                            dateFilter.value,
+                            siteFilter.value,
+                            onhandFilter.value,
+                            costFilter.value
+                        ];
+                        filterTable('inventoryTable', filters);
+                    });
+                }
+            });
+        }
+
+        // Initialize all filters when page loads
+        document.addEventListener('DOMContentLoaded', function() {
+            setTimeout(() => {
+                initializeSafetyStocksFilters();
+                initializeInventoryFilters();
+                initializeForecastFilters();
+                initializeReplenishmentFilters();
+                initializeProductionFilters();
+            }, 1000); // Wait for data to load
+        });
+
+        // Show results if we have data
+        {% if selected_product and timing_info %}
+        document.addEventListener('DOMContentLoaded', function() {
+            document.getElementById('loadingSpinner').style.display = 'none';
+            document.getElementById('resultsContainer').style.display = 'block';
+            
+            // Re-enable the button
+            const runButton = document.getElementById('runButton');
+            runButton.disabled = false;
+            runButton.innerHTML = '<i class="fas fa-play"></i> Run Calculate Model';
+        });
+        {% endif %}
+
+        // Show results if we have selected_product (even without timing_info)
+        {% if selected_product %}
+        document.addEventListener('DOMContentLoaded', function() {
+            document.getElementById('loadingSpinner').style.display = 'none';
+            document.getElementById('resultsContainer').style.display = 'block';
+            
+            // Re-enable the button
+            const runButton = document.getElementById('runButton');
+            runButton.disabled = false;
+            runButton.innerHTML = '<i class="fas fa-play"></i> Run Calculate Model';
+        });
+        {% endif %}
+    </script>
+</body>
+</html>

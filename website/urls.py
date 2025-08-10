@@ -4,6 +4,7 @@ from . import views_cached
 from .views import fetch_data_from_mssql
 from .views_ajax import get_detailed_monthly_table
 from .views_receipted_quantities import receipted_quantities_refresh
+from .inventory_ajax import get_inventory_ajax
 from django.shortcuts import render, redirect
 
 urlpatterns = [
@@ -32,6 +33,7 @@ urlpatterns = [
     path('edit_forecasts/<str:version>/<str:forecast_type>/', views.edit_forecasts, name='edit_forecasts'),
     
     path('scenario/review/<str:version>', views.review_scenario, name='review_scenario'),
+    path('ajax/inventory/<str:version>/', get_inventory_ajax, name='inventory_ajax'),
     path('scenario/supplier-review/<str:version>/', views_cached.supplier_review_cached, name='supplier_review'),
     path('scenario/calculate-aggregated/<str:version>/', views.calculate_aggregated_data, name='calculate_aggregated_data'),
     path('warningList/<str:version>', views.ScenarioWarningList, name='warningList'),
@@ -117,6 +119,7 @@ urlpatterns = [
     # ... existing URL patterns ...
     path('calculate-model/<str:version>/', views.calculate_model, name='calculate_model'),
     path('test-product-calculation/<str:version>/', views.test_product_calculation, name='test_product_calculation'),
+    path('search-products/', views.search_products_ajax, name='search_products_ajax'),
     
     # Other URL patterns...
     path('create-plant/', views.create_plant, name='create_plant'),
@@ -179,7 +182,7 @@ urlpatterns = [
     path('detailed-view-inventory/<str:version>/', views.detailed_view_scenario_inventory, name='detailed_view_scenario_inventory'),
     
     # Progressive loading URLs
-    path('scenario/review-progressive/<str:version>/', views.review_scenario_progressive, name='review_scenario_progressive'),
+   
     path('api/load-section/<str:section>/<str:version>/', views.load_section_data, name='load_section_data'),
 
     path('search-detailed-inventory/', views.search_detailed_inventory, name='search_detailed_inventory'),

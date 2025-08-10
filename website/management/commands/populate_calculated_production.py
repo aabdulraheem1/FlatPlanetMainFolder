@@ -1,4 +1,5 @@
 from datetime import timedelta
+import time
 from django.core.management.base import BaseCommand
 from django.db.models import Sum
 from website.models import (
@@ -29,9 +30,15 @@ class Command(BaseCommand):
             type=str,
             help="The version of the scenario to populate data for.",
         )
+        parser.add_argument(
+            '--product',
+            type=str,
+            help="Optional: Filter calculation to a specific product only (much faster for testing)",
+        )
 
     def handle(self, *args, **kwargs):
         version = kwargs['scenario_version']
+        single_product = kwargs.get('product')
 
         if not version:
             self.stdout.write(self.style.ERROR("No version argument provided."))
@@ -43,18 +50,47 @@ class Command(BaseCommand):
             self.stdout.write(self.style.ERROR(f"Scenario version '{version}' not found."))
             return
 
-        # Clear existing calculated production data
-        CalculatedProductionModel.objects.filter(version=scenario).delete()
-        self.stdout.write("Deleted existing calculated production data")
+        # Clear existing calculated production data (for single product if specified)
+        if single_product:
+            deleted_count = CalculatedProductionModel.objects.filter(
+                version=scenario,
+                product__Product=single_product
+            ).delete()[0]
+            self.stdout.write(f"Deleted existing calculated production data for product {single_product}: {deleted_count} records")
+        else:
+            CalculatedProductionModel.objects.filter(version=scenario).delete()
+            self.stdout.write("Deleted existing calculated production data")
 
-        # Fetch customer invoice mapping for this scenario
-        self.stdout.write("Fetching customer invoice data from PowerBI...")
-        try:
-            customer_mapping = get_customer_mapping_dict()
-            self.stdout.write(f"Loaded {len(customer_mapping)} customer invoice mappings")
-        except Exception as e:
-            self.stdout.write(self.style.WARNING(f"Failed to load customer data: {e}"))
-            customer_mapping = {}
+        # Fetch customer mapping for this scenario (NOW FROM LOCAL DATABASE - MUCH FASTER)
+        self.stdout.write("🔗 Loading customer data from MasterDataProductModel (local, fast)...")
+        customer_start = time.time()
+        
+        if single_product:
+            customer_products = MasterDataProductModel.objects.filter(
+                Product=single_product,
+                latest_customer_name__isnull=False
+            ).values('Product', 'latest_customer_name', 'latest_invoice_date')
+        else:
+            customer_products = MasterDataProductModel.objects.filter(
+                latest_customer_name__isnull=False
+            ).values('Product', 'latest_customer_name', 'latest_invoice_date')
+        
+        # Build customer mapping dictionary
+        customer_mapping = {}
+        for product_data in customer_products:
+            customer_mapping[product_data['Product']] = {
+                'customer_name': product_data['latest_customer_name'],
+                'invoice_date': product_data['latest_invoice_date']
+            }
+        
+        customer_load_time = time.time() - customer_start
+        
+        if single_product:
+            self.stdout.write(f"✅ Loaded customer data for {len(customer_mapping)} product(s) in {customer_load_time:.3f}s (filtered for {single_product})")
+        else:
+            self.stdout.write(f"✅ Loaded customer data for {len(customer_mapping)} products in {customer_load_time:.3f}s")
+        
+        self.stdout.write(self.style.SUCCESS(f"🚀 PERFORMANCE IMPROVEMENT: Customer data loaded from local database instead of slow PowerBI queries"))
 
         # Get the first inventory snapshot date and calculate the threshold date
         first_inventory = MasterDataInventory.objects.filter(version=scenario).order_by('date_of_snapshot').first()
@@ -74,15 +110,15 @@ class Command(BaseCommand):
 
         # 1. Process Regular Replenishment Data (SMART forecast excluding Fixed Plant and Revenue Forecast)
         self.stdout.write("\n=== Processing Regular Replenishment Data ===")
-        self.process_replenishment_data(scenario, inventory_threshold_date, inventory_start_date, calculated_productions, customer_mapping)
+        self.process_replenishment_data(scenario, inventory_threshold_date, inventory_start_date, calculated_productions, customer_mapping, single_product)
 
         # 2. Process Fixed Plant Data
         self.stdout.write("\n=== Processing Fixed Plant Data ===")
-        self.process_fixed_plant_data(scenario, inventory_start_date, calculated_productions, customer_mapping)
+        self.process_fixed_plant_data(scenario, inventory_start_date, calculated_productions, customer_mapping, single_product)
 
         # 3. Process Revenue Forecast Data
         self.stdout.write("\n=== Processing Revenue Forecast Data ===")
-        self.process_revenue_forecast_data(scenario, inventory_start_date, calculated_productions, customer_mapping)
+        self.process_revenue_forecast_data(scenario, inventory_start_date, calculated_productions, customer_mapping, single_product)
 
         # Bulk create all records
         if calculated_productions:
@@ -93,14 +129,24 @@ class Command(BaseCommand):
 
         self.stdout.write(self.style.SUCCESS(f"CalculatedProductionModel populated for version {version}"))
 
-    def process_replenishment_data(self, scenario, inventory_threshold_date, inventory_start_date, calculated_productions, customer_mapping):
+    def process_replenishment_data(self, scenario, inventory_threshold_date, inventory_start_date, calculated_productions, customer_mapping, single_product=None):
         """Process regular replenishment data - CORRECTED production calculation"""
         
         # Load replenishments in bulk using pandas first for better schema handling
-        replenishments_data = list(
-            CalcualtedReplenishmentModel.objects.filter(version=scenario)
-            .values('Product', 'Site', 'ShippingDate', 'ReplenishmentQty')
-        )
+        if single_product:
+            replenishments_data = list(
+                CalcualtedReplenishmentModel.objects.filter(
+                    version=scenario,
+                    Product__Product=single_product
+                ).values('Product', 'Site', 'ShippingDate', 'ReplenishmentQty')
+            )
+            self.stdout.write(f"Loading replenishment data for single product: {single_product}")
+        else:
+            replenishments_data = list(
+                CalcualtedReplenishmentModel.objects.filter(version=scenario)
+                .values('Product', 'Site', 'ShippingDate', 'ReplenishmentQty')
+            )
+            self.stdout.write("Loading replenishment data for all products")
         
         if not replenishments_data:
             self.stdout.write("No replenishment records found")
@@ -278,7 +324,7 @@ class Command(BaseCommand):
                     tonnes=tonnes,
                     product_group=product_row['ProductGroup'],
                     parent_product_group=product_row.get('ParentProductGroupDescription', ''),
-                    cogs_aud=cogs_aud,
+                    production_aud=cogs_aud,  # Use production_aud field name
                     latest_customer_invoice=latest_customer_invoice,
                     latest_customer_invoice_date=latest_customer_invoice_date,
                     is_outsourced=is_outsourced,
@@ -286,14 +332,23 @@ class Command(BaseCommand):
 
         self.stdout.write(f"Processed {len(daily_replenishments)} daily replenishment records")
 
-    def process_fixed_plant_data(self, scenario, inventory_start_date, calculated_productions, customer_mapping):
+    def process_fixed_plant_data(self, scenario, inventory_start_date, calculated_productions, customer_mapping, single_product=None):
         """Process Fixed Plant data (similar to populate_aggregated_forecast logic)"""
         
         # Get Fixed Plant forecasts
-        fixed_plant_forecasts = SMART_Forecast_Model.objects.filter(
-            version=scenario,
-            Data_Source='Fixed Plant'
-        ).select_related()
+        if single_product:
+            fixed_plant_forecasts = SMART_Forecast_Model.objects.filter(
+                version=scenario,
+                Data_Source='Fixed Plant',
+                Product=single_product
+            ).select_related()
+            self.stdout.write(f"Loading Fixed Plant data for single product: {single_product}")
+        else:
+            fixed_plant_forecasts = SMART_Forecast_Model.objects.filter(
+                version=scenario,
+                Data_Source='Fixed Plant'
+            ).select_related()
+            self.stdout.write("Loading Fixed Plant data for all products")
 
         if not fixed_plant_forecasts.exists():
             self.stdout.write("No Fixed Plant forecast data found")
@@ -380,7 +435,7 @@ class Command(BaseCommand):
                         tonnes=tonnes,
                         product_group=product_obj.ProductGroup,
                         parent_product_group=product_obj.ParentProductGroupDescription,
-                        cogs_aud=cogs_aud,
+                        production_aud=cogs_aud,  # Use production_aud field name
                         revenue_aud=revenue_aud,
                         latest_customer_invoice=latest_customer_invoice,
                         latest_customer_invoice_date=latest_customer_invoice_date,
@@ -422,7 +477,7 @@ class Command(BaseCommand):
                             tonnes=tonnes,
                             product_group=product_obj.ProductGroup,
                             parent_product_group=product_obj.ParentProductGroupDescription,
-                            cogs_aud=0.0,
+                            production_aud=0.0,
                             revenue_aud=qty,
                             latest_customer_invoice=latest_customer_invoice,
                             latest_customer_invoice_date=latest_customer_invoice_date,
@@ -438,14 +493,23 @@ class Command(BaseCommand):
 
         self.stdout.write(f"Processed Fixed Plant data")
 
-    def process_revenue_forecast_data(self, scenario, inventory_start_date, calculated_productions, customer_mapping):
+    def process_revenue_forecast_data(self, scenario, inventory_start_date, calculated_productions, customer_mapping, single_product=None):
         """Process Revenue Forecast data (similar to populate_aggregated_forecast logic)"""
         
         # Get Revenue Forecast data
-        revenue_forecasts = SMART_Forecast_Model.objects.filter(
-            version=scenario,
-            Data_Source='Revenue Forecast'
-        ).select_related()
+        if single_product:
+            revenue_forecasts = SMART_Forecast_Model.objects.filter(
+                version=scenario,
+                Data_Source='Revenue Forecast',
+                Product=single_product
+            ).select_related()
+            self.stdout.write(f"Loading Revenue Forecast data for single product: {single_product}")
+        else:
+            revenue_forecasts = SMART_Forecast_Model.objects.filter(
+                version=scenario,
+                Data_Source='Revenue Forecast'
+            ).select_related()
+            self.stdout.write("Loading Revenue Forecast data for all products")
 
         if not revenue_forecasts.exists():
             self.stdout.write("No Revenue Forecast data found")
@@ -534,7 +598,7 @@ class Command(BaseCommand):
                                 tonnes=allocated_tonnes,
                                 product_group=product_obj.ProductGroup,
                                 parent_product_group=product_obj.ParentProductGroupDescription,
-                                cogs_aud=allocated_cogs,
+                                production_aud=allocated_cogs,
                                 revenue_aud=allocated_revenue,
                                 latest_customer_invoice=latest_customer_invoice,
                                 latest_customer_invoice_date=latest_customer_invoice_date,

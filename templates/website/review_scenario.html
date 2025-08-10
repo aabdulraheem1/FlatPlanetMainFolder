@@ -308,10 +308,21 @@
                             </div>
                         </div>
                     </form>
+                    
+                    <!-- Results container (hidden initially) -->
+                    <div id="optimizationResults" style="display: none;" class="mt-4">
+                        <div class="alert alert-success">
+                            <h6><i class="fas fa-check-circle"></i> Optimization Complete!</h6>
+                            <div id="optimizationSummary"></div>
+                        </div>
+                    </div>
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" data-dismiss="modal">Close</button>
                     <button type="submit" form="autoLevelForm" class="btn btn-primary">Apply Optimization</button>
+                    <button type="button" id="closeAndRefresh" class="btn btn-success" style="display: none;">
+                        <i class="fas fa-sync"></i> Close & Refresh Inventory
+                    </button>
                 </div>
             </div>
         </div>
@@ -411,15 +422,40 @@
             const originalText = submitBtn.html();
             submitBtn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Optimizing...');
             
-            // Submit the form
+            // Submit the form with AJAX
             $.ajax({
                 url: $(this).attr('action'),
                 type: 'POST',
                 data: $(this).serialize(),
+                headers: {
+                    'X-Requested-With': 'XMLHttpRequest'
+                },
                 success: function(response) {
-                    $('#autoLevelModal').modal('hide');
-                    // Refresh the page to show updated data
-                    window.location.reload();
+                    console.log('DEBUG: AJAX success response:', response);
+                    
+                    // Check if it's a JSON response (AJAX) or redirect (non-AJAX)
+                    if (response && typeof response === 'object') {
+                        // AJAX response - show results in modal
+                        if (response.success) {
+                            $('#optimizationSummary').html(`
+                                <p><strong>Records Moved:</strong> ${response.records_moved || 0}</p>
+                                <p><strong>Total Tonnes:</strong> ${response.total_tonnes || 0}</p>
+                                <p><strong>Sites Processed:</strong> ${response.sites_processed || 'N/A'}</p>
+                                <p><strong>Status:</strong> ${response.message || 'Optimization completed successfully'}</p>
+                            `);
+                            $('#optimizationResults').show();
+                            $('#autoLevelForm').hide();
+                            $('#closeAndRefresh').show();
+                            submitBtn.hide();
+                        } else {
+                            alert('Error: ' + (response.message || 'Unknown error occurred'));
+                            submitBtn.prop('disabled', false).html(originalText);
+                        }
+                    } else {
+                        // Non-AJAX response - redirect happened, close modal and reload
+                        $('#autoLevelModal').modal('hide');
+                        window.location.reload();
+                    }
                 },
                 error: function(xhr, status, error) {
                     console.error('Optimization error:', error);
@@ -427,6 +463,12 @@
                     submitBtn.prop('disabled', false).html(originalText);
                 }
             });
+        });
+        
+        // Close and refresh button handler
+        $('#closeAndRefresh').on('click', function() {
+            $('#autoLevelModal').modal('hide');
+            window.location.reload();
         });
         
         // Work Transfer Modal JavaScript

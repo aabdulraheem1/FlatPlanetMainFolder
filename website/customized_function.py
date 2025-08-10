@@ -167,7 +167,7 @@ def get_monthly_cogs_and_revenue(scenario, start_date=None):
         .annotate(month=TruncMonth('period'))
         .values('month')
         .annotate(
-            total_cogs=Sum('cogs_aud'),
+            total_cogs=Sum('production_aud'),
             total_revenue=Sum('revenue_aud')
         )
         .order_by('month')
@@ -1343,7 +1343,51 @@ def get_monthly_pour_plan_details_for_site_and_fy(site, fy, scenario_version):
     }
 
 def get_monthly_poured_data_for_site_and_fy(site, fy, scenario_version):
-    """Get monthly poured data for a specific site and fiscal year."""
+    """
+    OPTIMIZED: Get monthly poured data from local MonthlyPouredDataModel (FAST!)
+    Data is populated locally when inventory snapshot is uploaded via upload_on_hand_stock
+    This replaces slow PowerBI database queries with fast local database access
+    """
+    try:
+        from website.models import MonthlyPouredDataModel, scenarios
+        
+        print(f"📋 Reading monthly poured data from local database for {site} {fy} (optimized)...")
+        
+        # Get scenario object
+        scenario = scenarios.objects.get(version=scenario_version)
+        
+        # Fast local database query
+        monthly_data = MonthlyPouredDataModel.get_monthly_data_for_site_and_fy(
+            scenario=scenario,
+            site=site,
+            fy=fy
+        )
+        
+        if monthly_data:
+            print(f"✅ Retrieved {len(monthly_data)} months of data for {site} {fy} from local database")
+            for month, tonnes in monthly_data.items():
+                print(f"   {month}: {tonnes} tonnes")
+        else:
+            print(f"⚠️  No monthly poured data found for {site} {fy} in local database")
+            print("   💡 Make sure inventory snapshot was uploaded via upload_on_hand_stock")
+        
+        return monthly_data
+        
+    except scenarios.DoesNotExist:
+        print(f"❌ Scenario {scenario_version} not found")
+        return {}
+    except Exception as e:
+        print(f"❌ Error reading monthly poured data from local database: {str(e)}")
+        return {}
+
+
+def get_monthly_poured_data_for_site_and_fy_legacy(site, fy, scenario_version):
+    """
+    LEGACY: Original PowerBI database queries (SLOW - kept for reference)
+    Use get_monthly_poured_data_for_site_and_fy() instead for optimized local database access.
+    """
+    print(f"⚠️  Using LEGACY PowerBI database queries for monthly poured data - consider using optimized local approach")
+    
     from website.models import MasterDataInventory
     from datetime import timedelta
     
@@ -2460,346 +2504,68 @@ def detailed_view_scenario_inventory(scenario):
 
 
 def get_opening_inventory_by_group(scenario_version):
-    """Get opening inventory from SQL Server grouped by ParentProductGroupDescription - OPTIMIZED"""
-    from sqlalchemy import create_engine, text
-    import pandas as pd
-    import polars as pl
+    """
+    Get opening inventory from OpeningInventorySnapshot ONLY - No fallback to SQL Server
+    If OpeningInventorySnapshot doesn't exist, the function stops and returns empty dict
+    """
+    from website.models import MasterDataInventory, OpeningInventorySnapshot
     import time
-    from website.models import MasterDataInventory, AggregatedForecast, CalculatedProductionModel
     
     print(f"DEBUG: [PERF] Starting get_opening_inventory_by_group for {scenario_version}")
     start_time = time.time()
-    
-    # PERFORMANCE: Check if we already have this data cached in AggregatedInventoryChartData
-    try:
-        from website.models import AggregatedInventoryChartData
-        cached_data = AggregatedInventoryChartData.objects.filter(version=scenario_version).first()
-        if cached_data and cached_data.inventory_by_group:
-            print(f"DEBUG: [PERF] Using cached inventory data - {time.time() - start_time:.2f}s")
-            return cached_data.inventory_by_group
-    except Exception as cache_error:
-        print(f"DEBUG: [PERF] Cache miss, proceeding with SQL query: {cache_error}")
     
     # Get the snapshot date from MasterDataInventory
     try:
         inventory_snapshot = MasterDataInventory.objects.filter(version=scenario_version).first()
         if not inventory_snapshot:
-            print("DEBUG: No inventory snapshot found")
+            print("❌ ERROR: No inventory snapshot found in MasterDataInventory")
+            print("💡 Please upload inventory data via upload_on_hand_stock first")
             return {}
-        snapshot_date = inventory_snapshot.date_of_snapshot.strftime('%Y-%m-%d')
-        print(f"DEBUG: Using snapshot date: {snapshot_date}")
+        
+        snapshot_date = inventory_snapshot.date_of_snapshot
+        print(f"DEBUG: Looking for OpeningInventorySnapshot for date: {snapshot_date}")
+        
     except Exception as e:
-        print(f"DEBUG: Error getting snapshot date: {e}")
+        print(f"❌ ERROR: Error getting snapshot date from MasterDataInventory: {e}")
         return {}
     
-    # SQL Server connection with optimizations
-    Server = 'bknew-sql02'
-    Database = 'Bradken_Data_Warehouse'
-    Driver = 'ODBC Driver 17 for SQL Server'
-    Database_Con = f'mssql+pyodbc://@{Server}/{Database}?driver={Driver}&timeout=30'
-    
+    # Get opening inventory from OpeningInventorySnapshot ONLY
     try:
-        engine = create_engine(Database_Con, pool_timeout=30, pool_recycle=3600)
+        snapshot_data = OpeningInventorySnapshot.objects.filter(snapshot_date=snapshot_date)
         
-        # ULTRA-OPTIMIZED SQL query - add query hints and indexes
-        sql_query = f"""
-        SELECT 
-            Products.ParentProductGroupDescription,
-            SUM(Inventory.StockOnHandValueAUD) AS opening_inventory_aud
-        FROM PowerBI.[Inventory Daily History] AS Inventory WITH (NOLOCK, READUNCOMMITTED)
-        INNER JOIN PowerBI.Dates AS Dates WITH (NOLOCK, READUNCOMMITTED)
-            ON Inventory.skReportDateId = Dates.skDateId
-        INNER JOIN PowerBI.Products AS Products WITH (NOLOCK, READUNCOMMITTED)
-            ON Inventory.skProductId = Products.skProductId
-        WHERE Dates.DateValue = '{snapshot_date}'
-            AND Products.ParentProductGroupDescription IS NOT NULL
-            AND Inventory.StockOnHandValueAUD > 0
-        GROUP BY Products.ParentProductGroupDescription
-        ORDER BY Products.ParentProductGroupDescription
-        OPTION (MAXDOP 4, FAST 10)
-        """
+        if not snapshot_data.exists():
+            print(f"❌ ERROR: No OpeningInventorySnapshot found for date {snapshot_date}")
+            print("💡 Opening inventory must be populated via upload_on_hand_stock")
+            print("💡 This ensures data consistency and avoids expensive SQL Server queries")
+            return {}
         
-        query_start = time.time()
-        df = pl.from_pandas(pd.read_sql(sql_query, engine))
-        print(f"DEBUG: [PERF] SQL query completed in {time.time() - query_start:.2f}s - {len(df)} parent groups")
-        
-        # Simplified dictionary structure (only parent groups for performance)
+        # Convert to dictionary format
         inventory_by_group = {}
         total_inventory = 0
         
-        for row in df.iter_rows(named=True):
-            parent_group = row['ParentProductGroupDescription']
-            if parent_group:  # Filter out null/nan values
-                inventory_value = float(row['opening_inventory_aud'])
-                
-                inventory_by_group[parent_group] = inventory_value
-                total_inventory += inventory_value
-                print(f"DEBUG: Group '{parent_group}': ${inventory_value:,.2f} AUD")
+        for record in snapshot_data:
+            parent_group = record.parent_product_group
+            inventory_value = float(record.inventory_value_aud)
+            
+            inventory_by_group[parent_group] = inventory_value
+            total_inventory += inventory_value
+            print(f"DEBUG: Group '{parent_group}': ${inventory_value:,.2f} AUD")
         
+        print(f"✅ SUCCESS: Retrieved opening inventory from local OpeningInventorySnapshot")
         print(f"DEBUG: [PERF] Total processing time: {time.time() - start_time:.2f}s")
         print(f"DEBUG: Total inventory across all groups: ${total_inventory:,.2f} AUD")
+        print(f"DEBUG: Found {len(inventory_by_group)} parent product groups")
+        
         return inventory_by_group
         
     except Exception as e:
-        print(f"ERROR: [PERF] SQL query failed in {time.time() - start_time:.2f}s: {e}")
+        print(f"❌ ERROR: Failed to read OpeningInventorySnapshot: {e}")
         import traceback
         traceback.print_exc()
         return {}
 
 
-def populate_inventory_projection_model(scenario_version):
-    """Populate InventoryProjectionModel with monthly projections starting from next month after snapshot - OPTIMIZED"""
-    from website.models import (
-        InventoryProjectionModel, MasterDataInventory, AggregatedForecast, 
-        CalculatedProductionModel, scenarios
-    )
-    from datetime import datetime, timedelta
-    from dateutil.relativedelta import relativedelta
-    import polars as pl
-    import traceback
-    import time
-    
-    print(f"DEBUG: [PERF] Starting inventory projection population for scenario: {scenario_version}")
-    start_time = time.time()
-    
-    try:
-        # Get scenario object
-        scenario = scenarios.objects.get(version=scenario_version)
-        
-        # PERFORMANCE: Clear existing projections to avoid duplicate key errors
-        existing_count = InventoryProjectionModel.objects.filter(version=scenario).count()
-        if existing_count > 0:
-            print(f"DEBUG: [PERF] Clearing {existing_count} existing projections to avoid duplicates")
-            InventoryProjectionModel.objects.filter(version=scenario).delete()
-        
-        # Get snapshot date from MasterDataInventory
-        inventory_snapshot = MasterDataInventory.objects.filter(version=scenario).first()
-        if not inventory_snapshot:
-            print("ERROR: No inventory snapshot found")
-            return False
-        
-        # Start from next month after snapshot
-        snapshot_date = inventory_snapshot.date_of_snapshot
-        start_month = (snapshot_date + relativedelta(months=1)).replace(day=1)
-        print(f"DEBUG: Snapshot date: {snapshot_date}, Starting projections from: {start_month}")
-        
-        # PERFORMANCE: Use faster aggregated data if available
-        try:
-            from website.models import AggregatedInventoryChartData
-            agg_data = AggregatedInventoryChartData.objects.filter(version=scenario).first()
-            if agg_data and agg_data.inventory_by_group:
-                opening_inventory_data = agg_data.inventory_by_group
-                print(f"DEBUG: [PERF] Using cached opening inventory data - {time.time() - start_time:.2f}s")
-            else:
-                opening_inventory_data = get_opening_inventory_by_group(scenario_version)
-        except:
-            opening_inventory_data = get_opening_inventory_by_group(scenario_version)
-        
-        if not opening_inventory_data:
-            print("ERROR: No opening inventory data found")
-            return False
-        
-        # PERFORMANCE: Use bulk queries with Polars for faster processing
-        forecast_query_start = time.time()
-        forecast_data = list(AggregatedForecast.objects.filter(version=scenario).values(
-            'period', 'parent_product_group_description', 
-            'cogs_aud', 'revenue_aud'
-        ))
-        print(f"DEBUG: [PERF] Forecast data query: {time.time() - forecast_query_start:.2f}s - {len(forecast_data)} records")
-        
-        production_query_start = time.time()
-        production_data = list(CalculatedProductionModel.objects.filter(version=scenario).values(
-            'pouring_date', 'parent_product_group', 'cogs_aud'
-        ))
-        print(f"DEBUG: [PERF] Production data query: {time.time() - production_query_start:.2f}s - {len(production_data)} records")
-        
-        # ULTRA-OPTIMIZED: Use Polars directly for aggregation (much faster than pandas)
-        polars_start = time.time()
-        
-        # Convert forecast data directly to Polars and aggregate
-        if forecast_data:
-            # Create Polars DataFrame directly from raw data
-            forecast_df = pl.DataFrame([
-                {
-                    'period': row['period'],
-                    'ParentProductGroup': row['parent_product_group_description'],
-                    'CogsAUD': float(row['cogs_aud']) if row['cogs_aud'] is not None else 0.0,
-                    'RevenueAUD': float(row['revenue_aud']) if row['revenue_aud'] is not None else 0.0
-                }
-                for row in forecast_data 
-                if row['period'] is not None and row['parent_product_group_description'] is not None
-            ])
-            
-            if len(forecast_df) > 0:
-                # CRITICAL FIX: Handle different date formats safely
-                try:
-                    # First, try to convert to date if it's already a date type
-                    if forecast_df.schema['period'] in [pl.Date, pl.Datetime]:
-                        forecast_df = forecast_df.with_columns([
-                            pl.col('period').dt.truncate('1mo').alias('Month')
-                        ])
-                    else:
-                        # If it's a string, parse it first then truncate
-                        forecast_df = forecast_df.with_columns([
-                            pl.col('period').str.strptime(pl.Date, format='%Y-%m-%d', strict=False)
-                            .dt.truncate('1mo').alias('Month')
-                        ])
-                except Exception as date_error:
-                    print(f"DEBUG: Date conversion error, trying alternative method: {date_error}")
-                    # Fallback: cast to string first, then parse
-                    forecast_df = forecast_df.with_columns([
-                        pl.col('period').cast(pl.Utf8).str.strptime(pl.Date, format='%Y-%m-%d', strict=False)
-                        .dt.truncate('1mo').alias('Month')
-                    ])
-                
-                # POLARS AGGREGATION: Group by Month + ParentProductGroup (ultra-fast)
-                forecast_df = forecast_df.group_by(['Month', 'ParentProductGroup']).agg([
-                    pl.col('CogsAUD').sum(),
-                    pl.col('RevenueAUD').sum()
-                ]).sort(['Month', 'ParentProductGroup'])
-                
-                print(f"DEBUG: [PERF] Forecast Polars aggregation: {len(forecast_df)} records after grouping")
-            else:
-                forecast_df = pl.DataFrame()
-        else:
-            forecast_df = pl.DataFrame()
-        
-        # Convert production data directly to Polars and aggregate
-        if production_data:
-            # Create Polars DataFrame directly from raw data
-            production_df = pl.DataFrame([
-                {
-                    'pouring_date': row['pouring_date'],
-                    'ParentProductGroup': row['parent_product_group'],
-                    'ProductionAUD': float(row['cogs_aud']) if row['cogs_aud'] is not None else 0.0
-                }
-                for row in production_data 
-                if row['pouring_date'] is not None and row['parent_product_group'] is not None
-            ])
-            
-            if len(production_df) > 0:
-                # CRITICAL FIX: Handle different date formats safely
-                try:
-                    # First, try to convert to date if it's already a date type
-                    if production_df.schema['pouring_date'] in [pl.Date, pl.Datetime]:
-                        production_df = production_df.with_columns([
-                            pl.col('pouring_date').dt.truncate('1mo').alias('Month')
-                        ])
-                    else:
-                        # If it's a string, parse it first then truncate
-                        production_df = production_df.with_columns([
-                            pl.col('pouring_date').cast(pl.Date)
-                            .dt.truncate('1mo').alias('Month')
-                        ])
-                except Exception as date_error:
-                    print(f"DEBUG: Production date conversion error, trying alternative method: {date_error}")
-                    # Fallback: cast to string first, then parse as date
-                    production_df = production_df.with_columns([
-                        pl.col('pouring_date').cast(pl.Utf8).str.strptime(pl.Date, format='%Y-%m-%d', strict=False)
-                        .dt.truncate('1mo').alias('Month')
-                    ])
-                
-                # POLARS AGGREGATION: Group by Month + ParentProductGroup (ultra-fast)
-                production_df = production_df.group_by(['Month', 'ParentProductGroup']).agg([
-                    pl.col('ProductionAUD').sum()
-                ]).sort(['Month', 'ParentProductGroup'])
-                
-                print(f"DEBUG: [PERF] Production Polars aggregation: {len(production_df)} records after grouping")
-            else:
-                production_df = pl.DataFrame()
-        else:
-            production_df = pl.DataFrame()
-        
-        print(f"DEBUG: [PERF] Ultra-optimized Polars aggregation: {time.time() - polars_start:.2f}s")
-        
-        if len(forecast_df) == 0:
-            print("WARNING: No forecast data found for projections")
-            return False
-        
-        # OPTIMIZED: Filter data using Polars operations (much faster than Python loops)
-        forecast_df = forecast_df.filter(pl.col('Month') >= start_month)
-        if len(production_df) > 0:
-            production_df = production_df.filter(pl.col('Month') >= start_month)
-        
-        # PERFORMANCE: Process using optimized Polars aggregations
-        processing_start = time.time()
-        projection_records = []
-        
-        # OPTIMIZED: Get unique parent groups using Polars
-        parent_groups = forecast_df.select('ParentProductGroup').unique().to_pandas()['ParentProductGroup'].tolist()
-        print(f"DEBUG: [PERF] Processing {len(parent_groups)} parent groups")
-        
-        for parent_group in parent_groups:
-            if not parent_group:
-                continue
-                
-            # Get opening inventory for this parent group
-            opening_inventory = opening_inventory_data.get(parent_group, 0)
-            
-            # SIMPLIFIED: Since data is already aggregated by pandas, just filter by parent group
-            # No need for additional groupby operations in Polars
-            group_forecast = forecast_df.filter(
-                pl.col('ParentProductGroup') == parent_group
-            ).sort('Month')
-            
-            # SIMPLIFIED: Get production data (already aggregated by pandas)
-            if len(production_df) > 0:
-                group_production = production_df.filter(
-                    pl.col('ParentProductGroup') == parent_group
-                ).sort('Month')
-                
-                # Create production dictionary for lookup
-                production_dict = {}
-                for prod_row in group_production.iter_rows(named=True):
-                    production_dict[prod_row['Month']] = prod_row['ProductionAUD']
-            else:
-                production_dict = {}
-            
-            # Calculate monthly projections using aggregated data
-            current_inventory = opening_inventory
-            
-            for row in group_forecast.iter_rows(named=True):
-                month = row['Month']
-                cogs_aud = row['CogsAUD']
-                revenue_aud = row['RevenueAUD']
-                
-                # Get production for this month
-                production_aud = production_dict.get(month, 0)
-                
-                # Calculate closing inventory: Opening + Production - COGS
-                closing_inventory = current_inventory + production_aud - cogs_aud
-                
-                # Create projection record - ONE record per month per parent group
-                projection_records.append(InventoryProjectionModel(
-                    version=scenario,
-                    month=month,
-                    parent_product_group=parent_group,
-                    production_aud=production_aud,
-                    cogs_aud=cogs_aud,
-                    revenue_aud=revenue_aud,
-                    opening_inventory_aud=current_inventory,
-                    closing_inventory_aud=closing_inventory
-                ))
-                
-                # Update current inventory for next month
-                current_inventory = closing_inventory
-        
-        print(f"DEBUG: [PERF] Processing time: {time.time() - processing_start:.2f}s")
-        
-        # Bulk create all projection records
-        if projection_records:
-            bulk_start = time.time()
-            InventoryProjectionModel.objects.bulk_create(projection_records, batch_size=1000)
-            print(f"DEBUG: [PERF] Bulk create time: {time.time() - bulk_start:.2f}s")
-            print(f"DEBUG: Created {len(projection_records)} inventory projection records")
-        
-        print(f"DEBUG: [PERF] Total inventory projection time: {time.time() - start_time:.2f}s")
-        return True
-        
-    except Exception as e:
-        print(f"ERROR: Failed to populate inventory projections: {e}")
-        traceback.print_exc()
-        return False
+
 
 
 def combine_inventory_with_forecast_data(cogs_data_by_group, opening_inventory_data, scenario):
@@ -3505,174 +3271,406 @@ def populate_aggregated_financial_data(scenario):
 
 
 def get_inventory_projection_data(scenario_version, parent_product_group=None):
-    """Get inventory projection data for charts and tables"""
+    """
+    Get inventory projection data for charts and tables
+    
+    ==================================================================================
+    WARNING TO FUTURE DEVELOPERS AND COPILOT:
+    NO CACHE LOGIC IS ACCEPTED IN THIS FUNCTION
+    NO FALLBACK LOGIC IS ACCEPTED IN THIS FUNCTION  
+    IF DATA DOES NOT EXIST, FAIL FAST WITH CLEAR ERROR MESSAGE
+    DO NOT ATTEMPT TO IMPLEMENT CACHING OR FALLBACK SOLUTIONS
+    USER EXPLICITLY REJECTED ALL CACHING AND FALLBACK APPROACHES
+    ==================================================================================
+    """
     from website.models import InventoryProjectionModel, scenarios
     import polars as pl
-    from collections import defaultdict
     
+    print(f"🔥 NO FALLBACK: Getting inventory projection data for scenario: {scenario_version}")
+    
+    # STEP 1: Get scenario - FAIL FAST if not found
     try:
         scenario = scenarios.objects.get(version=scenario_version)
+    except scenarios.DoesNotExist:
+        raise ValueError(f"❌ NO FALLBACK: Scenario '{scenario_version}' not found. System configured to FAIL FAST.")
+    
+    # STEP 2: Build query filters
+    filters = {'version': scenario}
+    if parent_product_group and parent_product_group != 'All Product Groups':
+        filters['parent_product_group'] = parent_product_group
+    
+    # STEP 3: Get projection data - FAIL FAST if empty
+    projections = InventoryProjectionModel.objects.filter(**filters).values(
+        'month', 'parent_product_group',
+        'production_aud', 'cogs_aud', 'revenue_aud',
+        'opening_inventory_aud', 'closing_inventory_aud'
+    ).order_by('month', 'parent_product_group')
+    
+    if not projections.exists():
+        raise ValueError(f"❌ NO FALLBACK: No InventoryProjectionModel data found for scenario '{scenario_version}'. "
+                        f"Please populate inventory projections first using populate_inventory_projection_model(). "
+                        f"System configured to FAIL FAST.")
+    
+    # STEP 4: Convert to list and validate data integrity
+    projection_list = list(projections)
+    print(f"🔥 NO FALLBACK: Processing {len(projection_list)} projection records")
+    
+    # STEP 5: Validate each record - FAIL FAST on missing/invalid data
+    validated_records = []
+    for row in projection_list:
+        # Validate required fields
+        if row['month'] is None:
+            raise ValueError(f"❌ NO FALLBACK: Invalid month field in InventoryProjectionModel record. System configured to FAIL FAST.")
         
-        # Build query filters
-        filters = {'version': scenario}
-        if parent_product_group and parent_product_group != 'All Product Groups':
-            filters['parent_product_group'] = parent_product_group
+        if row['parent_product_group'] is None or row['parent_product_group'].strip() == '':
+            raise ValueError(f"❌ NO FALLBACK: Invalid parent_product_group field in InventoryProjectionModel record. System configured to FAIL FAST.")
         
-        # Get projection data
-        projections = InventoryProjectionModel.objects.filter(**filters).values(
-            'month', 'parent_product_group',
-            'production_aud', 'cogs_aud', 'revenue_aud',
-            'opening_inventory_aud', 'closing_inventory_aud'
-        ).order_by('month', 'parent_product_group')
-        
-        if not projections:
-            print(f"DEBUG: No projection data found for scenario: {scenario_version}")
-            return {'chart_data': {}, 'table_data': []}
-        
-        # Convert to Polars DataFrame for fast processing
-        projection_list = list(projections)
-        print(f"DEBUG: Converting {len(projection_list)} projection records to DataFrame")
-        
-        df = pl.DataFrame([
-            {
-                'month': row['month'],
-                'parent_group': row['parent_product_group'],
-                'production_aud': float(row['production_aud']) if row['production_aud'] is not None else 0.0,
-                'cogs_aud': float(row['cogs_aud']) if row['cogs_aud'] is not None else 0.0,
-                'revenue_aud': float(row['revenue_aud']) if row['revenue_aud'] is not None else 0.0,
-                'opening_inventory_aud': float(row['opening_inventory_aud']) if row['opening_inventory_aud'] is not None else 0.0,
-                'closing_inventory_aud': float(row['closing_inventory_aud']) if row['closing_inventory_aud'] is not None else 0.0
-            }
-            for row in projection_list
-        ])
-        
-        print(f"DEBUG: DataFrame created with {len(df)} rows and columns: {df.columns}")
-        if len(df) > 0:
-            print(f"DEBUG: Sample data - Month: {df['month'][0]}, Parent Group: {df['parent_group'][0]}")
-            print(f"DEBUG: Revenue range: {df['revenue_aud'].min()} to {df['revenue_aud'].max()}")
-            print(f"DEBUG: COGS range: {df['cogs_aud'].min()} to {df['cogs_aud'].max()}")
-            print(f"DEBUG: Production range: {df['production_aud'].min()} to {df['production_aud'].max()}")
-            print(f"DEBUG: Inventory range: {df['closing_inventory_aud'].min()} to {df['closing_inventory_aud'].max()}")
-        
-        # Prepare chart data grouped by parent product group
-        chart_data = {}
-        
-        # Group by parent product group
-        grouped_df = df.group_by('parent_group').agg([
-            pl.col('month').first().alias('months'),
-            pl.col('production_aud').sum().alias('production_aud'),
-            pl.col('cogs_aud').sum().alias('cogs_aud'),
-            pl.col('revenue_aud').sum().alias('revenue_aud'),
-            pl.col('closing_inventory_aud').sum().alias('closing_inventory_aud')
-        ]).sort('parent_group')
-        
-        # Process each parent group
-        for group_row in grouped_df.iter_rows(named=True):
-            parent_group = group_row['parent_group']
-            
-            # Get monthly data for this group
-            group_data = df.filter(pl.col('parent_group') == parent_group).group_by('month').agg([
-                pl.col('production_aud').sum(),
-                pl.col('cogs_aud').sum(),
-                pl.col('revenue_aud').sum(),
-                pl.col('closing_inventory_aud').sum()
-            ]).sort('month')
-            
-            # Convert to chart format
-            months = []
-            production_values = []
-            cogs_values = []
-            revenue_values = []
-            inventory_values = []
-            
-            for month_row in group_data.iter_rows(named=True):
-                months.append(month_row['month'].strftime('%b %Y'))
-                # Ensure no NaN or infinity values that break JSON
-                production_val = month_row['production_aud']
-                cogs_val = month_row['cogs_aud']
-                revenue_val = month_row['revenue_aud']
-                inventory_val = month_row['closing_inventory_aud']
-                
-                production_values.append(float(production_val) if production_val is not None and str(production_val) not in ['nan', 'inf', '-inf'] else 0)
-                cogs_values.append(float(cogs_val) if cogs_val is not None and str(cogs_val) not in ['nan', 'inf', '-inf'] else 0)
-                revenue_values.append(float(revenue_val) if revenue_val is not None and str(revenue_val) not in ['nan', 'inf', '-inf'] else 0)
-                inventory_values.append(float(inventory_val) if inventory_val is not None and str(inventory_val) not in ['nan', 'inf', '-inf'] else 0)
-            
-            chart_data[parent_group] = {
-                'labels': months,
-                'production': production_values,
-                'cogs': cogs_values,
-                'revenue': revenue_values,
-                'inventoryProjection': inventory_values,
-                'totalValue': sum(inventory_values) if inventory_values else 0
-            }
-        
-        # Create "All Product Groups" summary
-        if not parent_product_group or parent_product_group == 'All Product Groups':
-            all_groups_data = df.group_by('month').agg([
-                pl.col('production_aud').sum(),
-                pl.col('cogs_aud').sum(),
-                pl.col('revenue_aud').sum(),
-                pl.col('closing_inventory_aud').sum()
-            ]).sort('month')
-            
-            months = []
-            production_values = []
-            cogs_values = []
-            revenue_values = []
-            inventory_values = []
-            
-            for month_row in all_groups_data.iter_rows(named=True):
-                months.append(month_row['month'].strftime('%b %Y'))
-                # Ensure no NaN or infinity values that break JSON
-                production_val = month_row['production_aud']
-                cogs_val = month_row['cogs_aud']
-                revenue_val = month_row['revenue_aud']
-                inventory_val = month_row['closing_inventory_aud']
-                
-                production_values.append(float(production_val) if production_val is not None and str(production_val) not in ['nan', 'inf', '-inf'] else 0)
-                cogs_values.append(float(cogs_val) if cogs_val is not None and str(cogs_val) not in ['nan', 'inf', '-inf'] else 0)
-                revenue_values.append(float(revenue_val) if revenue_val is not None and str(revenue_val) not in ['nan', 'inf', '-inf'] else 0)
-                inventory_values.append(float(inventory_val) if inventory_val is not None and str(inventory_val) not in ['nan', 'inf', '-inf'] else 0)
-            
-            chart_data['All Product Groups'] = {
-                'labels': months,
-                'production': production_values,
-                'cogs': cogs_values,
-                'revenue': revenue_values,
-                'inventoryProjection': inventory_values,
-                'totalValue': sum(inventory_values) if inventory_values else 0
-            }
-        
-        # Prepare table data
-        table_data = []
-        for row in df.iter_rows(named=True):
-            table_data.append({
-                'month': row['month'].strftime('%b %Y'),
-                'parent_product_group': row['parent_group'],
-                'production_aud': float(row['production_aud']) if row['production_aud'] is not None else 0,
-                'cogs_aud': float(row['cogs_aud']) if row['cogs_aud'] is not None else 0,
-                'revenue_aud': float(row['revenue_aud']) if row['revenue_aud'] is not None else 0,
-                'opening_inventory_aud': float(row['opening_inventory_aud']) if row['opening_inventory_aud'] is not None else 0,
-                'closing_inventory_aud': float(row['closing_inventory_aud']) if row['closing_inventory_aud'] is not None else 0
-            })
-        
-        print(f"DEBUG: Chart data keys: {list(chart_data.keys())}")
-        print(f"DEBUG: Table data count: {len(table_data)}")
-        if chart_data:
-            first_key = list(chart_data.keys())[0]
-            print(f"DEBUG: First group '{first_key}' labels: {chart_data[first_key]['labels'][:3]}...")
-        
-        return {
-            'chart_data': chart_data,
-            'table_data': table_data
+        # Validate numeric fields - FAIL FAST if None or invalid
+        numeric_fields = ['production_aud', 'cogs_aud', 'revenue_aud', 'opening_inventory_aud', 'closing_inventory_aud']
+        validated_record = {
+            'month': row['month'],
+            'parent_group': row['parent_product_group'].strip()
         }
         
-    except Exception as e:
-        print(f"ERROR: Failed to get inventory projection data: {e}")
-        import traceback
-        traceback.print_exc()
-        return {'chart_data': {}, 'table_data': []}
+        for field in numeric_fields:
+            value = row[field]
+            if value is None:
+                raise ValueError(f"❌ NO FALLBACK: Field '{field}' is None in InventoryProjectionModel for {row['parent_product_group']}. "
+                               f"All numeric fields must have valid values. System configured to FAIL FAST.")
+            
+            try:
+                float_value = float(value)
+                if str(float_value) in ['nan', 'inf', '-inf']:
+                    raise ValueError(f"❌ NO FALLBACK: Field '{field}' contains invalid value '{float_value}' for {row['parent_product_group']}. "
+                                   f"System configured to FAIL FAST.")
+                validated_record[field.replace('_aud', '')] = float_value
+            except (ValueError, TypeError) as e:
+                raise ValueError(f"❌ NO FALLBACK: Field '{field}' contains non-numeric value '{value}' for {row['parent_product_group']}. "
+                               f"Error: {e}. System configured to FAIL FAST.")
+        
+        validated_records.append(validated_record)
+    
+    print(f"🔥 NO FALLBACK: All {len(validated_records)} records validated successfully")
+    
+    # STEP 6: Create Polars DataFrame with validated data
+    df = pl.DataFrame([
+        {
+            'month': record['month'],
+            'parent_group': record['parent_group'],
+            'production_aud': record['production'],
+            'cogs_aud': record['cogs'],
+            'revenue_aud': record['revenue'],
+            'opening_inventory_aud': record['opening_inventory'],
+            'closing_inventory_aud': record['closing_inventory']
+        }
+        for record in validated_records
+    ])
+    
+    print(f"🔥 NO FALLBACK: DataFrame created with {len(df)} rows")
+    print(f"🔥 NO FALLBACK: Revenue range: {df['revenue_aud'].min()} to {df['revenue_aud'].max()}")
+    print(f"🔥 NO FALLBACK: COGS range: {df['cogs_aud'].min()} to {df['cogs_aud'].max()}")
+    print(f"🔥 NO FALLBACK: Production range: {df['production_aud'].min()} to {df['production_aud'].max()}")
+    print(f"🔥 NO FALLBACK: Inventory range: {df['closing_inventory_aud'].min()} to {df['closing_inventory_aud'].max()}")
+    
+    # STEP 7: Prepare chart data grouped by parent product group
+    chart_data = {}
+    
+    # Get unique parent groups
+    parent_groups = df['parent_group'].unique().to_list()
+    if not parent_groups:
+        raise ValueError(f"❌ NO FALLBACK: No parent product groups found in data. System configured to FAIL FAST.")
+    
+    print(f"🔥 NO FALLBACK: Processing {len(parent_groups)} parent groups: {parent_groups}")
+    
+    # Process each parent group
+    for parent_group in parent_groups:
+        group_data = df.filter(pl.col('parent_group') == parent_group).group_by('month').agg([
+            pl.col('production_aud').sum(),
+            pl.col('cogs_aud').sum(),
+            pl.col('revenue_aud').sum(),
+            pl.col('closing_inventory_aud').sum()
+        ]).sort('month')
+        
+        if len(group_data) == 0:
+            raise ValueError(f"❌ NO FALLBACK: No monthly data found for parent group '{parent_group}'. System configured to FAIL FAST.")
+        
+        # Convert to chart format with strict validation
+        months = []
+        production_values = []
+        cogs_values = []
+        revenue_values = []
+        inventory_values = []
+        
+        for month_row in group_data.iter_rows(named=True):
+            months.append(month_row['month'].strftime('%b %Y'))
+            
+            # NO FALLBACK - All values must be valid
+            production_val = month_row['production_aud']
+            cogs_val = month_row['cogs_aud']
+            revenue_val = month_row['revenue_aud']
+            inventory_val = month_row['closing_inventory_aud']
+            
+            production_values.append(float(production_val))
+            cogs_values.append(float(cogs_val))
+            revenue_values.append(float(revenue_val))
+            inventory_values.append(float(inventory_val))
+        
+        chart_data[parent_group] = {
+            'labels': months,
+            'production': production_values,
+            'cogs': cogs_values,
+            'revenue': revenue_values,
+            'inventoryProjection': inventory_values,
+            'totalValue': sum(inventory_values)
+        }
+    
+    # STEP 8: Create "All Product Groups" summary if requested
+    if not parent_product_group or parent_product_group == 'All Product Groups':
+        all_groups_data = df.group_by('month').agg([
+            pl.col('production_aud').sum(),
+            pl.col('cogs_aud').sum(),
+            pl.col('revenue_aud').sum(),
+            pl.col('closing_inventory_aud').sum()
+        ]).sort('month')
+        
+        if len(all_groups_data) == 0:
+            raise ValueError(f"❌ NO FALLBACK: No aggregated monthly data found for 'All Product Groups'. System configured to FAIL FAST.")
+        
+        months = []
+        production_values = []
+        cogs_values = []
+        revenue_values = []
+        inventory_values = []
+        
+        for month_row in all_groups_data.iter_rows(named=True):
+            months.append(month_row['month'].strftime('%b %Y'))
+            
+            # NO FALLBACK - All values must be valid
+            production_values.append(float(month_row['production_aud']))
+            cogs_values.append(float(month_row['cogs_aud']))
+            revenue_values.append(float(month_row['revenue_aud']))
+            inventory_values.append(float(month_row['closing_inventory_aud']))
+        
+        chart_data['All Product Groups'] = {
+            'labels': months,
+            'production': production_values,
+            'cogs': cogs_values,
+            'revenue': revenue_values,
+            'inventoryProjection': inventory_values,
+            'totalValue': sum(inventory_values)
+        }
+    
+    # STEP 9: Prepare table data with strict validation
+    table_data = []
+    for record in validated_records:
+        table_data.append({
+            'month': record['month'].strftime('%b %Y'),
+            'parent_product_group': record['parent_group'],
+            'production_aud': record['production'],
+            'cogs_aud': record['cogs'],
+            'revenue_aud': record['revenue'],
+            'opening_inventory_aud': record['opening_inventory'],
+            'closing_inventory_aud': record['closing_inventory']
+        })
+    
+    print(f"🔥 NO FALLBACK: Successfully processed {len(chart_data)} chart groups and {len(table_data)} table records")
+    
+    return {
+        'chart_data': chart_data,
+        'table_data': table_data
+    }
+
+
+def populate_inventory_projection_model(scenario_version):
+    """
+    Populate InventoryProjectionModel with monthly projections
+    
+    ==================================================================================
+    WARNING TO FUTURE DEVELOPERS AND COPILOT:
+    NO CACHE LOGIC IS ACCEPTED IN THIS FUNCTION
+    NO FALLBACK LOGIC IS ACCEPTED IN THIS FUNCTION  
+    IF ANY OPERATION FAILS, FAIL FAST WITH CLEAR ERROR MESSAGE
+    DO NOT ATTEMPT TO IMPLEMENT CACHING OR FALLBACK SOLUTIONS
+    USER EXPLICITLY REJECTED ALL CACHING AND FALLBACK APPROACHES
+    ==================================================================================
+    """
+    from website.models import (
+        InventoryProjectionModel, MasterDataInventory, AggregatedForecast, 
+        CalculatedProductionModel, scenarios
+    )
+    from datetime import datetime, timedelta
+    from dateutil.relativedelta import relativedelta
+    import time
+    from django.db import transaction
+    
+    print(f"🚀 NO FALLBACK: Starting inventory projection population for scenario {scenario_version}")
+    total_start_time = time.time()
+    
+    # Use database transaction for better performance - FAIL FAST on transaction errors
+    with transaction.atomic():
+        step_time = time.time()
+        
+        # Get scenario object - FAIL FAST if not found
+        scenario = scenarios.objects.get(version=scenario_version)
+        print(f"⏱️  NO FALLBACK Step 1 - Scenario lookup: {time.time() - step_time:.2f}s")
+        
+        # Clear existing projections for this scenario - FAIL FAST on deletion errors
+        step_time = time.time()
+        existing_count = InventoryProjectionModel.objects.filter(version=scenario).count()
+        if existing_count > 0:
+            InventoryProjectionModel.objects.filter(version=scenario).delete()
+            print(f"⏱️  NO FALLBACK Step 2 - Deleted {existing_count} existing records: {time.time() - step_time:.2f}s")
+        
+        # Get opening inventory data - FAIL FAST if not found
+        step_time = time.time()
+        opening_inventory_data = get_opening_inventory_by_group(scenario_version)
+        if not opening_inventory_data:
+            raise ValueError(f"❌ NO FALLBACK: No opening inventory data found for scenario '{scenario_version}'. "
+                           f"System configured to FAIL FAST.")
+        print(f"⏱️  NO FALLBACK Step 3 - Opening inventory lookup: {time.time() - step_time:.2f}s")
+        
+        # Get snapshot date for start calculation - FAIL FAST if not found
+        inventory_snapshot = MasterDataInventory.objects.filter(version=scenario).first()
+        if not inventory_snapshot:
+            raise ValueError(f"❌ NO FALLBACK: No inventory snapshot found for scenario '{scenario_version}'. "
+                           f"System configured to FAIL FAST.")
+        
+        snapshot_date = inventory_snapshot.date_of_snapshot
+        start_month = (snapshot_date + relativedelta(months=1)).replace(day=1)
+        print(f"📅 NO FALLBACK: Starting projections from: {start_month}")
+        
+        # Get forecast data - optimized query with FAIL FAST on errors
+        step_time = time.time()
+        from django.db import connection
+        
+        # Fast forecast query with date filtering at database level (SQL Server compatible)
+        forecast_query = """
+            SELECT DATEADD(MONTH, DATEDIFF(MONTH, 0, period), 0) as month, 
+                   parent_product_group_description,
+                   SUM(cogs_aud) as total_cogs,
+                   SUM(revenue_aud) as total_revenue
+            FROM website_aggregatedforecast 
+            WHERE version_id = %s AND period >= %s
+            GROUP BY DATEADD(MONTH, DATEDIFF(MONTH, 0, period), 0), parent_product_group_description
+            ORDER BY month, parent_product_group_description
+        """
+        
+        with connection.cursor() as cursor:
+            cursor.execute(forecast_query, [scenario.version, start_month])
+            forecast_results = cursor.fetchall()
+        
+        print(f"📈 NO FALLBACK: Forecast query returned {len(forecast_results)} aggregated records")
+        
+        # Fast production query with date filtering at database level - FAIL FAST on errors
+        production_query = """
+            SELECT DATEADD(MONTH, DATEDIFF(MONTH, 0, pouring_date), 0) as month,
+                   parent_product_group,
+                   SUM(production_aud) as total_production
+            FROM website_calculatedproductionmodel
+            WHERE version_id = %s AND pouring_date >= %s
+            GROUP BY DATEADD(MONTH, DATEDIFF(MONTH, 0, pouring_date), 0), parent_product_group
+            ORDER BY month, parent_product_group
+        """
+        
+        with connection.cursor() as cursor:
+            cursor.execute(production_query, [scenario.version, start_month])
+            production_results = cursor.fetchall()
+        
+        print(f"🏭 NO FALLBACK: Production query returned {len(production_results)} aggregated records")
+        print(f"⏱️  NO FALLBACK Step 4 - Optimized bulk queries: {time.time() - step_time:.2f}s")
+        
+        # Build dictionaries from query results - FAIL FAST if data inconsistent
+        step_time = time.time()
+        
+        forecast_dict = {}  # {(month, parent_group): {'cogs': x, 'revenue': y}}
+        for month, parent_group, cogs, revenue in forecast_results:
+            if parent_group:  # Skip null parent groups
+                key = (month, parent_group)
+                forecast_dict[key] = {
+                    'cogs': float(cogs or 0),
+                    'revenue': float(revenue or 0)
+                }
+        
+        production_dict = {}  # {(month, parent_group): production_value}
+        for month, parent_group, production in production_results:
+            if parent_group:  # Skip null parent groups
+                key = (month, parent_group)
+                production_dict[key] = float(production or 0)
+        
+        print(f"⏱️  NO FALLBACK Step 5 - Dictionary processing: {time.time() - step_time:.2f}s")
+        
+        # Calculate projections - FAIL FAST if no parent groups found
+        step_time = time.time()
+        projection_records = []
+        
+        # Get unique parent groups from forecast data
+        parent_groups = set(parent_group for _, parent_group in forecast_dict.keys())
+        if not parent_groups:
+            raise ValueError(f"❌ NO FALLBACK: No parent groups found in forecast data for scenario '{scenario_version}'. "
+                           f"System configured to FAIL FAST.")
+        print(f"🎯 NO FALLBACK: Processing {len(parent_groups)} parent groups")
+        
+        # Get all unique months and sort them
+        all_months = sorted(set(month for month, _ in forecast_dict.keys()))
+        if not all_months:
+            raise ValueError(f"❌ NO FALLBACK: No months found in forecast data for scenario '{scenario_version}'. "
+                           f"System configured to FAIL FAST.")
+        print(f"📅 NO FALLBACK: Processing {len(all_months)} months from {all_months[0]}")
+        
+        for parent_group in parent_groups:
+            if not parent_group:
+                continue
+            
+            # Get opening inventory for this parent group
+            current_inventory = opening_inventory_data.get(parent_group, 0)
+            
+            # Process each month sequentially
+            for month in all_months:
+                forecast_key = (month, parent_group)
+                
+                # Get forecast data
+                forecast_data = forecast_dict.get(forecast_key, {'cogs': 0, 'revenue': 0})
+                cogs_aud = forecast_data['cogs']
+                revenue_aud = forecast_data['revenue']
+                
+                # Get production data
+                production_aud = production_dict.get(forecast_key, 0)
+                
+                # Calculate closing inventory: Opening + Production - COGS
+                closing_inventory = current_inventory + production_aud - cogs_aud
+                
+                # Create projection record
+                projection_records.append(InventoryProjectionModel(
+                    version=scenario,
+                    month=month,
+                    parent_product_group=parent_group,
+                    production_aud=production_aud,
+                    cogs_aud=cogs_aud,
+                    revenue_aud=revenue_aud,
+                    opening_inventory_aud=current_inventory,
+                    closing_inventory_aud=closing_inventory
+                ))
+                
+                # Update current inventory for next month
+                current_inventory = closing_inventory
+        
+        print(f"⏱️  NO FALLBACK Step 6 - Projection calculation: {time.time() - step_time:.2f}s")
+        
+        # Bulk create records - FAIL FAST if no records to create
+        if not projection_records:
+            raise ValueError(f"❌ NO FALLBACK: No projection records generated for scenario '{scenario_version}'. "
+                           f"System configured to FAIL FAST.")
+        
+        step_time = time.time()
+        batch_size = min(2000, len(projection_records))
+        InventoryProjectionModel.objects.bulk_create(projection_records, batch_size=batch_size)
+        print(f"✅ NO FALLBACK: Created {len(projection_records)} inventory projection records")
+        print(f"⏱️  NO FALLBACK Step 7 - Bulk create: {time.time() - step_time:.2f}s")
+        
+        total_time = time.time() - total_start_time
+        print(f"🎉 NO FALLBACK: Total inventory projection time: {total_time:.2f}s")
+        
+        return True
 
 
 # NOTE: populate_all_aggregated_data function removed - replaced with direct polars queries

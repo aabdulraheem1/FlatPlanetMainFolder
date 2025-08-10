@@ -1,3 +1,13 @@
+
+# ==================================================================================
+# WARNING TO FUTURE DEVELOPERS AND COPILOT:
+# NO CACHE LOGIC IS ACCEPTED IN THIS SYSTEM
+# NO FALLBACK LOGIC IS ACCEPTED IN THIS SYSTEM  
+# IF DATA DOES NOT EXIST, FAIL FAST WITH CLEAR ERROR MESSAGE
+# DO NOT ATTEMPT TO IMPLEMENT CACHING OR FALLBACK SOLUTIONS
+# USER EXPLICITLY REJECTED ALL CACHING AND FALLBACK APPROACHES
+# ==================================================================================
+
 """
 DIRECT POLARS QUERIES FOR REVIEW SCENARIO
 Replace all caching with real-time polars aggregations
@@ -264,7 +274,7 @@ def get_foundry_data_direct_polars(scenario_version):
                 product_id,
                 FORMAT(pouring_date, 'yyyy-MM') as month,
                 SUM(tonnes) as total_tonnes,
-                SUM(cogs_aud) as total_cogs_aud,
+                SUM(production_aud) as total_cogs_aud,
                 MAX(latest_customer_invoice) as latest_customer,
                 MAX(latest_customer_invoice_date) as latest_invoice_date
             FROM website_calculatedproductionmodel 

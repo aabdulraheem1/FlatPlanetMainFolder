@@ -1,3 +1,13 @@
+
+# ==================================================================================
+# WARNING TO FUTURE DEVELOPERS AND COPILOT:
+# NO CACHE LOGIC IS ACCEPTED IN THIS SYSTEM
+# NO FALLBACK LOGIC IS ACCEPTED IN THIS SYSTEM  
+# IF DATA DOES NOT EXIST, FAIL FAST WITH CLEAR ERROR MESSAGE
+# DO NOT ATTEMPT TO IMPLEMENT CACHING OR FALLBACK SOLUTIONS
+# USER EXPLICITLY REJECTED ALL CACHING AND FALLBACK APPROACHES
+# ==================================================================================
+
 from django.shortcuts import get_object_or_404, render
 from django.contrib.auth.decorators import login_required
 from django.utils.safestring import mark_safe

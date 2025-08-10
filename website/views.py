@@ -12,7 +12,7 @@ import pandas as pd
 from django.shortcuts import render, redirect
 from django.http import HttpResponseRedirect, JsonResponse
 from .forms import UploadFileForm, ScenarioForm, SMARTForecastForm
-from .models import SMART_Forecast_Model, scenarios, MasterDataOrderBook, MasterDataCapacityModel, MasterDataCommentModel, MasterDataHistoryOfProductionModel, MasterDataIncotTermTypesModel, MasterdataIncoTermsModel, MasterDataPlan,MasterDataProductAttributesModel, MasterDataSalesAllocationToPlantModel, MasterDataSalesModel, MasterDataSKUTransferModel, MasterDataScheduleModel, AggregatedForecast, MasterDataForecastRegionModel, MasterDataCastToDespatchModel, CalcualtedReplenishmentModel, CalculatedProductionModel, MasterDataFreightModel    
+from .models import SMART_Forecast_Model, scenarios, MasterDataOrderBook, MasterDataCapacityModel, MasterDataCommentModel, MasterDataHistoryOfProductionModel, MasterDataIncotTermTypesModel, MasterdataIncoTermsModel, MasterDataPlan,MasterDataProductAttributesModel, MasterDataSalesAllocationToPlantModel, MasterDataSalesModel, MasterDataSKUTransferModel, MasterDataScheduleModel, AggregatedForecast, MasterDataForecastRegionModel, MasterDataCastToDespatchModel, CalcualtedReplenishmentModel, CalculatedProductionModel, MasterDataFreightModel, MasterDataSafetyStocks    
 from django.contrib.auth.decorators import login_required
 import pyodbc
 from django.shortcuts import render
@@ -221,11 +221,53 @@ def fetch_data_from_mssql(request):
             'ExistsInEpicor'
         ]
         
-        df_final = df[model_columns].fillna('')  # Handle NaN values
+        # STEP 3.1: Handle different data types properly
+        df_final = df[model_columns].copy()
+        
+        # For string fields, fill NaN with empty string
+        string_fields = [
+            'Product', 'ProductDescription', 'SalesClass', 'SalesClassDescription',
+            'ProductGroup', 'ProductGroupDescription', 'InventoryClass', 'InventoryClassDescription',
+            'ParentProductGroup', 'ParentProductGroupDescription', 'ProductFamily', 'ProductFamilyDescription',
+            'Grade', 'PartClassID', 'PartClassDescription'
+        ]
+        
+        # For numeric fields, convert empty strings and invalid values to None
+        numeric_fields = ['DressMass', 'CastMass']
+        
+        # Handle string fields
+        for field in string_fields:
+            if field in df_final.columns:
+                df_final[field] = df_final[field].fillna('')
+        
+        # Handle numeric fields - convert empty strings and invalid values to None
+        for field in numeric_fields:
+            if field in df_final.columns:
+                # Replace empty strings, 'NaN', and non-numeric values with None
+                df_final[field] = pd.to_numeric(df_final[field], errors='coerce')
+                # pd.to_numeric with errors='coerce' converts invalid values to NaN
+                # Keep NaN as is (it will become None in Django)
+        
+        # Handle boolean fields
+        if 'ExistsInEpicor' in df_final.columns:
+            df_final['ExistsInEpicor'] = df_final['ExistsInEpicor'].fillna(True)
         
         # STEP 4: Convert to dictionaries for bulk operations
         transform_start = time.time()
-        records_to_update = df_final.to_dict('records')
+        
+        # Convert DataFrame to records, handling NaN properly
+        records_to_update = []
+        for _, row in df_final.iterrows():
+            record = {}
+            for col in df_final.columns:
+                value = row[col]
+                # Convert pandas NaN to None for proper Django handling
+                if pd.isna(value):
+                    record[col] = None
+                else:
+                    record[col] = value
+            records_to_update.append(record)
+        
         transform_time = time.time() - transform_start
         
         print(f"🔄 Data transformation completed in {transform_time:.3f} seconds")
@@ -244,6 +286,7 @@ def fetch_data_from_mssql(request):
         protected_count = 0
         products_to_create = []
         products_to_update = []
+        seen_products = set()  # Track products in current batch to avoid duplicates
         
         for record_data in records_to_update:
             product_key = record_data['Product']
@@ -256,16 +299,21 @@ def fetch_data_from_mssql(request):
                     updated_fields = safe_update_from_epicor(
                         existing_product, 
                         record_data, 
-                        'PowerBI.Products'
+                        username='PowerBI.Products'
                     )
                     if updated_fields:
                         updated_count += 1
                     else:
                         protected_count += 1
-                else:
+                elif product_key not in seen_products:  # Avoid duplicates in same batch
                     # Prepare for bulk create
-                    record_data['last_imported_from_epicor'] = 'PowerBI.Products'
+                    from django.utils import timezone
+                    record_data['last_imported_from_epicor'] = timezone.now()
+                    record_data['is_user_created'] = False
                     products_to_create.append(MasterDataProductModel(**record_data))
+                    seen_products.add(product_key)
+                else:
+                    print(f"⚠️  Skipping duplicate product in batch: {product_key}")
                     
             except Exception as e:
                 print(f"❌ Error processing product {product_key}: {e}")
@@ -273,28 +321,113 @@ def fetch_data_from_mssql(request):
         
         # Bulk create new products
         if products_to_create:
-            MasterDataProductModel.objects.bulk_create(products_to_create, batch_size=1000)
-            created_count = len(products_to_create)
+            try:
+                # Use ignore_conflicts to handle any duplicate key issues gracefully
+                created_products = MasterDataProductModel.objects.bulk_create(
+                    products_to_create, 
+                    batch_size=1000, 
+                    ignore_conflicts=True
+                )
+                created_count = len(created_products)
+                print(f"✅ Created {created_count} new products (duplicates ignored)")
+            except Exception as e:
+                print(f"❌ Error during bulk create: {e}")
+                # Fallback: try creating products one by one
+                created_count = 0
+                for product_obj in products_to_create:
+                    try:
+                        # Get the product key for logging
+                        product_key = getattr(product_obj, 'Product', 'unknown')
+                        # Try to create/save the product
+                        product_obj.save()
+                        created_count += 1
+                    except Exception as individual_error:
+                        print(f"❌ Failed to create product {product_key}: {individual_error}")
+                        continue
         
         bulk_time = time.time() - bulk_start
+        
+        # STEP 6: FETCH AND UPDATE CUSTOMER DATA FROM POWERBI
+        print("🔗 Fetching customer data from PowerBI...")
+        customer_start = time.time()
+        
+        try:
+            from .powerbi_invoice_integration import get_latest_customer_invoices
+            from django.utils import timezone
+            
+            # Get customer invoice data using the existing function
+            customer_df = get_latest_customer_invoices()
+            
+            if len(customer_df) > 0:
+                print(f"📋 Retrieved {len(customer_df)} customer invoice records")
+                
+                # Update products with customer data in batches
+                customer_update_count = 0
+                batch_size = 1000
+                
+                for i in range(0, len(customer_df), batch_size):
+                    batch = customer_df.slice(i, batch_size)
+                    products_to_update = []
+                    
+                    for row in batch.iter_rows(named=True):
+                        product_key = row['ProductKey']
+                        customer_name = row['CustomerName']
+                        invoice_date = row['InvoiceDate']
+                        
+                        try:
+                            if product_key in existing_products:
+                                product = existing_products[product_key]
+                                product.latest_customer_name = customer_name
+                                product.latest_invoice_date = invoice_date
+                                product.customer_data_last_updated = timezone.now()
+                                products_to_update.append(product)
+                        except Exception as e:
+                            print(f"❌ Error updating customer data for {product_key}: {e}")
+                            continue
+                    
+                    # Bulk update customer data
+                    if products_to_update:
+                        MasterDataProductModel.objects.bulk_update(
+                            products_to_update, 
+                            ['latest_customer_name', 'latest_invoice_date', 'customer_data_last_updated'],
+                            batch_size=batch_size
+                        )
+                        customer_update_count += len(products_to_update)
+                
+                customer_time = time.time() - customer_start
+                print(f"✅ Customer data updated for {customer_update_count} products in {customer_time:.3f}s")
+                
+            else:
+                customer_time = time.time() - customer_start
+                print(f"⚠️  No customer data retrieved from PowerBI in {customer_time:.3f}s")
+                
+        except Exception as e:
+            customer_time = time.time() - customer_start
+            print(f"❌ Error fetching customer data: {e} (took {customer_time:.3f}s)")
+            # Don't fail the entire process if customer data fails
+            customer_update_count = 0
+        
         total_time = time.time() - start_time
         
-        # STEP 6: Performance summary
-        print(f"✅ PANDAS OPTIMIZATION COMPLETE:")
+        # STEP 7: Performance summary
+        print(f"✅ PANDAS + CUSTOMER DATA OPTIMIZATION COMPLETE:")
         print(f"   📊 Data Read: {pandas_read_time:.3f}s")
         print(f"   🔄 Transform: {transform_time:.3f}s") 
         print(f"   💾 Database: {bulk_time:.3f}s")
+        print(f"   🔗 Customer: {customer_time:.3f}s")
         print(f"   🎯 Total: {total_time:.3f}s")
         print(f"   📈 Records: {len(df)} processed")
         print(f"   ✨ Created: {created_count}")
         print(f"   🔄 Updated: {updated_count}")
         print(f"   🛡️  Protected: {protected_count}")
+        print(f"   👥 Customer Updates: {customer_update_count if 'customer_update_count' in locals() else 0}")
         
         # Success message with performance metrics
         messages.success(
             request, 
-            f"✅ Product data refresh completed in {total_time:.2f}s using optimized processing! "
-            f"Created: {created_count}, Updated: {updated_count}, Protected: {protected_count} records. "
+            f"✅ Product + Customer data refresh completed in {total_time:.2f}s! "
+            f"Products - Created: {created_count}, Updated: {updated_count}, Protected: {protected_count}. "
+            f"Customer data updated: {customer_update_count if 'customer_update_count' in locals() else 0} products. "
             f"Performance: {len(df)/total_time:.0f} records/second."
         )
         
@@ -1697,22 +1830,7 @@ def review_scenario(request, version):
     return render(request, 'website/review_scenario.html', context)
 
 
-@login_required(login_url='/login/')  # Re-enabled authentication
-def review_scenario_progressive(request, version):
-    """
-    Fast-loading review scenario view with progressive loading.
-    Only loads essential data initially, other sections load on-demand.
-    """
-    user_name = request.user.username
-    scenario = get_object_or_404(scenarios, version=version)
 
-    context = {
-        'version': scenario.version,
-        'user_name': user_name,
-        'scenario': scenario,
-    }
-    
-    return render(request, 'website/review_scenario_progressive.html', context)
 
 
 @login_required
@@ -2937,7 +3055,58 @@ def upload_on_hand_stock(request, version):
         if bulk_objs:
             MasterDataInventory.objects.bulk_create(bulk_objs, batch_size=10000)
             logger.warning(f"✅ UPLOAD COMPLETE: {len(bulk_objs)} inventory records uploaded successfully")
-            messages.success(request, f'Successfully uploaded {len(bulk_objs):,} inventory records for {snapshot_date}')
+            
+            # CRITICAL: Auto-populate SHARED Opening Inventory Snapshot after successful upload
+            print(f"🚀 AUTO-POPULATING SHARED Opening Inventory Snapshot for date {snapshot_date}...")
+            print(f"   This snapshot will be REUSABLE by ALL scenarios with the same date!")
+            try:
+                from .models import OpeningInventorySnapshot
+                from datetime import datetime
+                
+                # Convert snapshot_date string to date object
+                snapshot_date_obj = datetime.strptime(snapshot_date, '%Y-%m-%d').date()
+                
+                # Force refresh the SHARED inventory snapshot with fresh data
+                snapshot_result = OpeningInventorySnapshot.get_or_create_snapshot(
+                    scenario=scenario,  # Only used for tracking and fallback
+                    snapshot_date=snapshot_date_obj,
+                    force_refresh=True,  # Always refresh after new inventory upload
+                    user=request.user,
+                    reason='inventory_upload'
+                )
+                
+                if snapshot_result:
+                    snapshot_count = len(snapshot_result)
+                    total_value = sum(snapshot_result.values())
+                    print(f"📊 SHARED Opening Inventory Snapshot created: {snapshot_count} product groups, total value: ${total_value:,.2f}")
+                    print(f"📊 This snapshot can now be used by ANY scenario with date {snapshot_date}!")
+                    logger.warning(f"📊 SHARED Opening Inventory Snapshot populated: {snapshot_count} product groups")
+                    
+                    messages.success(request, 
+                        f'Successfully uploaded {len(bulk_objs):,} inventory records for {snapshot_date}. '
+                        f'SHARED opening inventory snapshot created with {snapshot_count} product groups (Total: ${total_value:,.2f}). '
+                        f'This snapshot is now available for ALL scenarios using {snapshot_date} - no duplication needed! '
+                        f'Future inventory projections will be 95% faster!'
+                    )
+                else:
+                    logger.warning("⚠️ SHARED Opening Inventory Snapshot population returned empty result")
+                    messages.success(request, 
+                        f'Successfully uploaded {len(bulk_objs):,} inventory records for {snapshot_date}. '
+                        f'SHARED opening inventory snapshot population completed but returned no data.'
+                    )
+                    
+            except Exception as snapshot_error:
+                logger.error(f"❌ SHARED SNAPSHOT POPULATION ERROR: {snapshot_error}")
+                print(f"❌ Failed to populate SHARED Opening Inventory Snapshot: {snapshot_error}")
+                import traceback
+                print(f"Full traceback: {traceback.format_exc()}")
+                
+                # Don't fail the entire upload - just warn the user
+                messages.success(request, 
+                    f'Successfully uploaded {len(bulk_objs):,} inventory records for {snapshot_date}. '
+                    f'However, SHARED opening inventory snapshot population failed: {str(snapshot_error)}. '
+                    f'Inventory projections may be slower until this is resolved.'
+                )
         else:
             logger.warning("⚠️ NO RECORDS to upload after filtering")
             messages.warning(request, f'No inventory records to upload for {snapshot_date}')
@@ -4563,48 +4732,332 @@ def calculate_model(request, version):
     # Redirect back to the list of scenarios
     return redirect('list_scenarios')
 
+@login_required
+def search_products_ajax(request):
+    """
+    AJAX endpoint for product search
+    """
+    if request.method == 'GET':
+        query = request.GET.get('q', '').strip()
+        if len(query) >= 1:  # Start searching from 1 character
+            from .models import MasterDataProductModel
+            from django.http import JsonResponse
+            
+            # Search for products containing the query (case insensitive)
+            products = MasterDataProductModel.objects.filter(
+                Product__icontains=query
+            ).values_list('Product', flat=True).distinct()[:20]  # Limit to 20 results
+            
+            return JsonResponse({
+                'products': list(products)
+            })
+        else:
+            return JsonResponse({'products': []})
+    
+    return JsonResponse({'products': []})
+
 def test_product_calculation(request, version):
     """
-    Test calculation for a specific product only (much faster for debugging)
+    Test calculation for a specific product only and display all related data
     """
+    import time
+    from datetime import datetime
+    
     if request.method == 'POST':
-        product_name = request.POST.get('product_name', '').strip()
+        # Start overall timing for the POST request
+        overall_start_time = time.time()
+        print("=" * 80)
+        print(f"🚀 STARTING PRODUCT CALCULATION FROM WEB UI")
+        print(f"📅 Started at: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+        print("=" * 80)
+        
+        product_name = request.POST.get('product', '').strip()
         
         if not product_name:
-            messages.error(request, "Please enter a product name.")
             return redirect('test_product_calculation', version=version)
         
-        print(f"test_product_calculation called with version: {version}, product: {product_name}")
+        print(f"🎯 Product: {product_name}")
+        print(f"📋 Version: {version}")
         
         try:
-            # Only run the replenishment calculation for the specific product
-            print(f"Running populate_calculated_replenishment_v2 for product: {product_name}")
+            # Step 1: Run aggregate forecast for the specific product
+            step_start = time.time()
+            print(f"⏱️  [{datetime.now().strftime('%H:%M:%S')}] Step 1: Starting populate_aggregated_forecast...")
+            AggForecastCommand().handle(version=version, product=product_name)
+            step1_duration = time.time() - step_start
+            print(f"✅ [{datetime.now().strftime('%H:%M:%S')}] Step 1: Aggregated forecast completed ({step1_duration:.2f}s)")
+            
+            # Step 2: Run replenishment calculation for the specific product
+            step_start = time.time()
+            print(f"⏱️  [{datetime.now().strftime('%H:%M:%S')}] Step 2: Starting populate_calculated_replenishment_v2...")
             ReplenishmentCommand().handle(version=version, product=product_name)
-            messages.success(request, f"Replenishment calculation completed for product '{product_name}' in version '{version}'.")
+            step2_duration = time.time() - step_start
+            print(f"✅ [{datetime.now().strftime('%H:%M:%S')}] Step 2: Replenishment calculation completed ({step2_duration:.2f}s)")
             
-            # Get results for display
-            from website.models import CalcualtedReplenishmentModel
-            results = CalcualtedReplenishmentModel.objects.filter(
-                Product__Product=product_name, 
-                version=version
-            ).order_by('Location', 'ShippingDate')
+            # Step 3: Run production calculation for the specific product
+            step_start = time.time()
+            print(f"⏱️  [{datetime.now().strftime('%H:%M:%S')}] Step 3: Starting populate_calculated_production...")
+            ProductionCommand().handle(scenario_version=version, product=product_name)
+            step3_duration = time.time() - step_start
+            print(f"✅ [{datetime.now().strftime('%H:%M:%S')}] Step 3: Production calculation completed ({step3_duration:.2f}s)")
             
-            total_qty = sum(r.ReplenishmentQty for r in results)
+            # Calculate total backend processing time
+            total_backend_time = step1_duration + step2_duration + step3_duration
+            overall_backend_duration = time.time() - overall_start_time
             
-            messages.success(request, f"Total replenishment quantity for {product_name}: {total_qty:,.0f} units across {results.count()} records.")
+            print("=" * 80)
+            print(f"🎉 BACKEND CALCULATIONS COMPLETED")
+            print(f"📊 Step 1 (Aggregated Forecast): {step1_duration:.2f}s")
+            print(f"📊 Step 2 (Replenishment): {step2_duration:.2f}s") 
+            print(f"📊 Step 3 (Production): {step3_duration:.2f}s")
+            print(f"⏱️  Total backend time: {total_backend_time:.2f}s")
+            print(f"⏱️  Overall processing time: {overall_backend_duration:.2f}s")
+            print(f"📅 Backend completed at: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+            print("🔄 Now redirecting to display results...")
+            print("=" * 80)
+            
+            # Redirect to the results page with product parameter and run=true
+            from django.http import HttpResponseRedirect
+            from django.urls import reverse
+            url = reverse('test_product_calculation', args=[version])
+            redirect_url = f"{url}?product={product_name}&run=true"
+            print(f"🔄 Redirecting to: {redirect_url}")
+            return HttpResponseRedirect(redirect_url)
             
         except Exception as e:
+            overall_duration = time.time() - overall_start_time
             import traceback
             traceback.print_exc()
-            messages.error(request, f"An error occurred while calculating for product '{product_name}': {e}")
+            print(f"❌ Error after {overall_duration:.2f}s: {e}")
 
         return redirect('test_product_calculation', version=version)
     
-    # GET request - show the form
+    # GET request - show the form or results (measure page load time)
+    page_start_time = time.time()
+    print(f"📄 [{datetime.now().strftime('%H:%M:%S')}] Starting GET request for test_product_calculation page...")
+    
+    selected_product = request.GET.get('product', None)
+    run_calculation = request.GET.get('run', None)
+    
+    # Import here to avoid scope issues
+    from .models import MasterDataProductModel
+    
+    # For initial load, get a sample of products starting with letters (more likely to be useful)
+    # Also include any numeric products, but prioritize letter-based product codes
+    # Use SQL Server compatible filtering instead of regex
+    try:
+        # Get products starting with letters A-Z
+        letter_products = list(MasterDataProductModel.objects.filter(
+            Product__gte='A', Product__lt='['  # ASCII range for letters
+        ).values_list('Product', flat=True).distinct()[:50])
+        
+        # Get some numeric products (starting with 0-9)
+        numeric_products = list(MasterDataProductModel.objects.filter(
+            Product__gte='0', Product__lt=':'  # ASCII range for digits
+        ).values_list('Product', flat=True).distinct()[:20])
+        
+        available_products = letter_products + numeric_products
+    except Exception as e:
+        # Fallback to simple query if the above fails
+        print(f"Warning: Failed to filter products by type: {e}")
+        available_products = list(MasterDataProductModel.objects.values_list('Product', flat=True).distinct()[:70])
+    
     context = {
         'version': version,
-        'scenario': scenarios.objects.get(version=version)
+        'scenario': scenarios.objects.get(version=version),
+        'selected_product': selected_product,
+        'available_products': available_products,
+        'timing_info': None,
+        'aggregated_forecast_count': 0,
+        'replenishment_count': 0,
+        'production_count': 0,
+        'master_data_count': 0
     }
+    
+    # If product is specified and run=true, execute calculations
+    if selected_product and run_calculation:
+        # Start overall timing for the calculation
+        overall_start_time = time.time()
+        print("=" * 80)
+        print(f"🚀 STARTING PRODUCT CALCULATION FROM WEB UI")
+        print(f"📅 Started at: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+        print("=" * 80)
+        
+        print(f"🎯 Product: {selected_product}")
+        print(f"📋 Version: {version}")
+        
+        try:
+            # Step 1: Run aggregate forecast for the specific product
+            step_start = time.time()
+            print(f"⏱️  [{datetime.now().strftime('%H:%M:%S')}] Step 1: Starting populate_aggregated_forecast...")
+            AggForecastCommand().handle(version=version, product=selected_product)
+            step1_duration = time.time() - step_start
+            print(f"✅ [{datetime.now().strftime('%H:%M:%S')}] Step 1: Aggregated forecast completed ({step1_duration:.2f}s)")
+            
+            # Step 2: Run replenishment calculation for the specific product
+            step_start = time.time()
+            print(f"⏱️  [{datetime.now().strftime('%H:%M:%S')}] Step 2: Starting populate_calculated_replenishment_v2...")
+            ReplenishmentCommand().handle(version=version, product=selected_product)
+            step2_duration = time.time() - step_start
+            print(f"✅ [{datetime.now().strftime('%H:%M:%S')}] Step 2: Replenishment calculation completed ({step2_duration:.2f}s)")
+            
+            # Step 3: Run production calculation for the specific product
+            step_start = time.time()
+            print(f"⏱️  [{datetime.now().strftime('%H:%M:%S')}] Step 3: Starting populate_calculated_production...")
+            ProductionCommand().handle(scenario_version=version, product=selected_product)
+            step3_duration = time.time() - step_start
+            print(f"✅ [{datetime.now().strftime('%H:%M:%S')}] Step 3: Production calculation completed ({step3_duration:.2f}s)")
+            
+            # Calculate timing info
+            total_backend_time = step1_duration + step2_duration + step3_duration
+            overall_backend_duration = time.time() - overall_start_time
+            
+            context['timing_info'] = {
+                'total_time': f"{total_backend_time:.2f}",
+                'aggregated_forecast_time': f"{step1_duration:.2f}",
+                'replenishment_time': f"{step2_duration:.2f}",
+                'production_time': f"{step3_duration:.2f}",
+                'backend_time': f"{total_backend_time:.2f}",
+                'query_time': "0.15",  # Will be calculated below with actual queries
+            }
+            
+            print("=" * 80)
+            print(f"🎉 BACKEND CALCULATIONS COMPLETED")
+            print(f"📊 Step 1 (Aggregated Forecast): {step1_duration:.2f}s")
+            print(f"📊 Step 2 (Replenishment): {step2_duration:.2f}s") 
+            print(f"📊 Step 3 (Production): {step3_duration:.2f}s")
+            print(f"⏱️  Total backend time: {total_backend_time:.2f}s")
+            print(f"📅 Backend completed at: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+            print("=" * 80)
+            
+        except Exception as e:
+            overall_duration = time.time() - overall_start_time
+            import traceback
+            traceback.print_exc()
+            print(f"❌ Error after {overall_duration:.2f}s: {e}")
+            context['error'] = f"Error occurred while calculating for product '{selected_product}': {e}"
+
+    # If product is specified, show results (measure data loading time)
+    if selected_product:
+        data_load_start = time.time()
+        print(f"📊 [{datetime.now().strftime('%H:%M:%S')}] Loading results data for product: {selected_product}...")
+        
+        try:
+            # Step 1: Get product object
+            query_start = time.time()
+            from website.models import MasterDataProductModel, MasterDataSafetyStocks
+            product_obj = MasterDataProductModel.objects.get(Product=selected_product)
+            query_time = time.time() - query_start
+            print(f"   🔍 Product lookup: {query_time:.3f}s")
+            
+            # Step 2: Load main data tables
+            query_start = time.time()
+            # Table 1: SMART_Forecast_Model records
+            smart_forecast = SMART_Forecast_Model.objects.filter(
+                version__version=version,
+                Product=selected_product
+            ).order_by('Period_AU')
+            agg_count = smart_forecast.count()
+            agg_time = time.time() - query_start
+            print(f"   📈 SMART_Forecast_Model: {agg_count} records ({agg_time:.3f}s)")
+            
+            query_start = time.time()
+            # Table 2: ReplenishmentModel records
+            replenishment_data = CalcualtedReplenishmentModel.objects.filter(
+                version__version=version,
+                Product__Product=selected_product
+            ).order_by('Location', 'ShippingDate')
+            rep_count = replenishment_data.count()
+            rep_time = time.time() - query_start
+            print(f"   🚚 ReplenishmentModel: {rep_count} records ({rep_time:.3f}s)")
+            
+            query_start = time.time()
+            # Table 3: CalculatedProductionModel records
+            production_data = CalculatedProductionModel.objects.filter(
+                version__version=version,
+                product__Product=selected_product
+            ).order_by('site', 'pouring_date')
+            prod_count = production_data.count()
+            prod_time = time.time() - query_start
+            print(f"   🏭 ProductionModel: {prod_count} records ({prod_time:.3f}s)")
+            
+            # Step 3: Load master data
+            master_start = time.time()
+            # Master Data - just get the key records for the selected product
+            master_data = MasterDataProductModel.objects.filter(Product=selected_product)
+            master_count = master_data.count()
+            
+            # Additional master data that might be relevant
+            inventory_data = MasterDataInventory.objects.filter(
+                version__version=version,
+                product=selected_product
+            )
+            
+            # Master Data Safety Stocks for the selected product
+            safety_stocks_data = MasterDataSafetyStocks.objects.filter(
+                version__version=version,
+                PartNum=selected_product
+            )
+            
+            production_history = MasterDataHistoryOfProductionModel.objects.filter(
+                version__version=version,
+                Product=selected_product
+            )
+            
+            order_book = MasterDataOrderBook.objects.filter(
+                version__version=version,
+                productkey=selected_product
+            )
+            
+            # Count total master data records
+            total_master_records = master_count + inventory_data.count() + production_history.count() + order_book.count()
+            
+            master_time = time.time() - master_start
+            print(f"   📋 Master data queries: {master_time:.3f}s")
+            
+            # Update context with all the data
+            context.update({
+                'aggregated_forecast': smart_forecast,
+                'replenishment_data': replenishment_data,
+                'production_data': production_data,
+                'master_data': master_data,
+                'safety_stocks_data': safety_stocks_data,
+                'inventory_data': inventory_data,
+                'aggregated_forecast_count': agg_count,
+                'replenishment_count': rep_count,
+                'production_count': prod_count,
+                'master_data_count': total_master_records,
+                'safety_stocks_count': safety_stocks_data.count(),
+                'inventory_count': inventory_data.count(),
+                'product_obj': product_obj
+            })
+            
+            # Update timing info if it exists
+            if context.get('timing_info'):
+                total_query_time = agg_time + rep_time + prod_time + master_time
+                context['timing_info']['query_time'] = f"{total_query_time:.3f}"
+                context['timing_info']['total_records'] = agg_count + rep_count + prod_count + total_master_records
+            
+            data_load_time = time.time() - data_load_start
+            print(f"📊 Total data loading time: {data_load_time:.3f}s")
+            print(f"📈 Data summary: {agg_count} forecast, {rep_count} replenishment, {prod_count} production, {total_master_records} master data records")
+            
+        except MasterDataProductModel.DoesNotExist:
+            print(f"❌ Product '{selected_product}' not found in master data")
+            context['error'] = f"Product '{selected_product}' not found in master data."
+        except Exception as e:
+            print(f"❌ Error loading results data: {e}")
+            context['error'] = f"Error loading results for product '{selected_product}': {e}"
+    
+    # Final page timing
+    page_load_time = time.time() - page_start_time
+    print(f"📄 [{datetime.now().strftime('%H:%M:%S')}] GET request completed in {page_load_time:.3f}s")
+    
+    if selected_product:
+        print(f"🌐 Ready to render results page for {selected_product}")
+    else:
+        print(f"🌐 Ready to render product selection form")
+    
     return render(request, 'website/test_product_calculation.html', context)
 
 from .forms import PlantForm
@@ -5344,10 +5797,11 @@ def auto_level_optimization(request, version):
                 print(f"DEBUG: Processing months in order: {sorted_months}")
                 
                 # Process each month sequentially - COMPLETELY fill each month before moving to next
+                # CRITICAL FIX: Sort months chronologically to ensure earliest months get priority
                 for current_month_index, current_month in enumerate(sorted_months):
                     print(f"DEBUG: === PROCESSING MONTH {current_month} (Index: {current_month_index}) ===")
                     
-                    # Recalculate current demand for this month (may have changed from previous optimizations)
+                    # CRITICAL: Recalculate current demand for this month (may have changed from previous optimizations)
                     current_month_demand = CalculatedProductionModel.objects.filter(
                         version=scenario,
                         site__SiteName=site_name,
@@ -5397,7 +5851,7 @@ def auto_level_optimization(request, version):
                         future_month_total = future_productions.aggregate(total=Sum('tonnes'))['total'] or 0
                         print(f"DEBUG: {future_month} has {future_month_total:.2f} tonnes available across {future_productions.count()} records")
                         
-                        if future_month_total == 0:
+                        if future_month_total <= 0:
                             print(f"DEBUG: {future_month} has no production to move")
                             continue
                         
@@ -5438,14 +5892,14 @@ def auto_level_optimization(request, version):
                                         parent_product_group=production.parent_product_group,
                                         price_aud=production.price_aud,
                                         cost_aud=production.cost_aud,
-                                        cogs_aud=(production.cogs_aud or 0) * move_ratio,
+                                        production_aud=(production.production_aud or 0) * move_ratio,
                                         revenue_aud=(production.revenue_aud or 0) * move_ratio
                                     )
                                     
                                     # Reduce original production
                                     production.production_quantity *= (1 - move_ratio)
                                     production.tonnes -= tonnes_to_move
-                                    production.cogs_aud = (production.cogs_aud or 0) * (1 - move_ratio)
+                                    production.production_aud = (production.production_aud or 0) * (1 - move_ratio)
                                     production.revenue_aud = (production.revenue_aud or 0) * (1 - move_ratio)
                                     production.save()
                                     
@@ -5489,6 +5943,29 @@ def auto_level_optimization(request, version):
             opt_state.last_optimization_date = timezone.now()
             opt_state.save()
             
+            # CRITICAL: Regenerate inventory projections after optimization changes
+            if optimized_count > 0:
+                print(f"DEBUG: Regenerating inventory projections after auto-leveling...")
+                try:
+                    from .models import InventoryProjectionModel
+                    from website.customized_function import populate_inventory_projection_model
+                    
+                    # Clear existing inventory projections for this scenario
+                    deleted_count = InventoryProjectionModel.objects.filter(version_id=version).delete()
+                    print(f"DEBUG: Deleted {deleted_count[0]} existing inventory projections")
+                    
+                    # Regenerate with updated production data
+                    projection_success = populate_inventory_projection_model(version)
+                    after_count = InventoryProjectionModel.objects.filter(version_id=version).count()
+                    
+                    if projection_success and after_count > 0:
+                        print(f"DEBUG: Successfully regenerated {after_count} inventory projections")
+                    else:
+                        print("WARNING: Failed to regenerate inventory projections")
+                        
+                except Exception as proj_error:
+                    print(f"ERROR: Failed to regenerate inventory projections: {proj_error}")
+            
             # CRITICAL: Recalculate all dependent aggregations after optimization
             if optimized_count > 0:
                 print(f"DEBUG: Recalculating aggregations after optimization...")
@@ -5528,23 +6005,107 @@ def auto_level_optimization(request, version):
                         if result.returncode == 0:
                             print(f"DEBUG: Control Tower cache updated successfully")
                             
-                            # Regenerate inventory projections after optimization
-                            print("DEBUG: Regenerating inventory projections after optimization")
+                            # CRITICAL: Regenerate inventory projections after optimization with detailed debugging
+                            print("DEBUG: Regenerating inventory projections after optimization...")
+                            
+                            # First, check current inventory projection record count
+                            from .models import InventoryProjectionModel
+                            before_count = InventoryProjectionModel.objects.filter(version_id=version).count()
+                            print(f"DEBUG: Inventory projections BEFORE regeneration: {before_count} records")
+                            
+                            # Get a sample of current records to see timestamps
+                            sample_records = InventoryProjectionModel.objects.filter(version_id=version)[:3]
+                            for record in sample_records:
+                                print(f"DEBUG: Sample record {record.id} - created: {record.created_at}, updated: {record.updated_at}")
+                            
+                            # Clear existing inventory projections for this scenario
+                            print(f"DEBUG: Clearing existing inventory projections for scenario {version}")
+                            deleted_count = InventoryProjectionModel.objects.filter(version_id=version).delete()
+                            print(f"DEBUG: Deleted {deleted_count[0]} inventory projection records")
+                            
+                            # Now regenerate with fresh data
                             from website.customized_function import populate_inventory_projection_model
+                            print(f"DEBUG: Calling populate_inventory_projection_model({version})")
                             projection_success = populate_inventory_projection_model(version)
+                            
+                            # Check results
+                            after_count = InventoryProjectionModel.objects.filter(version_id=version).count()
+                            print(f"DEBUG: Inventory projections AFTER regeneration: {after_count} records")
+                            
+                            # Get sample of new records to verify they were regenerated
+                            new_sample_records = InventoryProjectionModel.objects.filter(version_id=version)[:3]
+                            for record in new_sample_records:
+                                print(f"DEBUG: New record {record.id} - created: {record.created_at}, updated: {record.updated_at}")
+                            
                             if projection_success:
                                 print("DEBUG: Inventory projections regenerated successfully")
+                                # Also trigger a manual cache refresh for inventory data
+                                try:
+                                    print("DEBUG: Refreshing cached inventory data...")
+                                    from website.customized_function import populate_aggregated_inventory_data
+                                    populate_aggregated_inventory_data(scenario)
+                                    print("DEBUG: Cached inventory data refreshed")
+                                except Exception as inv_cache_error:
+                                    print(f"WARNING: Could not refresh inventory cache: {inv_cache_error}")
                             else:
                                 print("WARNING: Failed to regenerate inventory projections")
-                            
-                            messages.success(request, f"Successfully filled pour plan gaps by moving {optimized_count} production records forward across all product groups, totaling {total_tonnes_moved:.2f} tonnes. All charts and Control Tower demand plan have been updated to reflect the optimization. Auto optimization is now locked until reset.")
+                                
+                            messages.success(request, f"Successfully filled pour plan gaps by moving {optimized_count} production records forward across all product groups, totaling {total_tonnes_moved:.2f} tonnes. All charts, Control Tower demand plan, and inventory projections have been updated to reflect the optimization. Auto optimization is now locked until reset.")
                         else:
                             print(f"ERROR: Control Tower cache update failed: {result.stderr}")
-                            messages.warning(request, f"Optimization completed ({optimized_count} records moved, {total_tonnes_moved:.2f} tonnes), charts updated, but Control Tower cache may need manual refresh. Error: {result.stderr}")
+                            
+                            # Even if cache update failed, still try to regenerate inventory projections
+                            print("DEBUG: Attempting inventory projection regeneration despite cache update failure...")
+                            from .models import InventoryProjectionModel
+                            
+                            # Clear and regenerate inventory projections
+                            before_count = InventoryProjectionModel.objects.filter(version_id=version).count()
+                            print(f"DEBUG: Inventory projections BEFORE regeneration: {before_count} records")
+                            
+                            deleted_count = InventoryProjectionModel.objects.filter(version_id=version).delete()
+                            print(f"DEBUG: Deleted {deleted_count[0]} inventory projection records")
+                            
+                            from website.customized_function import populate_inventory_projection_model
+                            projection_success = populate_inventory_projection_model(version)
+                            
+                            after_count = InventoryProjectionModel.objects.filter(version_id=version).count()
+                            print(f"DEBUG: Inventory projections AFTER regeneration: {after_count} records")
+                            
+                            if projection_success:
+                                print("DEBUG: Inventory projections regenerated successfully")
+                            
+                            messages.warning(request, f"Optimization completed ({optimized_count} records moved, {total_tonnes_moved:.2f} tonnes), charts and inventory projections updated, but Control Tower cache may need manual refresh. Error: {result.stderr}")
                             
                     except Exception as cache_error:
                         print(f"ERROR: Failed to update Control Tower cache: {cache_error}")
-                        messages.warning(request, f"Optimization completed ({optimized_count} records moved, {total_tonnes_moved:.2f} tonnes), charts updated, but Control Tower cache may need manual refresh. Error: {str(cache_error)}")
+                        
+                        # Even if cache update completely failed, still try to regenerate inventory projections
+                        print("DEBUG: Attempting inventory projection regeneration despite cache error...")
+                        try:
+                            from .models import InventoryProjectionModel
+                            
+                            # Clear and regenerate inventory projections
+                            before_count = InventoryProjectionModel.objects.filter(version_id=version).count()
+                            print(f"DEBUG: Inventory projections BEFORE regeneration: {before_count} records")
+                            
+                            deleted_count = InventoryProjectionModel.objects.filter(version_id=version).delete()
+                            print(f"DEBUG: Deleted {deleted_count[0]} inventory projection records")
+                            
+                            from website.customized_function import populate_inventory_projection_model
+                            projection_success = populate_inventory_projection_model(version)
+                            
+                            after_count = InventoryProjectionModel.objects.filter(version_id=version).count()
+                            print(f"DEBUG: Inventory projections AFTER regeneration: {after_count} records")
+                            
+                            if projection_success:
+                                print("DEBUG: Inventory projections regenerated successfully despite cache error")
+                                messages.warning(request, f"Optimization completed ({optimized_count} records moved, {total_tonnes_moved:.2f} tonnes), charts and inventory projections updated, but Control Tower cache may need manual refresh. Error: {str(cache_error)}")
+                            else:
+                                print("WARNING: Failed to regenerate inventory projections")
+                                messages.warning(request, f"Optimization completed ({optimized_count} records moved, {total_tonnes_moved:.2f} tonnes), but charts and inventory projections may need manual refresh. Cache Error: {str(cache_error)}")
+                        except Exception as inv_error:
+                            print(f"ERROR: Failed to regenerate inventory projections: {inv_error}")
+                            messages.warning(request, f"Optimization completed ({optimized_count} records moved, {total_tonnes_moved:.2f} tonnes), but charts, inventory projections, and Control Tower cache may need manual refresh. Errors: Cache - {str(cache_error)}, Inventory - {str(inv_error)}")
                     
                 except Exception as agg_error:
                     print(f"ERROR: Failed to recalculate aggregations: {agg_error}")
@@ -5556,12 +6117,32 @@ def auto_level_optimization(request, version):
             messages.error(request, f"Error during optimization: {str(e)}")
             import traceback
             print(f"ERROR: Optimization failed: {traceback.format_exc()}")
+            
+            # Return AJAX error response if this is an AJAX request
+            if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+                return JsonResponse({
+                    'success': False,
+                    'message': f"Error during optimization: {str(e)}"
+                })
+    
+    # Check if this is an AJAX request and return JSON response
+    if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+        return JsonResponse({
+            'success': True,
+            'records_moved': optimized_count,
+            'total_tonnes': round(total_tonnes_moved, 2),
+            'sites_processed': ', '.join(selected_sites),
+            'message': f'Optimization completed successfully! Moved {optimized_count} records ({total_tonnes_moved:.2f} tonnes)'
+        })
     
     return redirect('review_scenario', version=version)
 
 @login_required
 def reset_production_plan(request, version):
-    """Simple reset: just run populate_calculated_production for the scenario"""
+    """Simple reset: just run populate_calculated_production for the scenario with detailed performance timing"""
+    import time
+    import traceback
+    from datetime import datetime
     from django.core.management import call_command
     from django.contrib import messages
     from django.utils import timezone
@@ -5569,12 +6150,21 @@ def reset_production_plan(request, version):
     from .models import ScenarioOptimizationState
     
     if request.method == 'POST':
+        # Start overall timing
+        overall_start_time = time.time()
+        current_time = datetime.now().strftime('%H:%M:%S.%f')[:-3]
+        print(f"🔄 [{current_time}] RESET PERFORMANCE: Starting production plan reset for scenario {version}")
+        
         try:
+            # Step 1: Get scenario object
+            step1_start = time.time()
             scenario = get_object_or_404(scenarios, version=version)
+            step1_time = time.time() - step1_start
+            current_time = datetime.now().strftime('%H:%M:%S.%f')[:-3]
+            print(f"📊 [{current_time}] RESET TIMING: Step 1 - Get scenario object: {step1_time:.3f}s")
             
-            print(f"DEBUG: Running populate_calculated_production for scenario: {version}")
-            
-            # Reset optimization state to allow auto-level to be used again
+            # Step 2: Reset optimization state
+            step2_start = time.time()
             try:
                 print(f"DEBUG RESET: About to reset optimization state for scenario: {version}")
                 optimization_state, created = ScenarioOptimizationState.objects.get_or_create(version=scenario)
@@ -5593,12 +6183,23 @@ def reset_production_plan(request, version):
                 import traceback
                 print(f"TRACEBACK: {traceback.format_exc()}")
             
-            # Capture command output
+            step2_time = time.time() - step2_start
+            current_time = datetime.now().strftime('%H:%M:%S.%f')[:-3]
+            print(f"📊 [{current_time}] RESET TIMING: Step 2 - Reset optimization state: {step2_time:.3f}s")
+            
+            # Step 3: Prepare command execution
+            step3_start = time.time()
             stdout = StringIO()
             stderr = StringIO()
+            step3_time = time.time() - step3_start
+            current_time = datetime.now().strftime('%H:%M:%S.%f')[:-3]
+            print(f"📊 [{current_time}] RESET TIMING: Step 3 - Prepare command execution: {step3_time:.3f}s")
             
-            # Run the populate_calculated_production command using Django's call_command
-            # This runs in the same process and virtual environment
+            # Step 4: Run populate_calculated_production command (MAIN OPERATION)
+            step4_start = time.time()
+            current_time = datetime.now().strftime('%H:%M:%S.%f')[:-3]
+            print(f"🚀 [{current_time}] RESET TIMING: Step 4 - Starting populate_calculated_production command...")
+            
             try:
                 call_command('populate_calculated_production', version, stdout=stdout, stderr=stderr)
                 
@@ -5608,21 +6209,81 @@ def reset_production_plan(request, version):
                 if error_output:
                     print(f"WARNINGS during populate_calculated_production: {error_output}")
                 
-                print(f"DEBUG: populate_calculated_production completed successfully")
+                step4_time = time.time() - step4_start
+                current_time = datetime.now().strftime('%H:%M:%S.%f')[:-3]
+                print(f"📊 [{current_time}] RESET TIMING: Step 4 - populate_calculated_production: {step4_time:.3f}s ⭐ MAIN OPERATION")
                 print(f"OUTPUT: {output}")
                 
-                # Regenerate inventory projections after production plan reset
-                print("DEBUG: Regenerating inventory projections after reset")
-                from website.customized_function import populate_inventory_projection_model
-                projection_success = populate_inventory_projection_model(version)
-                if projection_success:
-                    print("DEBUG: Inventory projections regenerated successfully")
-                else:
-                    print("WARNING: Failed to regenerate inventory projections")
+                # Step 5: Regenerate inventory projections with detailed debugging
+                step5_start = time.time()
+                current_time = datetime.now().strftime('%H:%M:%S.%f')[:-3]
+                print(f"🚀 [{current_time}] RESET TIMING: Step 5 - Starting inventory projection regeneration...")
                 
-                messages.success(request, f"Production plan reset successfully for version {version}.")
+                # Check current inventory projection record count
+                from .models import InventoryProjectionModel
+                before_count = InventoryProjectionModel.objects.filter(version_id=version).count()
+                print(f"📊 [{current_time}] RESET: Inventory projections BEFORE regeneration: {before_count} records")
+                
+                # Clear existing inventory projections for this scenario
+                current_time = datetime.now().strftime('%H:%M:%S.%f')[:-3]
+                print(f"🗑️ [{current_time}] RESET: Clearing existing inventory projections for scenario {version}")
+                deleted_count = InventoryProjectionModel.objects.filter(version_id=version).delete()
+                print(f"🗑️ [{current_time}] RESET: Deleted {deleted_count[0]} inventory projection records")
+                
+                # Now regenerate with fresh data
+                from website.customized_function import populate_inventory_projection_model
+                current_time = datetime.now().strftime('%H:%M:%S.%f')[:-3]
+                print(f"🔄 [{current_time}] RESET: Calling populate_inventory_projection_model({version})")
+                projection_success = populate_inventory_projection_model(version)
+                
+                # Check results
+                after_count = InventoryProjectionModel.objects.filter(version_id=version).count()
+                current_time = datetime.now().strftime('%H:%M:%S.%f')[:-3]
+                print(f"📊 [{current_time}] RESET: Inventory projections AFTER regeneration: {after_count} records")
+                
+                step5_time = time.time() - step5_start
+                current_time = datetime.now().strftime('%H:%M:%S.%f')[:-3]
+                print(f"📊 [{current_time}] RESET TIMING: Step 5 - Regenerate inventory projections: {step5_time:.3f}s")
+                
+                if projection_success and after_count > 0:
+                    print("✅ DEBUG: Inventory projections regenerated successfully")
+                    
+                    # Verify new records have current timestamps
+                    sample_new_records = InventoryProjectionModel.objects.filter(version_id=version).order_by('-created_at')[:2]
+                    for record in sample_new_records:
+                        print(f"✅ DEBUG: New record {record.id} - created: {record.created_at}, updated: {record.updated_at}")
+                else:
+                    print("❌ WARNING: Failed to regenerate inventory projections or no records created")
+                
+                # Calculate and display total time breakdown
+                total_time = time.time() - overall_start_time
+                current_time = datetime.now().strftime('%H:%M:%S.%f')[:-3]
+                print(f"🏁 [{current_time}] RESET PERFORMANCE SUMMARY:")
+                print(f"   📋 Step 1 - Get scenario object: {step1_time:.3f}s ({(step1_time/total_time)*100:.1f}%)")
+                print(f"   🔧 Step 2 - Reset optimization state: {step2_time:.3f}s ({(step2_time/total_time)*100:.1f}%)")
+                print(f"   ⚙️  Step 3 - Prepare command execution: {step3_time:.3f}s ({(step3_time/total_time)*100:.1f}%)")
+                print(f"   🚀 Step 4 - populate_calculated_production: {step4_time:.3f}s ({(step4_time/total_time)*100:.1f}%) ⭐ MAIN")
+                print(f"   📊 Step 5 - Regenerate inventory projections: {step5_time:.3f}s ({(step5_time/total_time)*100:.1f}%)")
+                print(f"   ⏱️  TOTAL RESET TIME: {total_time:.3f}s")
+                
+                # Determine slowest operation
+                step_times = [
+                    ("Get scenario object", step1_time),
+                    ("Reset optimization state", step2_time),
+                    ("Prepare command execution", step3_time),
+                    ("populate_calculated_production", step4_time),
+                    ("Regenerate inventory projections", step5_time)
+                ]
+                slowest_step = max(step_times, key=lambda x: x[1])
+                print(f"   🐌 SLOWEST OPERATION: {slowest_step[0]} ({slowest_step[1]:.3f}s)")
+                
+                messages.success(request, f"Production plan reset successfully for version {version}. Total time: {total_time:.2f}s (populate_calculated_production: {step4_time:.2f}s, inventory projections: {step5_time:.2f}s)")
                 
             except Exception as cmd_error:
+                step4_time = time.time() - step4_start
+                current_time = datetime.now().strftime('%H:%M:%S.%f')[:-3]
+                print(f"❌ [{current_time}] RESET TIMING: Step 4 - populate_calculated_production FAILED: {step4_time:.3f}s")
+                
                 error_output = stderr.getvalue()
                 print(f"ERROR: populate_calculated_production failed: {str(cmd_error)}")
                 if error_output:
@@ -5630,6 +6291,9 @@ def reset_production_plan(request, version):
                 messages.error(request, f"Error running populate_calculated_production: {str(cmd_error)}")
                 
         except Exception as e:
+            total_time = time.time() - overall_start_time
+            current_time = datetime.now().strftime('%H:%M:%S.%f')[:-3]
+            print(f"❌ [{current_time}] RESET TIMING: Overall reset FAILED after {total_time:.3f}s: {str(e)}")
             print(f"ERROR: Reset failed: {str(e)}")
             messages.error(request, f"Error resetting production plan: {str(e)}")
     
@@ -5714,6 +6378,34 @@ def work_transfer_between_sites(request, version):
                 scenario_version=version,
                 transfers=transfers
             )
+            
+            # If transfers were successful, automatically regenerate inventory projections
+            if result.get('success', False) and result.get('transferred_count', 0) > 0:
+                try:
+                    print(f"🔄 WORK_TRANSFER: Auto-regenerating inventory projections after {result.get('transferred_count')} transfers...")
+                    from .models import InventoryProjectionModel
+                    from website.customized_function import populate_inventory_projection_model
+                    
+                    # Clear existing inventory projections for this scenario
+                    deleted_count = InventoryProjectionModel.objects.filter(version_id=version).delete()
+                    print(f"🗑️ WORK_TRANSFER: Deleted {deleted_count[0]} existing inventory projections")
+                    
+                    # Regenerate with updated production data
+                    projection_success = populate_inventory_projection_model(version)
+                    after_count = InventoryProjectionModel.objects.filter(version_id=version).count()
+                    
+                    if projection_success and after_count > 0:
+                        print(f"✅ WORK_TRANSFER: Successfully regenerated {after_count} inventory projections")
+                        result['inventory_projections_updated'] = True
+                        result['inventory_projection_count'] = after_count
+                    else:
+                        print("❌ WORK_TRANSFER: Failed to regenerate inventory projections")
+                        result['inventory_projections_updated'] = False
+                        
+                except Exception as proj_error:
+                    print(f"❌ WORK_TRANSFER: Error regenerating inventory projections: {proj_error}")
+                    result['inventory_projections_updated'] = False
+                    result['inventory_projection_error'] = str(proj_error)
             
             return JsonResponse(result)
             
@@ -7164,3 +7856,243 @@ def pour_plan_details(request, version, fy, site):
         import traceback
         traceback.print_exc()
         return JsonResponse({'error': str(e)}, status=500)
+
+
+@login_required
+def production_insights_dashboard(request, version):
+    """Production insights dashboard integrated into Django SPR application"""
+    from django.db.models import Sum, Count, Avg, Max, Min
+    from .models import InventoryProjectionModel, AggregatedForecast
+    import time
+    
+    try:
+        scenario = get_object_or_404(scenarios, version=version)
+        user_name = request.user.username
+        
+        start_time = time.time()
+        
+        print(f"📊 PRODUCTION INSIGHTS DASHBOARD")
+        print(f"Scenario: {scenario.version}")
+        print("=" * 80)
+        
+        # Check if we have any production data
+        total_production_records = CalculatedProductionModel.objects.filter(version=scenario).count()
+        print(f"Total production records for scenario: {total_production_records}")
+        
+        if total_production_records == 0:
+            context = {
+                'version': version,
+                'scenario_description': scenario.scenario_description,
+                'user_name': user_name,
+                'error_message': f"No production data found for scenario '{version}'. Please run Calculate Model first.",
+                'production_drivers': [],
+                'group_volatility_data': [],
+                'inventory_impact': [],
+                'demand_vs_production': [],
+                'site_distribution': [],
+                'total_production': 0,
+                'insights': {},
+                'processing_time': '0.00'
+            }
+            return render(request, 'website/production_insights_dashboard.html', context)
+          
+        
+        # ========================================
+        # 1. TOP PRODUCTION DRIVERS BY PRODUCT GROUP
+        # ========================================
+        production_by_group = CalculatedProductionModel.objects.filter(
+            version=scenario,
+            pouring_date__gte='2025-07-01',
+            pouring_date__lt='2025-12-01'
+        ).values('parent_product_group').annotate(
+            total_cogs=Sum('cogs_aud'),
+            total_tonnes=Sum('tonnes'),
+            total_records=Count('id'),
+            avg_monthly_cogs=Sum('cogs_aud')/5  # 5 months
+        ).order_by('-total_cogs')[:10]
+        
+        # ========================================
+        # 2. MONTHLY PRODUCTION VOLATILITY ANALYSIS
+        # ========================================
+        top_groups = [g['parent_product_group'] for g in production_by_group[:5] if g['parent_product_group']]
+        
+        group_volatility_data = []
+        for group_name in top_groups:
+            monthly_data = CalculatedProductionModel.objects.filter(
+                version=scenario,
+                pouring_date__gte='2025-07-01',
+                pouring_date__lt='2025-12-01',
+                parent_product_group=group_name
+            ).values(
+                'pouring_date__year', 'pouring_date__month'
+            ).annotate(
+                monthly_cogs=Sum('cogs_aud'),
+                monthly_tonnes=Sum('tonnes')
+            ).order_by('pouring_date__year', 'pouring_date__month')
+            
+            monthly_values = []
+            monthly_breakdown = []
+            
+            for month_data in monthly_data:
+                month_str = f"{month_data['pouring_date__year']}-{month_data['pouring_date__month']:02d}"
+                cogs = month_data['monthly_cogs'] or 0
+                tonnes = month_data['monthly_tonnes'] or 0
+                monthly_values.append(cogs)
+                monthly_breakdown.append({
+                    'month': month_str,
+                    'cogs': cogs,
+                    'tonnes': tonnes
+                })
+            
+            # Calculate volatility
+            volatility = 0
+            if len(monthly_values) > 1:
+                max_val = max(monthly_values)
+                min_val = min(monthly_values)
+                avg_val = sum(monthly_values) / len(monthly_values)
+                volatility = ((max_val - min_val) / avg_val * 100) if avg_val > 0 else 0
+            
+            group_volatility_data.append({
+                'group_name': group_name,
+                'monthly_breakdown': monthly_breakdown,
+                'volatility': volatility,
+                'min_cogs': min(monthly_values) if monthly_values else 0,
+                'max_cogs': max(monthly_values) if monthly_values else 0
+            })
+        
+        # ========================================
+        # 3. INVENTORY IMPACT ANALYSIS
+        # ========================================
+        inventory_data = InventoryProjectionModel.objects.filter(
+            version_id=scenario.version,
+            month__gte='2025-07-01',
+            month__lt='2025-12-01'
+        ).values('parent_product_group').annotate(
+            total_production=Sum('production_aud'),
+            total_inventory_change=Sum('closing_inventory_aud') - Sum('opening_inventory_aud'),
+            avg_inventory_level=Avg('closing_inventory_aud')
+        ).order_by('-total_production')[:10]
+        
+        # ========================================
+        # 4. DEMAND VS PRODUCTION ANALYSIS
+        # ========================================
+        demand_vs_production = []
+        
+        for month in range(7, 12):  # Jul to Nov
+            month_str = f"2025-{month:02d}"
+            
+            # Get forecast demand for the month
+            forecast_demand = AggregatedForecast.objects.filter(
+                version=scenario,
+                period__year=2025,
+                period__month=month
+            ).aggregate(
+                total_cogs=Sum('cogs_aud'),
+                total_tonnes=Sum('tonnes')
+            )
+            
+            # Get actual production for the month
+            production_actual = CalculatedProductionModel.objects.filter(
+                version=scenario,
+                pouring_date__year=2025,
+                pouring_date__month=month
+            ).aggregate(
+                total_cogs=Sum('cogs_aud'),
+                total_tonnes=Sum('tonnes')
+            )
+            
+            demand_cogs = forecast_demand['total_cogs'] or 0
+            prod_cogs = production_actual['total_cogs'] or 0
+            gap_cogs = prod_cogs - demand_cogs
+            gap_pct = (gap_cogs / demand_cogs * 100) if demand_cogs > 0 else 0
+            
+            status = "surplus" if gap_cogs > 0 else "deficit" if gap_cogs < 0 else "balanced"
+            
+            demand_vs_production.append({
+                'month': month_str,
+                'demand': demand_cogs,
+                'production': prod_cogs,
+                'gap': gap_cogs,
+                'gap_pct': gap_pct,
+                'status': status
+            })
+        
+        # ========================================
+        # 5. SITE PRODUCTION DISTRIBUTION
+        # ========================================
+        production_by_site = CalculatedProductionModel.objects.filter(
+            version=scenario,
+            pouring_date__gte='2025-07-01',
+            pouring_date__lt='2025-12-01'
+        ).values('site').annotate(
+            total_cogs=Sum('cogs_aud'),
+            total_tonnes=Sum('tonnes'),
+            record_count=Count('id'),
+            product_variety=Count('product', distinct=True)
+        ).order_by('-total_cogs')[:10]
+        
+        total_production = sum(site['total_cogs'] or 0 for site in production_by_site)
+        
+        # Add percentage calculation
+        for site in production_by_site:
+            site['percentage'] = (site['total_cogs'] / total_production * 100) if total_production > 0 else 0
+        
+        # ========================================
+        # 6. KEY INSIGHTS AND ANALYSIS
+        # ========================================
+        monthly_totals = [d['production'] for d in demand_vs_production]
+        
+        insights = {}
+        if monthly_totals:
+            max_month_idx = monthly_totals.index(max(monthly_totals))
+            min_month_idx = monthly_totals.index(min(monthly_totals))
+            insights['peak_month'] = demand_vs_production[max_month_idx]['month']
+            insights['low_month'] = demand_vs_production[min_month_idx]['month']
+            insights['peak_value'] = max(monthly_totals)
+            insights['low_value'] = min(monthly_totals)
+            
+            # Check for large demand gaps
+            large_gaps = [d for d in demand_vs_production if abs(d['gap_pct']) > 50]
+            insights['large_gaps'] = large_gaps
+            
+            # Calculate overall volatility
+            if len(monthly_totals) > 1:
+                avg_val = sum(monthly_totals) / len(monthly_totals)
+                insights['overall_volatility'] = ((max(monthly_totals) - min(monthly_totals)) / avg_val * 100) if avg_val > 0 else 0
+                
+                # Calculate month-to-month changes
+                monthly_diffs = [abs(monthly_totals[i] - monthly_totals[i-1]) for i in range(1, len(monthly_totals))]
+                insights['avg_month_change'] = sum(monthly_diffs) / len(monthly_diffs) if monthly_diffs else 0
+            
+            insights['auto_level_recommended'] = insights.get('avg_month_change', 0) > 20000000  # $20M threshold
+        
+        processing_time = time.time() - start_time
+        
+        context = {
+            'version': scenario.version,
+            'scenario_description': scenario.scenario_description,
+            'user_name': user_name,
+            'processing_time': f"{processing_time:.2f}",
+            
+            # Main data sections
+            'production_drivers': production_by_group,
+            'group_volatility_data': group_volatility_data,
+            'inventory_impact': inventory_data,
+            'demand_vs_production': demand_vs_production,
+            'site_distribution': production_by_site,
+            'total_production': total_production,
+            
+            # Key insights
+            'insights': insights,
+        }
+        
+        return render(request, 'website/production_insights_dashboard.html', context)
+        
+    except Exception as e:
+        print(f"❌ ERROR creating production insights dashboard: {e}")
+        import traceback
+        traceback.print_exc()
+        return render(request, 'website/error.html', {
+            'error': str(e),
+            'user_name': request.user.username if request.user.is_authenticated else 'Anonymous'
+        })

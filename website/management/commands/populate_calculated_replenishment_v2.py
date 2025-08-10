@@ -6,6 +6,8 @@ from django.db.models import Sum
 from collections import defaultdict
 import polars as pl
 import pandas as pd
+import time
+from functools import wraps
 from website.models import (
     scenarios,
     SMART_Forecast_Model,
@@ -17,7 +19,29 @@ from website.models import (
     MasterDataInventory,
     MasterDataSafetyStocks
 )
-from website.powerbi_invoice_integration import get_customer_mapping_dict
+# Remove the slow PowerBI import - we'll read customer data locally
+# from website.powerbi_invoice_integration import get_customer_mapping_dict
+
+def timing_step(step_name):
+    """Decorator to measure execution time of each step in replenishment"""
+    def decorator(func):
+        @wraps(func)
+        def wrapper(self, *args, **kwargs):
+            start_time = time.time()
+            self.stdout.write(f"⏱️  [{datetime.now().strftime('%H:%M:%S')}] Starting: {step_name}")
+            
+            try:
+                result = func(self, *args, **kwargs)
+                duration = time.time() - start_time
+                self.stdout.write(f"✅ [{datetime.now().strftime('%H:%M:%S')}] Completed: {step_name} ({duration:.2f}s)")
+                return result
+            except Exception as e:
+                duration = time.time() - start_time
+                self.stdout.write(f"❌ [{datetime.now().strftime('%H:%M:%S')}] Failed: {step_name} ({duration:.2f}s) - {str(e)}")
+                raise
+                
+        return wrapper
+    return decorator
 
 def extract_site_code(location):
     if not isinstance(location, str):
@@ -86,8 +110,21 @@ class Command(BaseCommand):
         )
 
     def handle(self, *args, **kwargs):
+        # Start overall timing
+        overall_start_time = time.time()
+        self.stdout.write("=" * 80)
+        self.stdout.write(f"🚀 STARTING REPLENISHMENT V2 CALCULATION")
+        self.stdout.write(f"📅 Started at: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+        self.stdout.write("=" * 80)
+        
         version = kwargs['version']
         single_product = kwargs.get('product')
+        
+        if single_product:
+            self.stdout.write(f"🎯 SINGLE PRODUCT MODE: {single_product}")
+        else:
+            self.stdout.write("🌐 ALL PRODUCTS MODE")
+        
         try:
             scenario = scenarios.objects.get(version=version)
         except scenarios.DoesNotExist:
@@ -102,7 +139,8 @@ class Command(BaseCommand):
         cache.set(cache_key, True, timeout=3600)
         try:
             with transaction.atomic():
-                # Delete existing records
+                # Step 1: Delete existing records
+                step_start = time.time()
                 if single_product:
                     deleted_replenishment = CalcualtedReplenishmentModel.objects.filter(
                         version=scenario,
@@ -117,7 +155,12 @@ class Command(BaseCommand):
                     deleted_replenishment = CalcualtedReplenishmentModel.objects.filter(version=scenario).delete()[0]
                     deleted_production = CalculatedProductionModel.objects.filter(version=scenario).delete()[0]
                     self.stdout.write(f"Deleted {deleted_replenishment} replenishment and {deleted_production} production records")
-                self.stdout.write("STEP 1: Loading SMART forecast data...")
+                step_duration = time.time() - step_start
+                self.stdout.write(f"✅ Step 1: Delete existing records ({step_duration:.3f}s)")
+                
+                # Step 2: Load SMART forecast data
+                step_start = time.time()
+                self.stdout.write("STEP 2: Loading SMART forecast data...")
                 forecast_data = list(SMART_Forecast_Model.objects.filter(
                     version=scenario,
                     Qty__gt=0
@@ -144,8 +187,12 @@ class Command(BaseCommand):
                 if len(forecast_df) == 0:
                     self.stdout.write(self.style.WARNING(f"No forecast data to process for version {version}"))
                     return
-                self.stdout.write(f"Loaded {len(forecast_df)} forecast records for processing")
-                self.stdout.write("STEP 2: Loading master data...")
+                step_duration = time.time() - step_start
+                self.stdout.write(f"✅ Step 2: SMART forecast data loaded - {len(forecast_df)} records ({step_duration:.3f}s)")
+                
+                # Step 3: Load master data
+                step_start = time.time()
+                self.stdout.write("STEP 3: Loading master data...")
                 products = list(MasterDataProductModel.objects.all().values(
                     'Product', 'DressMass', 'ProductGroup', 'ParentProductGroupDescription'
                 ))
@@ -164,42 +211,72 @@ class Command(BaseCommand):
                     'PartNum', 'Plant', 'SafetyQty'
                 ))
                 safety_stock_df = pl.from_pandas(pd.DataFrame(safety_stock_data)) if safety_stock_data else pl.DataFrame()
-                self.stdout.write("Master data loaded successfully")
+                step_duration = time.time() - step_start
+                self.stdout.write(f"✅ Step 3: Master data loaded ({step_duration:.3f}s)")
                 
-                # Fetch customer invoice mapping for this scenario
-                self.stdout.write("Fetching customer invoice data from PowerBI...")
-                try:
-                    customer_mapping = get_customer_mapping_dict()
-                    self.stdout.write(f"Loaded {len(customer_mapping)} customer invoice mappings")
-                except Exception as e:
-                    self.stdout.write(self.style.WARNING(f"Failed to load customer data: {e}"))
-                    customer_mapping = {}
-                
-                # Prepare lookup dictionaries for site selection
+                # Step 4: Prepare lookup dictionaries (customer data removed per request)
+                step_start = time.time()
+                self.stdout.write("STEP 4: Preparing lookup dictionaries...")
                 product_map = {p['Product']: p for p in products}
                 plant_map = {p['SiteName']: p for p in plants}
+                
                 # Order Book mapping
                 from website.models import MasterDataOrderBook, MasterDataHistoryOfProductionModel, MasterDataEpicorSupplierMasterDataModel, MasterDataManuallyAssignProductionRequirement
+                
+                # Time each dictionary separately to identify bottlenecks
+                dict_start = time.time()
+                order_book_data = MasterDataOrderBook.objects.filter(version=scenario).exclude(site__isnull=True).exclude(site__exact='')
+                self.stdout.write(f"   📋 Order Book query: {time.time() - dict_start:.3f}s ({len(order_book_data)} records)")
+                
+                dict_start = time.time()
+                production_data = MasterDataHistoryOfProductionModel.objects.filter(version=scenario).exclude(Foundry__isnull=True).exclude(Foundry__exact='')
+                self.stdout.write(f"   🏭 Production History query: {time.time() - dict_start:.3f}s ({len(production_data)} records)")
+                
+                dict_start = time.time()
+                supplier_data = MasterDataEpicorSupplierMasterDataModel.objects.filter(version=scenario).exclude(VendorID__isnull=True).exclude(VendorID__exact='')
+                self.stdout.write(f"   🚚 Supplier query: {time.time() - dict_start:.3f}s ({len(supplier_data)} records)")
+                
+                dict_start = time.time()
+                manual_assign_data = MasterDataManuallyAssignProductionRequirement.objects.filter(
+                    version=scenario
+                ).select_related('Product', 'Site').values(
+                    'version__version', 'Product__Product', 'ShippingDate', 'Site__SiteName'
+                )
+                self.stdout.write(f"   📍 Manual Assignment query: {time.time() - dict_start:.3f}s ({len(manual_assign_data)} records)")
+                
+                # Build dictionaries from the data
+                dict_start = time.time()
+                
                 order_book_map = {
                     (ob.version.version, ob.productkey): ob.site
-                    for ob in MasterDataOrderBook.objects.filter(version=scenario).exclude(site__isnull=True).exclude(site__exact='')
+                    for ob in order_book_data
                 }
-                # Production History mapping
+                
                 production_map = {
                     (prod.version.version, prod.Product): prod.Foundry
-                    for prod in MasterDataHistoryOfProductionModel.objects.filter(version=scenario).exclude(Foundry__isnull=True).exclude(Foundry__exact='')
+                    for prod in production_data
                 }
-                # Supplier mapping
+                
                 supplier_map = {
                     (sup.version.version, sup.PartNum): sup.VendorID
-                    for sup in MasterDataEpicorSupplierMasterDataModel.objects.filter(version=scenario).exclude(VendorID__isnull=True).exclude(VendorID__exact='')
+                    for sup in supplier_data
                 }
-                # Manual assignment mapping
+                
                 manual_assign_map = {
-                    (m.version.version, m.Product.Product, m.ShippingDate): m.Site
-                    for m in MasterDataManuallyAssignProductionRequirement.objects.filter(version=scenario)
+                    (m['version__version'], m['Product__Product'], m['ShippingDate']): m['Site__SiteName']
+                    for m in manual_assign_data
+                    if m['Product__Product'] and m['Site__SiteName']  # Filter out nulls
                 }
+                
+                self.stdout.write(f"   🔧 Dictionary construction: {time.time() - dict_start:.3f}s")
+                self.stdout.write(f"   📊 Final counts - Order Book: {len(order_book_map)}, Production: {len(production_map)}, Supplier: {len(supplier_map)}, Manual: {len(manual_assign_map)}")
+                
                 foundry_sites = {'XUZ1', 'MTJ1', 'COI2', 'MER1', 'WUN1', 'WOD1', 'CHI1'}
+                step_duration = time.time() - step_start
+                self.stdout.write(f"✅ Step 4: Lookup dictionaries prepared ({step_duration:.3f}s)")
+                
+                # Step 5: Data validation and filtering
+                step_start = time.time()
                 def can_assign_foundry_fn(product):
                     # Implement foundry assignment check if needed
                     # Example: Only allow foundry assignment if product exists in production_map
@@ -226,11 +303,21 @@ class Command(BaseCommand):
                 forecast_df = forecast_df.with_columns([
                     (pl.col('Period_AU') - pl.duration(days=30)).alias('pouring_date')
                 ])
+                step_duration = time.time() - step_start
+                self.stdout.write(f"✅ Step 5: Data validation and filtering ({step_duration:.3f}s)")
+                
+                # Step 6: Process replenishment records (CRITICAL PATH)
+                step_start = time.time()
                 replenishment_records = []
+                records_processed = 0
+                site_selection_time = 0
+                
                 for row in forecast_df.iter_rows(named=True):
                     if not row['Product'] or not row['site_code']:
                         continue
-                    # Use the correct site selection logic
+                    
+                    # Time site selection (this might be slow)
+                    site_start = time.time()
                     site = select_site(
                         row['Product'],
                         row['Period_AU'],
@@ -245,14 +332,12 @@ class Command(BaseCommand):
                         foundry_sites,
                         can_assign_foundry_fn
                     )
+                    site_selection_time += time.time() - site_start
+                    
                     if not site:
                         continue
                     
-                    # Get customer invoice data
-                    customer_data = customer_mapping.get(row['Product'], {})
-                    latest_customer_invoice = customer_data.get('customer_name')
-                    latest_customer_invoice_date = customer_data.get('invoice_date')
-                    
+                    # Customer data fields left blank per request
                     replenishment_records.append(CalcualtedReplenishmentModel(
                         version=scenario,
                         Product_id=row['Product'],
@@ -260,12 +345,45 @@ class Command(BaseCommand):
                         Location=row.get('Location', ''),
                         ShippingDate=row['Period_AU'],
                         ReplenishmentQty=row['Qty'],
-                        latest_customer_invoice=latest_customer_invoice,
-                        latest_customer_invoice_date=latest_customer_invoice_date,
+                        latest_customer_invoice=None,
+                        latest_customer_invoice_date=None,
                     ))
+                    
+                    records_processed += 1
+                    
+                    # Progress reporting
+                    if records_processed % 100 == 0:
+                        self.stdout.write(f"   📊 Processed {records_processed} records...")
+                
+                step_duration = time.time() - step_start
+                self.stdout.write(f"✅ Step 6: Replenishment record processing - {len(replenishment_records)} records ({step_duration:.3f}s)")
+                
+                # Avoid division by zero for very fast operations
+                if step_duration > 0:
+                    site_selection_pct = site_selection_time/step_duration*100
+                else:
+                    site_selection_pct = 0.0
+                    
+                self.stdout.write(f"   🎯 Site selection time: {site_selection_time:.3f}s ({site_selection_pct:.1f}%)")
+                
+                # Step 7: Bulk create records
+                step_start = time.time()
                 if replenishment_records:
                     CalcualtedReplenishmentModel.objects.bulk_create(replenishment_records, batch_size=1000)
                     self.stdout.write(f"Created {len(replenishment_records)} replenishment records")
+                step_duration = time.time() - step_start
+                self.stdout.write(f"✅ Step 7: Database bulk create ({step_duration:.3f}s)")
+                
+                # Final summary
+                overall_duration = time.time() - overall_start_time
+                self.stdout.write("=" * 80)
+                self.stdout.write(f"🎉 REPLENISHMENT V2 CALCULATION COMPLETED")
+                self.stdout.write(f"⏱️  Total execution time: {overall_duration:.2f} seconds")
+                self.stdout.write(f"📅 Finished at: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+                if single_product:
+                    self.stdout.write(f"🎯 Single product mode: {single_product}")
+                self.stdout.write("=" * 80)
+                
                 self.stdout.write(self.style.SUCCESS(f"Replenishment calculation completed for version {version}"))
         except Exception as e:
             self.stdout.write(self.style.ERROR(f"Error in replenishment calculation: {str(e)}"))
