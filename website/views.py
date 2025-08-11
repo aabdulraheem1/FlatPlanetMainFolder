@@ -1633,7 +1633,7 @@ def review_scenario(request, version):
         print("DEBUG: No cached control tower data found, calculating fast control tower data...")
         # Calculate fast control tower data if not cached
         try:
-            complete_control_tower_data = get_fast_control_tower_data(scenario)
+            complete_control_tower_data = calculate_control_tower_data(scenario.version)
             
             control_tower_data = {
                 'combined_demand_plan': complete_control_tower_data.get('combined_demand_plan', {}),
@@ -2029,7 +2029,7 @@ def get_cached_control_tower_data(scenario):
         }
     except CachedControlTowerData.DoesNotExist:
         # Fall back to real-time calculation
-        return get_fast_control_tower_data(scenario)
+        return calculate_control_tower_data(scenario.version)
 
 
 def get_cached_foundry_data(scenario):
@@ -8101,3 +8101,170 @@ def production_insights_dashboard(request, version):
             'error': str(e),
             'user_name': request.user.username if request.user.is_authenticated else 'Anonymous'
         })
+
+
+@login_required
+def product_allocation_search(request, version):
+    """Search for products with production data"""
+    search_term = request.GET.get('search', '').strip()
+    
+    if len(search_term) < 2:
+        return JsonResponse({'success': False, 'error': 'Please enter at least 2 characters'})
+    
+    try:
+        scenario = get_object_or_404(scenarios, version=version)
+        
+        # Find products in CalculatedProductionModel with aggregated data
+        products = CalculatedProductionModel.objects.filter(
+            version=scenario,
+            product__Product__icontains=search_term
+        ).values(
+            'product__Product',
+            'product__ProductDescription'
+        ).annotate(
+            total_qty=Sum('production_quantity')
+        ).order_by('product__Product')[:20]  # Limit to 20 results
+        
+        # Get the primary site for each product
+        product_list = []
+        for product in products:
+            # Get most common site for this product
+            primary_site = CalculatedProductionModel.objects.filter(
+                version=scenario,
+                product__Product=product['product__Product']
+            ).values('site__SiteName').annotate(
+                total=Sum('production_quantity')
+            ).order_by('-total').first()
+            
+            product_list.append({
+                'Product': product['product__Product'],
+                'ProductDescription': product['product__ProductDescription'] or '',
+                'total_qty': round(product['total_qty'], 1),
+                'site_name': primary_site['site__SiteName'] if primary_site else 'N/A'
+            })
+        
+        return JsonResponse({
+            'success': True,
+            'products': product_list
+        })
+        
+    except Exception as e:
+        return JsonResponse({'success': False, 'error': str(e)})
+
+
+@login_required
+def product_allocation_load(request, version):
+    """Load allocation data for a specific product"""
+    product_id = request.GET.get('product')
+    
+    if not product_id:
+        return JsonResponse({'success': False, 'error': 'Product ID required'})
+    
+    try:
+        scenario = get_object_or_404(scenarios, version=version)
+        product = get_object_or_404(MasterDataProductModel, Product=product_id)
+        
+        # Get all sites for dropdown
+        all_sites = list(MasterDataPlantModel.objects.values_list('SiteName', flat=True).order_by('SiteName'))
+        
+        # Get production data by month
+        production_data = CalculatedProductionModel.objects.filter(
+            version=scenario,
+            product=product
+        ).values(
+            'pouring_date__year',
+            'pouring_date__month',
+            'site__SiteName'
+        ).annotate(
+            total_qty=Sum('production_quantity')
+        ).order_by('pouring_date__year', 'pouring_date__month', '-total_qty')
+        
+        # Group by month and get primary site
+        monthly_data = {}
+        for record in production_data:
+            year = record['pouring_date__year']
+            month = record['pouring_date__month']
+            month_key = f"{['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][month-1]}-{str(year)[2:]}"
+            
+            if month_key not in monthly_data:
+                monthly_data[month_key] = {
+                    'qty': round(record['total_qty'], 1),
+                    'site': record['site__SiteName']
+                }
+        
+        return JsonResponse({
+            'success': True,
+            'product_name': product.Product,
+            'allocation_data': monthly_data,
+            'all_sites': all_sites
+        })
+        
+    except Exception as e:
+        return JsonResponse({'success': False, 'error': str(e)})
+
+
+@login_required
+def product_allocation_save(request, version):
+    """Save production allocation splits"""
+    if request.method != 'POST':
+        return JsonResponse({'success': False, 'error': 'POST method required'})
+    
+    product_id = request.POST.get('product')
+    allocation_data = request.POST.get('allocation_data')
+    
+    if not product_id or not allocation_data:
+        return JsonResponse({'success': False, 'error': 'Product and allocation data required'})
+    
+    try:
+        scenario = get_object_or_404(scenarios, version=version)
+        product = get_object_or_404(MasterDataProductModel, Product=product_id)
+        allocation_data = json.loads(allocation_data)
+        
+        # Process each month's allocation
+        for month_key, data in allocation_data.items():
+            sites = data.get('sites', [])
+            percentages = [float(p) if p else 0 for p in data.get('percentages', [])]
+            total_qty = float(data.get('qty', 0))
+            
+            # Parse month-year back to date
+            month_name, year_short = month_key.split('-')
+            year = 2000 + int(year_short)
+            month_num = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'].index(month_name) + 1
+            
+            # Delete existing records for this product/month
+            CalculatedProductionModel.objects.filter(
+                version=scenario,
+                product=product,
+                pouring_date__year=year,
+                pouring_date__month=month_num
+            ).delete()
+            
+            # Create new records based on allocation
+            for i, site_name in enumerate(sites):
+                if site_name and i < len(percentages) and percentages[i] > 0:
+                    try:
+                        site = MasterDataPlantModel.objects.get(SiteName=site_name)
+                        allocated_qty = total_qty * (percentages[i] / 100)
+                        
+                        # Create new production record
+                        CalculatedProductionModel.objects.create(
+                            version=scenario,
+                            product=product,
+                            site=site,
+                            pouring_date=f"{year}-{month_num:02d}-15",  # Mid-month date
+                            production_quantity=allocated_qty,
+                            tonnes=allocated_qty * (product.DressMass or 0) / 1000,  # Convert to tonnes
+                            product_group=product.ProductGroup,
+                            parent_product_group=product.ParentProductGroup,
+                            price_aud=0,  # Will be calculated separately if needed
+                            production_aud=0,  # Will be calculated separately if needed
+                            revenue_aud=0,  # Will be calculated separately if needed
+                        )
+                        
+                    except MasterDataPlantModel.DoesNotExist:
+                        continue
+        
+        return JsonResponse({'success': True, 'message': 'Allocation saved successfully'})
+        
+    except Exception as e:
+        return JsonResponse({'success': False, 'error': str(e)})

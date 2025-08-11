@@ -1,0 +1,223 @@
+{% extends 'website/base.html' %}
+
+{% block content %}
+<div class="container-fluid">
+    <h2>Production Allocation by Percentage</h2>
+    
+    <!-- Search Form -->
+    <div class="card mb-3">
+        <div class="card-header">
+            <h5>Search Products</h5>
+        </div>
+        <div class="card-body">
+            <form method="GET">
+                <div class="row">
+                    <div class="col-md-6">
+                        <input type="text" 
+                               name="search" 
+                               class="form-control" 
+                               placeholder="Type product name or code (e.g., 1690ep)" 
+                               value="{{ search_term }}"
+                               autofocus>
+                    </div>
+                    <div class="col-md-2">
+                        <button type="submit" class="btn btn-primary">
+                            <i class="fas fa-search"></i> Search
+                        </button>
+                    </div>
+                    <div class="col-md-4">
+                        <a href="{% url 'review_scenario' version=version %}" class="btn btn-secondary">
+                            <i class="fas fa-arrow-left"></i> Back to Review
+                        </a>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Search Results -->
+    {% if search_term %}
+        <div class="card mb-3">
+            <div class="card-header">
+                <h5>Search Results for "{{ search_term }}"</h5>
+            </div>
+            <div class="card-body">
+                {% if products %}
+                    <div class="list-group">
+                        {% for product in products %}
+                        <a href="?search={{ search_term }}&product_id={{ product.product__Product }}" 
+                           class="list-group-item list-group-item-action {% if selected_product == product.product__Product %}active{% endif %}">
+                            <strong>{{ product.product__Product }}</strong>
+                            {% if product.product__ProductDescription %}
+                                <br><small class="text-muted">{{ product.product__ProductDescription }}</small>
+                            {% endif %}
+                        </a>
+                        {% endfor %}
+                    </div>
+                {% else %}
+                    <div class="alert alert-info">
+                        <i class="fas fa-info-circle"></i> No products found for "{{ search_term }}"
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+    {% endif %}
+
+    <!-- Allocation Form -->
+    {% if selected_product %}
+        <div class="card">
+            <div class="card-header">
+                <h5>Production Allocation for: {{ selected_product }}</h5>
+            </div>
+            <div class="card-body">
+                {% if production_data %}
+                    <form method="POST" action="{% url 'save_production_allocation' version=version %}">
+                        {% csrf_token %}
+                        <input type="hidden" name="product_id" value="{{ selected_product }}">
+                        
+                        <div class="table-responsive">
+                            <table class="table table-bordered">
+                                <thead>
+                                    <tr>
+                                        <th>Month</th>
+                                        <th>Current Site</th>
+                                        <th>Current %</th>
+                                        <th>Current Qty</th>
+                                        <th>New Site 1</th>
+                                        <th>% Site 1</th>
+                                        <th>New Site 2</th>
+                                        <th>% Site 2</th>
+                                        <th>New Site 3</th>
+                                        <th>% Site 3</th>
+                                        <th>Total %</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for month_data in production_data %}
+                                    <tr>
+                                        <td><strong>{{ month_data.month }}</strong></td>
+                                        <td>
+                                            {% for site in month_data.sites %}
+                                                <div>{{ site.site }}</div>
+                                            {% endfor %}
+                                        </td>
+                                        <td>
+                                            {% for site in month_data.sites %}
+                                                <div>{{ site.percentage }}%</div>
+                                            {% endfor %}
+                                        </td>
+                                        <td>
+                                            {% for site in month_data.sites %}
+                                                <div>{{ site.qty|floatformat:0 }}</div>
+                                            {% endfor %}
+                                        </td>
+                                        <td>
+                                            <select name="month_{{ month_data.month }}_site1" class="form-control">
+                                                <option value="">Select Site</option>
+                                                <option value="Adelaide" {% if month_data.sites.0.site == 'Adelaide' %}selected{% endif %}>Adelaide</option>
+                                                <option value="Brisbane" {% if month_data.sites.0.site == 'Brisbane' %}selected{% endif %}>Brisbane</option>
+                                                <option value="Perth" {% if month_data.sites.0.site == 'Perth' %}selected{% endif %}>Perth</option>
+                                                <option value="Melbourne" {% if month_data.sites.0.site == 'Melbourne' %}selected{% endif %}>Melbourne</option>
+                                            </select>
+                                        </td>
+                                        <td>
+                                            <input type="number" 
+                                                   name="month_{{ month_data.month }}_percent1" 
+                                                   class="form-control percentage-input" 
+                                                   data-month="{{ month_data.month }}"
+                                                   min="0" max="100" 
+                                                   value="{% if month_data.sites.0 %}{{ month_data.sites.0.percentage }}{% else %}100{% endif %}">
+                                        </td>
+                                        <td>
+                                            <select name="month_{{ month_data.month }}_site2" class="form-control">
+                                                <option value="">Select Site</option>
+                                                <option value="Adelaide" {% if month_data.sites.1.site == 'Adelaide' %}selected{% endif %}>Adelaide</option>
+                                                <option value="Brisbane" {% if month_data.sites.1.site == 'Brisbane' %}selected{% endif %}>Brisbane</option>
+                                                <option value="Perth" {% if month_data.sites.1.site == 'Perth' %}selected{% endif %}>Perth</option>
+                                                <option value="Melbourne" {% if month_data.sites.1.site == 'Melbourne' %}selected{% endif %}>Melbourne</option>
+                                            </select>
+                                        </td>
+                                        <td>
+                                            <input type="number" 
+                                                   name="month_{{ month_data.month }}_percent2" 
+                                                   class="form-control percentage-input" 
+                                                   data-month="{{ month_data.month }}"
+                                                   min="0" max="100" 
+                                                   value="{% if month_data.sites.1 %}{{ month_data.sites.1.percentage }}{% else %}0{% endif %}">
+                                        </td>
+                                        <td>
+                                            <select name="month_{{ month_data.month }}_site3" class="form-control">
+                                                <option value="">Select Site</option>
+                                                <option value="Adelaide" {% if month_data.sites.2.site == 'Adelaide' %}selected{% endif %}>Adelaide</option>
+                                                <option value="Brisbane" {% if month_data.sites.2.site == 'Brisbane' %}selected{% endif %}>Brisbane</option>
+                                                <option value="Perth" {% if month_data.sites.2.site == 'Perth' %}selected{% endif %}>Perth</option>
+                                                <option value="Melbourne" {% if month_data.sites.2.site == 'Melbourne' %}selected{% endif %}>Melbourne</option>
+                                            </select>
+                                        </td>
+                                        <td>
+                                            <input type="number" 
+                                                   name="month_{{ month_data.month }}_percent3" 
+                                                   class="form-control percentage-input" 
+                                                   data-month="{{ month_data.month }}"
+                                                   min="0" max="100" 
+                                                   value="{% if month_data.sites.2 %}{{ month_data.sites.2.percentage }}{% else %}0{% endif %}">
+                                        </td>
+                                        <td>
+                                            <span class="total-percentage" data-month="{{ month_data.month }}">100%</span>
+                                        </td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                        
+                        <div class="text-center mt-3">
+                            <button type="submit" class="btn btn-success">
+                                <i class="fas fa-save"></i> Save New Allocation
+                            </button>
+                        </div>
+                    </form>
+                {% else %}
+                    <div class="alert alert-danger">
+                        <i class="fas fa-exclamation-triangle"></i> 
+                        <strong>CRITICAL ERROR:</strong> No production data found for product "{{ selected_product }}" in scenario "{{ version }}".
+                        <br><br>
+                        <strong>This should NEVER happen in a properly configured app!</strong>
+                        <br><br>
+                        Possible issues:
+                        <ul>
+                            <li>CalculatedProductionModel table is empty or missing data for this product</li>
+                            <li>Product "{{ selected_product }}" doesn't exist in the production calculations</li>
+                            <li>Scenario "{{ version }}" has no calculated production data</li>
+                            <li>Database query is failing - check Django logs</li>
+                        </ul>
+                        Contact system administrator immediately.
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+    {% endif %}
+</div>
+
+<script>
+// Simple percentage validation
+$(document).on('input', '.percentage-input', function() {
+    var month = $(this).data('month');
+    var total = 0;
+    
+    $('input[data-month="' + month + '"].percentage-input').each(function() {
+        var val = parseFloat($(this).val()) || 0;
+        total += val;
+    });
+    
+    var totalSpan = $('span[data-month="' + month + '"]');
+    if (total > 100) {
+        totalSpan.text(total + '% (Error!)').css('color', 'red');
+    } else if (total < 100) {
+        totalSpan.text(total + '% (Remaining: ' + (100-total) + '%)').css('color', 'orange');
+    } else {
+        totalSpan.text(total + '%').css('color', 'green');
+    }
+});
+</script>
+{% endblock %}

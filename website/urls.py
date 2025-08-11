@@ -206,5 +206,10 @@ urlpatterns = [
     # API endpoint for inventory chart data
     path('get_inventory_chart_data/<str:version>/', views.get_inventory_chart_data, name='get_inventory_chart_data'),
 
+    # Production allocation endpoints
+    path('product-allocation-search/<str:version>/', views.product_allocation_search, name='product_allocation_search'),
+    path('product-allocation-load/<str:version>/', views.product_allocation_load, name='product_allocation_load'),
+    path('product-allocation-save/<str:version>/', views.product_allocation_save, name='product_allocation_save'),
+
     # Add other URL patterns as needed
 ]

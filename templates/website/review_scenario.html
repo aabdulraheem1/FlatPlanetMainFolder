@@ -107,6 +107,10 @@
                 <i class="fas fa-exchange-alt"></i> Work Transfer between Sites
             </button>
             
+            <a href="{% url 'production_allocation_view' version=version %}" class="btn btn-success mr-2">
+                <i class="fas fa-percentage"></i> Production Allocation
+            </a>
+            
             <button type="button" class="btn btn-primary mr-2" id="autoOptimizeBtn" data-toggle="modal" data-target="#autoLevelModal">
                 Auto Level Optimization
             </button>
@@ -188,8 +192,11 @@
                                     <button type="submit" class="btn btn-sm btn-primary mr-2">
                                         <i class="fas fa-search"></i> Filter
                                     </button>
-                                    <button type="button" class="btn btn-sm btn-secondary" id="clearFilters">
+                                    <button type="button" class="btn btn-sm btn-secondary mr-2" id="clearFilters">
                                         <i class="fas fa-times"></i> Clear
+                                    </button>
+                                    <button type="button" class="btn btn-sm btn-success" id="productionAllocationBtn">
+                                        <i class="fas fa-cogs"></i> Production Allocation
                                     </button>
                                 </div>
                             </div>
@@ -757,6 +764,518 @@
                 });
             }
         });
+
+        // Production Allocation Modal
+        $('#productionAllocationBtn').click(function() {
+            $('#productionAllocationModal').modal('show');
+        });
+
+        // Product search functionality
+        $('#searchProductBtn').click(function() {
+            var searchTerm = $('#productSearch').val().trim();
+            if (searchTerm.length < 2) {
+                alert('Please enter at least 2 characters to search.');
+                return;
+            }
+            
+            $.ajax({
+                url: '{% url "product_allocation_search" version=version %}',
+                type: 'GET',
+                data: { search: searchTerm },
+                success: function(response) {
+                    if (response.success) {
+                        var html = '';
+                        response.products.forEach(function(product) {
+                            html += '<tr style="cursor: pointer;" onclick="selectProduct(\'' + product.Product + '\')">' +
+                                   '<td>' + product.Product + '</td>' +
+                                   '<td>' + product.ProductDescription + '</td>' +
+                                   '<td>' + product.total_qty + '</td>' +
+                                   '<td>' + product.site_name + '</td>' +
+                                   '</tr>';
+                        });
+                        $('#productSearchResults').html(html);
+                        $('#searchResultsDiv').show();
+                    } else {
+                        alert('Error: ' + response.error);
+                    }
+                },
+                error: function() {
+                    alert('Error searching products. Please try again.');
+                }
+            });
+        });
+
+        // Select product and load allocation form
+        function selectProduct(productId) {
+            $.ajax({
+                url: '{% url "product_allocation_load" version=version %}',
+                type: 'GET',
+                data: { product: productId },
+                success: function(response) {
+                    if (response.success) {
+                        $('#selectedProductName').text(response.product_name);
+                        $('#selectedProduct').val(response.product_name);
+                        
+                        // Build allocation table
+                        var html = '';
+                        for (var month in response.allocation_data) {
+                            var data = response.allocation_data[month];
+                            html += '<tr>' +
+                                   '<td>' + month + '</td>' +
+                                   '<td>' + data.qty + '</td>' +
+                                   '<td class="total-percentage">100%</td>' +
+                                   '<td><select class="form-control site-select" data-month="' + month + '" data-site="1">' +
+                                   '<option value="' + data.site + '">' + data.site + '</option>' +
+                                   response.all_sites.map(function(site) {
+                                       return site !== data.site ? '<option value="' + site + '">' + site + '</option>' : '';
+                                   }).join('') +
+                                   '</select></td>' +
+                                   '<td><input type="number" class="form-control percentage-input" data-month="' + month + '" data-site="1" value="100" max="100" min="0"></td>' +
+                                   '<td><select class="form-control site-select" data-month="' + month + '" data-site="2"><option value="">Select Site</option>' +
+                                   response.all_sites.map(function(site) {
+                                       return '<option value="' + site + '">' + site + '</option>';
+                                   }).join('') +
+                                   '</select></td>' +
+                                   '<td><input type="number" class="form-control percentage-input" data-month="' + month + '" data-site="2" value="0" max="100" min="0"></td>' +
+                                   '<td><select class="form-control site-select" data-month="' + month + '" data-site="3"><option value="">Select Site</option>' +
+                                   response.all_sites.map(function(site) {
+                                       return '<option value="' + site + '">' + site + '</option>';
+                                   }).join('') +
+                                   '</select></td>' +
+                                   '<td><input type="number" class="form-control percentage-input" data-month="' + month + '" data-site="3" value="0" max="100" min="0"></td>' +
+                                   '</tr>';
+                        }
+                        $('#allocationTableBody').html(html);
+                        
+                        $('#searchResultsDiv').hide();
+                        $('#allocationFormDiv').show();
+                    } else {
+                        alert('Error: ' + response.error);
+                    }
+                },
+                error: function() {
+                    alert('Error loading product data. Please try again.');
+                }
+            });
+        }
+
+        // Validate percentages
+        $(document).on('input', '.percentage-input', function() {
+            var month = $(this).data('month');
+            var total = 0;
+            $('input[data-month="' + month + '"].percentage-input').each(function() {
+                var val = parseFloat($(this).val()) || 0;
+                total += val;
+            });
+            
+            var row = $(this).closest('tr');
+            var totalCell = row.find('.total-percentage');
+            if (total > 100) {
+                totalCell.text(total + '% (Error!)').css('color', 'red');
+            } else if (total < 100) {
+                totalCell.text(total + '% (Remaining: ' + (100-total) + '%)').css('color', 'orange');
+            } else {
+                totalCell.text(total + '%').css('color', 'green');
+            }
+        });
+
+        // Save allocation
+        $('#saveAllocationBtn').click(function() {
+            var productId = $('#selectedProduct').val();
+            var allocationData = {};
+            
+            $('#allocationTableBody tr').each(function() {
+                var row = $(this);
+                var month = row.find('td').first().text();
+                var qty = row.find('td').eq(1).text();
+                
+                var site1 = row.find('select[data-site="1"]').val();
+                var perc1 = row.find('input[data-site="1"]').val();
+                var site2 = row.find('select[data-site="2"]').val();
+                var perc2 = row.find('input[data-site="2"]').val();
+                var site3 = row.find('select[data-site="3"]').val();
+                var perc3 = row.find('input[data-site="3"]').val();
+                
+                allocationData[month] = {
+                    qty: qty,
+                    sites: [site1, site2, site3],
+                    percentages: [perc1, perc2, perc3]
+                };
+            });
+            
+            $.ajax({
+                url: '{% url "product_allocation_save" version=version %}',
+                type: 'POST',
+                data: {
+                    'csrfmiddlewaretoken': $('[name=csrfmiddlewaretoken]').val(),
+                    'product': productId,
+                    'allocation_data': JSON.stringify(allocationData)
+                },
+                success: function(response) {
+                    if (response.success) {
+                        alert('Allocation saved successfully!');
+                        $('#productionAllocationModal').modal('hide');
+                        location.reload(); // Reload to see changes
+                    } else {
+                        alert('Error: ' + response.error);
+                    }
+                },
+                error: function() {
+                    alert('Error saving allocation. Please try again.');
+                }
+            });
+        });
+    </script>
+
+    <!-- Production Allocation Modal -->
+    <div class="modal fade" id="productionAllocationModal" tabindex="-1" role="dialog" aria-labelledby="productionAllocationModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-xl-custom" role="document">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="productionAllocationModalLabel">Production Site Allocation</h5>
+                    <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                        <span aria-hidden="true">&times;</span>
+                    </button>
+                </div>
+                <div class="modal-body">
+                    <!-- Product Search -->
+                    <div id="productSearchDiv">
+                        <div class="row">
+                            <div class="col-md-8">
+                                <label for="productSearch">Search Product:</label>
+                                <input type="text" id="productSearch" class="form-control" placeholder="Enter product name or code...">
+                            </div>
+                            <div class="col-md-4">
+                                <label>&nbsp;</label><br>
+                                <button type="button" id="searchProductBtn" class="btn btn-primary">
+                                    <i class="fas fa-search"></i> Search
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Search Results -->
+                    <div id="searchResultsDiv" style="display: none;">
+                        <hr>
+                        <h6>Search Results:</h6>
+                        <div class="table-responsive">
+                            <table class="table table-sm">
+                                <thead>
+                                    <tr>
+                                        <th>Product</th>
+                                        <th>Description</th>
+                                        <th>Total Qty</th>
+                                        <th>Current Site</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="productSearchResults">
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <!-- Allocation Form -->
+                    <div id="allocationFormDiv" style="display: none;">
+                        <hr>
+                        <h6>Production Allocation for: <span id="selectedProductName"></span></h6>
+                        <input type="hidden" id="selectedProduct">
+                        
+                        <div class="table-responsive">
+                            <table class="table table-sm">
+                                <thead>
+                                    <tr>
+                                        <th rowspan="2">Month</th>
+                                        <th rowspan="2">Qty</th>
+                                        <th rowspan="2">Total %</th>
+                                        <th colspan="2">Site 1</th>
+                                        <th colspan="2">Site 2</th>
+                                        <th colspan="2">Site 3</th>
+                                    </tr>
+                                    <tr>
+                                        <th>Site</th>
+                                        <th>%</th>
+                                        <th>Site</th>
+                                        <th>%</th>
+                                        <th>Site</th>
+                                        <th>%</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="allocationTableBody">
+                                </tbody>
+                            </table>
+                        </div>
+
+                        <div class="text-right">
+                            <button type="button" class="btn btn-success" id="saveAllocationBtn">
+                                <i class="fas fa-save"></i> Save Allocation
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Production Allocation Modal -->
+    <div class="modal fade" id="allocationModal" tabindex="-1" role="dialog" aria-labelledby="allocationModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-xl" role="document">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="allocationModalLabel">Production Allocation by Percentage</h5>
+                    <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                        <span aria-hidden="true">&times;</span>
+                    </button>
+                </div>
+                <div class="modal-body">
+                    <!-- Product Search -->
+                    <div class="row mb-3">
+                        <div class="col-md-8">
+                            <label for="productSearch"><strong>Search Product:</strong></label>
+                            <input type="text" id="productSearch" class="form-control" placeholder="Type product name (e.g., T810EP, BF200, etc.)">
+                            <div id="productSuggestions" class="list-group mt-1" style="display: none; position: absolute; z-index: 1000; max-height: 200px; overflow-y: auto;"></div>
+                        </div>
+                        <div class="col-md-4">
+                            <label>&nbsp;</label><br>
+                            <button type="button" class="btn btn-primary" id="loadProductBtn">
+                                <i class="fas fa-search"></i> Load Product
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <div id="selectedProduct" style="display: none;">
+                        <div class="alert alert-info">
+                            <strong>Selected Product:</strong> <span id="selectedProductName"></span>
+                        </div>
+                        
+                        <!-- Allocation Table -->
+                        <div class="table-responsive">
+                            <table class="table table-bordered">
+                                <thead class="thead-dark">
+                                    <tr>
+                                        <th>Month</th>
+                                        <th>Total Qty</th>
+                                        <th>Site 1</th>
+                                        <th>Site 1 %</th>
+                                        <th>Site 2</th>
+                                        <th>Site 2 %</th>
+                                        <th>Site 3</th>
+                                        <th>Site 3 %</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="allocationTableBody">
+                                    <!-- Dynamic content will be loaded here -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-dismiss="modal">Close</button>
+                    <button type="button" class="btn btn-success" id="saveAllocation" style="display: none;">
+                        <i class="fas fa-save"></i> Save Allocation
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+    // Production Allocation functionality
+    $(document).ready(function() {
+        const version = "{{ version }}"; // Define version from Django context
+        let currentProduct = null;
+        let allSites = [];
+        
+        // Load product data when search button is clicked
+        $('#loadProductBtn').click(function() {
+            const productName = $('#productSearch').val().trim();
+            if (productName.length < 2) {
+                alert('Please enter at least 2 characters');
+                return;
+            }
+            
+            // First verify the product exists
+            $.ajax({
+                url: '/scenario/' + version + '/search-products/',
+                data: { search: productName },
+                success: function(response) {
+                    if (response.success && response.products.length > 0) {
+                        // Product found, now load allocation data
+                        const product = response.products.find(p => p.product === productName);
+                        if (product) {
+                            loadProductAllocation(productName);
+                        } else {
+                            alert('Exact product match not found. Available products: ' + response.products.map(p => p.product).join(', '));
+                        }
+                    } else {
+                        alert(response.message || 'Product not found');
+                    }
+                },
+                error: function() {
+                    alert('Error searching for product');
+                }
+            });
+        });
+        
+        // Function to load allocation data for a specific product
+        function loadProductAllocation(productName) {
+            $.ajax({
+                url: '/scenario/' + version + '/get-allocation/',
+                data: { product_id: productName },
+                success: function(response) {
+                    if (response.success) {
+                        currentProduct = productName;
+                        allSites = response.all_sites;
+                        $('#selectedProductName').text(response.product_name);
+                        loadAllocationTable(response.allocation_data);
+                        $('#selectedProduct').show();
+                        $('#saveAllocation').show();
+                    } else {
+                        alert(response.error || 'Error loading product allocation data');
+                    }
+                },
+                error: function() {
+                    alert('Error loading product allocation data');
+                }
+            });
+        }
+        
+        // Product search functionality with debounce for better performance
+        let productSearchTimeout;
+        $('#productSearch').on('input', function() {
+            const searchTerm = $(this).val().trim();
+            
+            // Clear previous timeout
+            clearTimeout(productSearchTimeout);
+            
+            if (searchTerm.length >= 2) {
+                // Add visual feedback
+                $('#productSuggestions').html('<div class="list-group-item"><i class="fas fa-spinner fa-spin"></i> Searching...</div>').show();
+                
+                // Debounce search with 300ms delay
+                productSearchTimeout = setTimeout(function() {
+                    $.ajax({
+                        url: '/scenario/' + version + '/search-products/',
+                        data: { search: searchTerm },
+                        success: function(response) {
+                            if (response.success && response.products.length > 0) {
+                                let html = '';
+                                response.products.forEach(function(product) {
+                                    html += '<a href="#" class="list-group-item list-group-item-action product-suggestion" data-product="' + product.product + '">';
+                                    html += '<strong>' + product.product + '</strong>';
+                                    if (product.description) {
+                                        html += '<br><small class="text-muted">' + product.description + '</small>';
+                                    }
+                                    html += '</a>';
+                                });
+                                $('#productSuggestions').html(html).show();
+                            } else {
+                                $('#productSuggestions').html('<div class="list-group-item text-muted">No products found</div>').show();
+                            }
+                        },
+                        error: function() {
+                            $('#productSuggestions').html('<div class="list-group-item text-danger">Error searching. Please try again.</div>').show();
+                        }
+                    });
+                }, 300); // 300ms debounce delay
+            } else if (searchTerm.length === 0) {
+                $('#productSuggestions').hide();
+            } else {
+                $('#productSuggestions').html('<div class="list-group-item text-muted">Type at least 2 characters...</div>').show();
+            }
+        });
+        
+        // Handle product suggestion clicks
+        $(document).on('click', '.product-suggestion', function(e) {
+            e.preventDefault();
+            const productName = $(this).data('product');
+            $('#productSearch').val(productName);
+            $('#productSuggestions').hide();
+        });
+        
+        // Save allocation
+        $('#saveAllocation').click(function() {
+            const allocationData = [];
+            $('#allocationTableBody tr').each(function() {
+                const row = $(this);
+                allocationData.push({
+                    month: row.find('.month-cell').text(),
+                    site1: row.find('.site1-select').val(),
+                    site1_percent: parseFloat(row.find('.site1-percent').val()) || 0,
+                    site2: row.find('.site2-select').val(),
+                    site2_percent: parseFloat(row.find('.site2-percent').val()) || 0,
+                    site3: row.find('.site3-select').val(),
+                    site3_percent: parseFloat(row.find('.site3-percent').val()) || 0
+                });
+            });
+            
+            $.ajax({
+                url: '/scenario/' + version + '/save-allocation/',
+                method: 'POST',
+                data: {
+                    product_id: currentProduct,
+                    allocation_data: JSON.stringify(allocationData),
+                    csrfmiddlewaretoken: '{{ csrf_token }}'
+                },
+                success: function(response) {
+                    if (response.success) {
+                        alert('Allocation saved successfully!');
+                        $('#allocationModal').modal('hide');
+                    } else {
+                        alert('Error: ' + response.error);
+                    }
+                },
+                error: function() {
+                    alert('Error saving allocation');
+                }
+            });
+        });
+        
+        function loadAllocationTable(data) {
+            let html = '';
+            data.forEach(function(monthData) {
+                html += '<tr>';
+                html += '<td class="month-cell">' + monthData.month + '</td>';
+                html += '<td>' + monthData.total_qty + '</td>';
+                
+                // Site 1 (pre-populated)
+                html += '<td>';
+                html += '<select class="form-control site1-select">';
+                allSites.forEach(function(site) {
+                    html += '<option value="' + site + '"' + (site === monthData.site1 ? ' selected' : '') + '>' + site + '</option>';
+                });
+                html += '</select>';
+                html += '</td>';
+                html += '<td><input type="number" class="form-control site1-percent" value="' + monthData.site1_percent + '" min="0" max="100"></td>';
+                
+                // Site 2
+                html += '<td>';
+                html += '<select class="form-control site2-select">';
+                html += '<option value="">-- Select Site --</option>';
+                allSites.forEach(function(site) {
+                    html += '<option value="' + site + '">' + site + '</option>';
+                });
+                html += '</select>';
+                html += '</td>';
+                html += '<td><input type="number" class="form-control site2-percent" value="0" min="0" max="100"></td>';
+                
+                // Site 3
+                html += '<td>';
+                html += '<select class="form-control site3-select">';
+                html += '<option value="">-- Select Site --</option>';
+                allSites.forEach(function(site) {
+                    html += '<option value="' + site + '">' + site + '</option>';
+                });
+                html += '</select>';
+                html += '</td>';
+                html += '<td><input type="number" class="form-control site3-percent" value="0" min="0" max="100"></td>';
+                
+                html += '</tr>';
+            });
+            $('#allocationTableBody').html(html);
+        }
+    });
+    </script>
     </script>
 </body>
 {% endblock %}
