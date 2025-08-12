@@ -972,13 +972,64 @@ class OpeningInventorySnapshot(models.Model):
     @classmethod
     def _fetch_from_sql_server(cls, scenario, snapshot_date):
         """
-        Fetch fresh data from SQL Server (expensive operation)
-        This calls the same function that currently takes 400+ seconds
+        Fetch fresh data from SQL Server PowerBI (expensive operation)
+        This queries PowerBI.Inventory Monthly History and aggregates by parent product group
         """
         try:
-            from website.customized_function import get_opening_inventory_by_group
+            from django.db import connection
+            from sqlalchemy import create_engine, text
+            import pandas as pd
+            
             print(f"🔄 Fetching fresh inventory data from SQL Server for {snapshot_date}...")
-            return get_opening_inventory_by_group(scenario.version)
+            
+            # Convert snapshot_date to skReportDateId format (YYYYMMDD)
+            snapshot_date_id = snapshot_date.strftime('%Y%m%d')
+            
+            # Database connection string (same pattern as used in views.py)
+            Server = 'bknew-sql02'
+            Database = 'Bradken_Data_Warehouse'
+            Driver = 'ODBC Driver 17 for SQL Server'
+            Database_Con = f'mssql+pyodbc://@{Server}/{Database}?driver={Driver}'
+            
+            # Create SQLAlchemy engine
+            engine = create_engine(Database_Con)
+            
+            with engine.connect() as conn:
+                # SQL query to get parent product group inventory aggregation
+                parent_group_sql = f"""
+                    SELECT 
+                        Products.ParentProductGroupDescription,
+                        SUM(ISNULL(Inventory.StockOnHandValueAUD, 0)) as inventory_value_aud
+                    FROM PowerBI.[Inventory Daily History] AS Inventory
+                    LEFT JOIN PowerBI.Products AS Products 
+                        ON Inventory.skProductId = Products.skProductId
+                    WHERE Inventory.skReportDateId = {snapshot_date_id}
+                      AND (Products.RowEndDate IS NULL OR Products.RowEndDate IS NULL)
+                      AND Products.ParentProductGroupDescription IS NOT NULL
+                      AND Products.ParentProductGroupDescription != ''
+                    GROUP BY Products.ParentProductGroupDescription
+                    HAVING SUM(ISNULL(Inventory.StockOnHandValueAUD, 0)) > 0
+                    ORDER BY Products.ParentProductGroupDescription
+                """
+                
+                print(f"� SQL Query: Aggregating inventory by parent product group for date {snapshot_date_id}")
+                
+                # Execute query
+                df = pd.read_sql(parent_group_sql, conn)
+                
+                if len(df) == 0:
+                    print(f"⚠️ No inventory data found in PowerBI for date {snapshot_date_id}")
+                    return {}
+                
+                # Convert to dictionary format
+                result = dict(zip(
+                    df['ParentProductGroupDescription'].tolist(),
+                    df['inventory_value_aud'].tolist()
+                ))
+                
+                print(f"✅ SQL Server query completed: {len(result)} parent product groups, total value: ${sum(result.values()):,.2f}")
+                return result
+                
         except Exception as e:
             print(f"❌ Error fetching from SQL Server: {e}")
             import traceback
@@ -1184,25 +1235,3 @@ class MonthlyPouredDataModel(models.Model):
             monthly_data[record.month_year_display] = record.monthly_tonnes
         
         return monthly_data
-
-
-class ProductionAllocationModel(models.Model):
-    """
-    Model to store production allocation percentages by product, site, and month
-    Used for percentage-based work transfer allocation
-    """
-    version = models.ForeignKey(scenarios, on_delete=models.CASCADE, help_text="Scenario version")
-    product = models.ForeignKey(MasterDataProductModel, on_delete=models.CASCADE, help_text="Product to allocate")
-    site = models.ForeignKey(MasterDataPlantModel, on_delete=models.CASCADE, help_text="Site to allocate to")
-    month_year = models.CharField(max_length=10, help_text="Format: 'Jul-25', 'Aug-25', etc.")
-    allocation_percentage = models.FloatField(default=0.0, help_text="Percentage of total production (0-100)")
-    created_date = models.DateTimeField(auto_now_add=True)
-    modified_date = models.DateTimeField(auto_now=True)
-    
-    class Meta:
-        unique_together = ['version', 'product', 'site', 'month_year']
-        verbose_name = "Production Allocation"
-        verbose_name_plural = "Production Allocations"
-    
-    def __str__(self):
-        return f"{self.version.version} - {self.product.Product} - {self.site.SiteName} - {self.month_year}: {self.allocation_percentage}%"

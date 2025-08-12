@@ -1,0 +1,82 @@
+{% extends "website/base.html" %}
+
+{% block title %}Populate Opening Inventory Snapshot - {{ scenario.name }}{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <h2><i class="fas fa-database me-2"></i>Populate Opening Inventory Snapshot</h2>
+    <p class="text-muted mb-4">
+        <strong>Scenario:</strong> {{ scenario.name }} ({{ scenario.version }})<br>
+        This will populate the OpeningInventorySnapshot from SQL Server data for inventory projections. 
+        The snapshot will be shared across ALL scenarios using the same snapshot date.
+    </p>
+
+    <div class="card">
+        <div class="card-header">
+            <h5><i class="fas fa-calendar-alt me-2"></i>Select Snapshot Date</h5>
+        </div>
+        <div class="card-body">
+            <form method="post">
+                {% csrf_token %}
+                
+                <div class="mb-3">
+                    <label for="snapshot_date" class="form-label">
+                        <i class="fas fa-calendar me-1"></i>Snapshot Date
+                    </label>
+                    <select class="form-select" id="snapshot_date" name="snapshot_date" required>
+                        <option value="">Select a snapshot date...</option>
+                        {% for date in available_dates %}
+                            <option value="{{ date|date:'Y-m-d' }}">{{ date|date:'F j, Y' }}</option>
+                        {% empty %}
+                            <option value="" disabled>No snapshot dates available in MasterDataInventory</option>
+                        {% endfor %}
+                    </select>
+                    <div class="form-text">
+                        Available dates from uploaded MasterDataInventory records. The snapshot will query SQL Server 
+                        for parent group inventory data as of this date.
+                    </div>
+                </div>
+
+                <div class="alert alert-info">
+                    <i class="fas fa-info-circle me-2"></i>
+                    <strong>Important:</strong> This operation will:
+                    <ul class="mb-0">
+                        <li>Query SQL Server for parent product group inventory data</li>
+                        <li>Create OpeningInventorySnapshot records for the selected date</li>
+                        <li>Share this snapshot across ALL scenarios using the same date</li>
+                        <li>Overwrite existing snapshot data for the selected date (force refresh)</li>
+                    </ul>
+                </div>
+
+                <div class="d-flex gap-2">
+                    <button type="submit" class="btn btn-primary">
+                        <i class="fas fa-database me-1"></i>Populate from SQL Server
+                    </button>
+                    <a href="{% url 'edit_scenario' scenario.version %}" class="btn btn-secondary">
+                        <i class="fas fa-times me-1"></i>Cancel
+                    </a>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div class="card mt-4">
+        <div class="card-header">
+            <h6><i class="fas fa-question-circle me-2"></i>About Opening Inventory Snapshots</h6>
+        </div>
+        <div class="card-body">
+            <p class="mb-2">
+                <strong>Purpose:</strong> OpeningInventorySnapshot stores parent product group inventory values 
+                from SQL Server for efficient inventory projection calculations.
+            </p>
+            <p class="mb-2">
+                <strong>Data Source:</strong> SQL Server PowerBI database with parent product group aggregations.
+            </p>
+            <p class="mb-0">
+                <strong>Sharing:</strong> Snapshots are shared across all scenarios using the same snapshot date 
+                to avoid redundant SQL Server queries.
+            </p>
+        </div>
+    </div>
+</div>
+{% endblock %}

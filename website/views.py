@@ -711,8 +711,52 @@ def edit_plant(request, pk):
 @login_required
 def delete_forecast(request, version, data_source):
     """Delete forecast data for a specific version and data source."""
+    from django.db import transaction
+    import logging
+    
+    # Set up logging to make sure we see the output
+    logging.basicConfig(level=logging.INFO)
+    logger = logging.getLogger(__name__)
+    
+    logger.info(f"🚀 DELETE_FORECAST called with version='{version}', data_source='{data_source}'")
+    print(f"🚀 DELETE_FORECAST called with version='{version}', data_source='{data_source}'")
+    
     scenario = get_object_or_404(scenarios, version=version)
-    SMART_Forecast_Model.objects.filter(version=scenario, Data_Source=data_source).delete()
+    
+    # Map the data_source parameter to the actual Data_Source value used in the database
+    if data_source == 'SMART':
+        mapped_data_source = 'SMART'
+    elif data_source == 'Not in SMART':
+        mapped_data_source = 'Not in SMART'
+    elif data_source == 'Fixed Plant':
+        mapped_data_source = 'Fixed Plant'
+    elif data_source == 'Revenue':
+        mapped_data_source = 'Revenue Forecast'  # This is the key mapping!
+    else:
+        mapped_data_source = data_source
+    
+    logger.info(f"🔄 Mapped '{data_source}' to '{mapped_data_source}'")
+    print(f"🔄 Mapped '{data_source}' to '{mapped_data_source}'")
+    
+    # Use an explicit database transaction
+    with transaction.atomic():
+        # Check how many records exist before deletion
+        records_before = SMART_Forecast_Model.objects.filter(version=scenario, Data_Source=mapped_data_source).count()
+        logger.info(f"📊 Found {records_before} records to delete with Data_Source='{mapped_data_source}'")
+        print(f"📊 Found {records_before} records to delete with Data_Source='{mapped_data_source}'")
+        
+        if records_before > 0:
+            # Delete the records
+            deleted_info = SMART_Forecast_Model.objects.filter(version=scenario, Data_Source=mapped_data_source).delete()
+            logger.info(f"🗑️ Delete result: {deleted_info}")
+            print(f"🗑️ Delete result: {deleted_info}")
+            
+            messages.success(request, f"Successfully deleted {deleted_info[0]} {data_source} forecast records.")
+        else:
+            messages.info(request, f"No {data_source} forecast data found to delete.")
+    
+    logger.info(f"✅ DELETE_FORECAST completed, redirecting to edit_scenario")
+    print(f"✅ DELETE_FORECAST completed, redirecting to edit_scenario")
     
     return redirect('edit_scenario', version=version)
 
@@ -2800,7 +2844,9 @@ def upload_on_hand_stock(request, version):
                         Site.SiteName AS site,
                         Inventory.StockOnHand AS onhandstock_qty,
                         Inventory.StockInTransit AS intransitstock_qty,
-                        MAX(Inventory.WarehouseCostAUD) AS cost_aud
+                        MAX(Inventory.WarehouseCostAUD) AS cost_aud,
+                        SUM(Inventory.StockOnHandValueAUD) AS stockonhand_value_aud,
+                        SUM(Inventory.StockInTransitValueAUD) AS intransit_value_aud
                     FROM PowerBI.[Inventory Monthly History] AS Inventory
                     LEFT JOIN PowerBI.Site AS Site
                         ON Inventory.skSiteId = Site.skSiteId
@@ -3054,6 +3100,8 @@ def upload_on_hand_stock(request, version):
                     intransitstock_qty=row['intransitstock_qty'],
                     wip_stock_qty=row['wip_stock_qty'],
                     cost_aud=row['cost_aud'],
+                    stockonhand_value_aud=row.get('stockonhand_value_aud', 0),
+                    intransit_value_aud=row.get('intransit_value_aud', 0),
                 )
             )
         
@@ -3071,33 +3119,56 @@ def upload_on_hand_stock(request, version):
                 # Convert snapshot_date string to date object
                 snapshot_date_obj = datetime.strptime(snapshot_date, '%Y-%m-%d').date()
                 
-                # Force refresh the SHARED inventory snapshot with fresh data
-                snapshot_result = OpeningInventorySnapshot.get_or_create_snapshot(
-                    scenario=scenario,  # Only used for tracking and fallback
-                    snapshot_date=snapshot_date_obj,
-                    force_refresh=True,  # Always refresh after new inventory upload
-                    user=request.user,
-                    reason='inventory_upload'
-                )
+                # Use the existing get_opening_inventory_by_group function that does PowerBI queries
+                print(f"📊 Creating snapshot using existing get_opening_inventory_by_group function...")
+                from website.customized_function import get_opening_inventory_by_group
                 
-                if snapshot_result:
-                    snapshot_count = len(snapshot_result)
-                    total_value = sum(snapshot_result.values())
-                    print(f"📊 SHARED Opening Inventory Snapshot created: {snapshot_count} product groups, total value: ${total_value:,.2f}")
-                    print(f"📊 This snapshot can now be used by ANY scenario with date {snapshot_date}!")
-                    logger.warning(f"📊 SHARED Opening Inventory Snapshot populated: {snapshot_count} product groups")
+                inventory_by_group = get_opening_inventory_by_group(scenario.version)
+                
+                if inventory_by_group:
+                    # Clear old snapshot data for this date
+                    deleted_count = OpeningInventorySnapshot.objects.filter(snapshot_date=snapshot_date_obj).delete()
+                    if deleted_count[0] > 0:
+                        print(f"📊 Deleted {deleted_count[0]} old snapshot records for date {snapshot_date_obj}")
                     
-                    messages.success(request, 
-                        f'Successfully uploaded {len(bulk_objs):,} inventory records for {snapshot_date}. '
-                        f'SHARED opening inventory snapshot created with {snapshot_count} product groups (Total: ${total_value:,.2f}). '
-                        f'This snapshot is now available for ALL scenarios using {snapshot_date} - no duplication needed! '
-                        f'Future inventory projections will be 95% faster!'
-                    )
+                    # Create new snapshot records
+                    snapshot_records = [
+                        OpeningInventorySnapshot(
+                            snapshot_date=snapshot_date_obj,
+                            parent_product_group=group,
+                            inventory_value_aud=round(value, 2),
+                            refresh_reason='existing_function_call',
+                            created_by_user=request.user.username,
+                            scenarios_using_this_snapshot=[scenario.version]
+                        )
+                        for group, value in inventory_by_group.items() if value > 0
+                    ]
+                    
+                    if snapshot_records:
+                        OpeningInventorySnapshot.objects.bulk_create(snapshot_records, batch_size=1000)
+                        total_value = sum(record.inventory_value_aud for record in snapshot_records)
+                        
+                        print(f"📊 SUCCESS: Created {len(snapshot_records)} SHARED inventory snapshot records for {snapshot_date_obj}")
+                        print(f"💰 Total inventory value from existing function: ${total_value:,.2f}")
+                        print(f"📊 This snapshot can now be used by ANY scenario with date {snapshot_date}!")
+                        
+                        messages.success(request, 
+                            f'Successfully uploaded {len(bulk_objs):,} inventory records for {snapshot_date}. '
+                            f'SHARED opening inventory snapshot created with {len(snapshot_records)} product groups (Total: ${total_value:,.2f}). '
+                            f'This snapshot is now available for ALL scenarios using {snapshot_date} - no duplication needed! '
+                            f'Future inventory projections will be 95% faster!'
+                        )
+                    else:
+                        print(f"⚠️ No valid snapshot records to create")
+                        messages.success(request, 
+                            f'Successfully uploaded {len(bulk_objs):,} inventory records for {snapshot_date}. '
+                            f'However, no valid product groups found for snapshot creation.'
+                        )
                 else:
-                    logger.warning("⚠️ SHARED Opening Inventory Snapshot population returned empty result")
+                    print(f"⚠️ No inventory groups found for snapshot creation")
                     messages.success(request, 
                         f'Successfully uploaded {len(bulk_objs):,} inventory records for {snapshot_date}. '
-                        f'SHARED opening inventory snapshot population completed but returned no data.'
+                        f'However, no product groups could be processed for snapshot creation.'
                     )
                     
             except Exception as snapshot_error:
@@ -4056,6 +4127,90 @@ def update_pour_plan_data(request, version):
     })
 
 from . models import MasterDataSuppliersModel, MasterDataCustomersModel
+
+@login_required
+def production_allocation_view(request, version):
+    """Production Allocation by Percentage - Search and manage production allocation"""
+    from .models import CalculatedProductionModel, ProductionAllocationModel
+    from django.db.models import Sum
+    from datetime import datetime
+    
+    # Get scenario object
+    scenario = get_object_or_404(scenarios, version=version)
+    
+    # Get search parameters
+    search_term = request.GET.get('search', '').strip()
+    selected_product = request.GET.get('product_id', '').strip()
+    
+    context = {
+        'version': version,
+        'search_term': search_term,
+        'selected_product': selected_product,
+        'products': [],
+        'production_data': [],
+    }
+    
+    # Handle search
+    if search_term:
+        # Search for products in calculated production data
+        products = CalculatedProductionModel.objects.filter(
+            version=scenario,
+            product__Product__icontains=search_term
+        ).select_related('product').values(
+            'product__Product', 
+            'product__ProductDescription'
+        ).distinct()[:50]  # Limit results
+        
+        context['products'] = products
+    
+    # Handle selected product
+    if selected_product:
+        # Get production data for the selected product
+        production_records = CalculatedProductionModel.objects.filter(
+            version=scenario,
+            product__Product=selected_product
+        ).select_related('product', 'site')
+        
+        if production_records.exists():
+            # Group by month and aggregate data
+            monthly_data = {}
+            for record in production_records:
+                if record.pouring_date:
+                    month_key = record.pouring_date.strftime('%b-%y')
+                    
+                    if month_key not in monthly_data:
+                        monthly_data[month_key] = {
+                            'month': month_key,
+                            'sites': []
+                        }
+                    
+                    # Check if site already exists for this month
+                    site_found = False
+                    for site_data in monthly_data[month_key]['sites']:
+                        if site_data['site'] == record.site.SiteName:
+                            site_data['qty'] += record.production_quantity or 0
+                            site_found = True
+                            break
+                    
+                    if not site_found:
+                        monthly_data[month_key]['sites'].append({
+                            'site': record.site.SiteName,
+                            'qty': record.production_quantity or 0,
+                            'percentage': 100.0  # Default percentage
+                        })
+            
+            # Convert to list and sort by month
+            production_data = list(monthly_data.values())
+            # Sort by month (convert back to date for proper sorting)
+            try:
+                production_data.sort(key=lambda x: datetime.strptime(x['month'], '%b-%y'))
+            except:
+                production_data.sort(key=lambda x: x['month'])
+            
+            context['production_data'] = production_data
+    
+    return render(request, 'website/production_allocation.html', context)
+
 @login_required
 def suppliers_fetch_data_from_mssql(request):
     # Connect to the database

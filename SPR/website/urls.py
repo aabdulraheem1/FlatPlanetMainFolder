@@ -53,6 +53,10 @@ urlpatterns = [
     path('upload_on_hand_stock/<str:version>/', views.upload_on_hand_stock, name='upload_on_hand_stock'),
     path('copy_on_hand_stock/<str:version>/', views.copy_on_hand_stock, name='copy_on_hand_stock'),
 
+    # Opening Inventory Snapshot for Parent Groups Inventory Projection
+    path('populate_opening_inventory_snapshot/<str:version>/', views.populate_opening_inventory_snapshot, name='populate_opening_inventory_snapshot'),
+    path('delete_opening_inventory_snapshot/<str:version>/', views.delete_opening_inventory_snapshot, name='delete_opening_inventory_snapshot'),
+
     path('customers/', views.customers_list, name='CustomersList'),
     path('forecast-region/', views.forecast_region_list, name='ForecastRegionList'),
     path('forecast-region/', views.forecast_region_list, name='ForecastRegionList'),
@@ -206,19 +210,11 @@ urlpatterns = [
     # API endpoint for inventory chart data
     path('get_inventory_chart_data/<str:version>/', views.get_inventory_chart_data, name='get_inventory_chart_data'),
 
-    # Production Allocation URLs
-    path('scenario/<str:version>/production-allocation/', views.production_allocation_view, name='production_allocation_view'),
-    path('scenario/<str:version>/search-products/', views.search_products_for_allocation, name='search_products_for_allocation'),
-    path('scenario/<str:version>/get-allocation/', views.get_product_allocation_data, name='get_product_allocation_data'),
-    path('scenario/<str:version>/save-allocation/', views.save_production_allocation, name='save_production_allocation'),
+    # Production allocation endpoints
     path('product-allocation-search/<str:version>/', views.product_allocation_search, name='product_allocation_search'),
-    
-    # Missing URL patterns from review_scenario.html
-    path('auto_level_optimization/<str:version>/', views.auto_level_optimization, name='auto_level_optimization'),
-    path('work_transfer_between_sites/<str:version>/', views.work_transfer_between_sites, name='work_transfer_between_sites'),
-    path('reset_production_plan/<str:version>/', views.reset_production_plan, name='reset_production_plan'),
-    path('product_allocation_load/<str:version>/', views.product_allocation_load, name='product_allocation_load'),
-    path('product_allocation_save/<str:version>/', views.product_allocation_save, name='product_allocation_save'),
+    path('product-allocation-load/<str:version>/', views.product_allocation_load, name='product_allocation_load'),
+    path('product-allocation-save/<str:version>/', views.product_allocation_save, name='product_allocation_save'),
+    path('production_allocation/<str:version>/', views.production_allocation_view, name='production_allocation_view'),
 
     # Add other URL patterns as needed
 ]

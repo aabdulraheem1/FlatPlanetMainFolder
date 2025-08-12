@@ -149,6 +149,23 @@
             </td>
         </tr>
         <tr>
+            <td>Parent Groups Inventory for Inventory Projection</td>
+            <td>
+                <!-- Checkbox dynamically ticked based on OpeningInventorySnapshot records -->
+                <input type="checkbox" {% if opening_inventory_snapshot %}checked{% endif %} disabled>
+            </td>
+            <td>
+                <a href="{% url 'populate_opening_inventory_snapshot' scenario.version %}" class="btn btn-success btn-sm"
+                    onclick="showLoading('Populating parent groups inventory from SQL Server...');">
+                    <img src="/static/icons/upload.png" alt="Populate">
+                </a>
+                <a href="{% url 'delete_opening_inventory_snapshot' scenario.version %}" class="btn btn-danger btn-sm"
+                    onclick="return confirmDelete();">
+                    <img src="/static/icons/delete.png" alt="Delete">
+                </a>
+            </td>
+        </tr>
+        <tr>
     <td>Products Cost from Epicor</td>
     <td>
         <!-- Checkbox dynamically ticked based on database records -->

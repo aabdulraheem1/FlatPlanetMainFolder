@@ -6,10 +6,8 @@ import random
 import time
 import json
 import traceback
-import calendar
 from django.core.files.storage import FileSystemStorage
-from django.contrib import messages
-from .models import SMART_Forecast_Model, scenarios, MasterDataHistoryOfProductionModel, MasterDataCastToDespatchModel, MasterdataIncoTermsModel, MasterDataIncotTermTypesModel, Revenue_Forecast_Model, ProductionAllocationModel
+from .models import SMART_Forecast_Model, scenarios, MasterDataHistoryOfProductionModel, MasterDataCastToDespatchModel, MasterdataIncoTermsModel, MasterDataIncotTermTypesModel, Revenue_Forecast_Model
 import pandas as pd
 from django.shortcuts import render, redirect
 from django.http import HttpResponseRedirect, JsonResponse
@@ -713,8 +711,52 @@ def edit_plant(request, pk):
 @login_required
 def delete_forecast(request, version, data_source):
     """Delete forecast data for a specific version and data source."""
+    from django.db import transaction
+    import logging
+    
+    # Set up logging to make sure we see the output
+    logging.basicConfig(level=logging.INFO)
+    logger = logging.getLogger(__name__)
+    
+    logger.info(f"🚀 DELETE_FORECAST called with version='{version}', data_source='{data_source}'")
+    print(f"🚀 DELETE_FORECAST called with version='{version}', data_source='{data_source}'")
+    
     scenario = get_object_or_404(scenarios, version=version)
-    SMART_Forecast_Model.objects.filter(version=scenario, Data_Source=data_source).delete()
+    
+    # Map the data_source parameter to the actual Data_Source value used in the database
+    if data_source == 'SMART':
+        mapped_data_source = 'SMART'
+    elif data_source == 'Not in SMART':
+        mapped_data_source = 'Not in SMART'
+    elif data_source == 'Fixed Plant':
+        mapped_data_source = 'Fixed Plant'
+    elif data_source == 'Revenue':
+        mapped_data_source = 'Revenue Forecast'  # This is the key mapping!
+    else:
+        mapped_data_source = data_source
+    
+    logger.info(f"🔄 Mapped '{data_source}' to '{mapped_data_source}'")
+    print(f"🔄 Mapped '{data_source}' to '{mapped_data_source}'")
+    
+    # Use an explicit database transaction
+    with transaction.atomic():
+        # Check how many records exist before deletion
+        records_before = SMART_Forecast_Model.objects.filter(version=scenario, Data_Source=mapped_data_source).count()
+        logger.info(f"📊 Found {records_before} records to delete with Data_Source='{mapped_data_source}'")
+        print(f"📊 Found {records_before} records to delete with Data_Source='{mapped_data_source}'")
+        
+        if records_before > 0:
+            # Delete the records
+            deleted_info = SMART_Forecast_Model.objects.filter(version=scenario, Data_Source=mapped_data_source).delete()
+            logger.info(f"🗑️ Delete result: {deleted_info}")
+            print(f"🗑️ Delete result: {deleted_info}")
+            
+            messages.success(request, f"Successfully deleted {deleted_info[0]} {data_source} forecast records.")
+        else:
+            messages.info(request, f"No {data_source} forecast data found to delete.")
+    
+    logger.info(f"✅ DELETE_FORECAST completed, redirecting to edit_scenario")
+    print(f"✅ DELETE_FORECAST completed, redirecting to edit_scenario")
     
     return redirect('edit_scenario', version=version)
 
@@ -1303,7 +1345,11 @@ def review_scenario(request, version):
         if inventory_snapshot:
             snapshot_date = inventory_snapshot.date_of_snapshot.strftime('%B %d, %Y')
             inventory_snapshot_date = inventory_snapshot.date_of_snapshot  # Keep the date object for template
-    except:
+            print(f"DEBUG: inventory_snapshot_date = {inventory_snapshot_date} (type: {type(inventory_snapshot_date)})")
+        else:
+            print(f"DEBUG: No inventory_snapshot found for scenario {scenario.version}")
+    except Exception as e:
+        print(f"DEBUG: Exception getting inventory snapshot: {e}")
         snapshot_date = "Date not available"
         inventory_snapshot_date = None
 
@@ -1631,7 +1677,7 @@ def review_scenario(request, version):
         print("DEBUG: No cached control tower data found, calculating fast control tower data...")
         # Calculate fast control tower data if not cached
         try:
-            complete_control_tower_data = get_fast_control_tower_data(scenario)
+            complete_control_tower_data = calculate_control_tower_data(scenario.version)
             
             control_tower_data = {
                 'combined_demand_plan': complete_control_tower_data.get('combined_demand_plan', {}),
@@ -1759,6 +1805,7 @@ def review_scenario(request, version):
     
     # SIMPLE INVENTORY PROCESSING - No complex calculations
     print(f"DEBUG: Using simple inventory data for scenario: {scenario.version}")
+    print(f"DEBUG: About to pass inventory_snapshot_date to context: {inventory_snapshot_date} (type: {type(inventory_snapshot_date)})")
 
     context = {
         'version': scenario.version,
@@ -2711,8 +2758,28 @@ import pandas as pd  # Keep for SQL read operations
 # ...existing code...
 
 import logging
+
 @login_required
 def upload_on_hand_stock(request, version):
+    """
+    CRITICAL FUNCTION: Upload inventory data and auto-populate OpeningInventorySnapshot
+    
+    IMPORTANT FOR FUTURE COPILOT/DEVELOPERS:
+    ==========================================
+    This function does TWO SEPARATE things when executed via URL 'upload_on_hand_stock/<str:version>/':
+    
+    1. UPLOADS MasterDataInventory records from PowerBI data (product, site, quantities, costs)
+    2. AUTO-TRIGGERS OpeningInventorySnapshot population from SQL SERVER (not from uploaded data)
+    
+    The OpeningInventorySnapshot:
+    - Gets data from SQL Server using get_opening_inventory_by_group() function
+    - Aggregates by parent_product_group (not individual products/sites)  
+    - Creates shared snapshots by snapshot_date (not scenario-specific)
+    - Replaces expensive 400+ second SQL queries with fast local lookups
+    
+    DO NOT REMOVE the OpeningInventorySnapshot auto-trigger from this function!
+    It should ALWAYS be populated when inventory is uploaded to ensure performance optimization.
+    """
 
     user_name = request.user.username
 
@@ -2797,7 +2864,9 @@ def upload_on_hand_stock(request, version):
                         Site.SiteName AS site,
                         Inventory.StockOnHand AS onhandstock_qty,
                         Inventory.StockInTransit AS intransitstock_qty,
-                        MAX(Inventory.WarehouseCostAUD) AS cost_aud
+                        MAX(Inventory.WarehouseCostAUD) AS cost_aud,
+                        SUM(Inventory.StockOnHandValueAUD) AS stockonhand_value_aud,
+                        SUM(Inventory.StockInTransitValueAUD) AS intransit_value_aud
                     FROM PowerBI.[Inventory Monthly History] AS Inventory
                     LEFT JOIN PowerBI.Site AS Site
                         ON Inventory.skSiteId = Site.skSiteId
@@ -3058,9 +3127,9 @@ def upload_on_hand_stock(request, version):
             MasterDataInventory.objects.bulk_create(bulk_objs, batch_size=10000)
             logger.warning(f"✅ UPLOAD COMPLETE: {len(bulk_objs)} inventory records uploaded successfully")
             
-            # CRITICAL: Auto-populate SHARED Opening Inventory Snapshot after successful upload
-            print(f"🚀 AUTO-POPULATING SHARED Opening Inventory Snapshot for date {snapshot_date}...")
-            print(f"   This snapshot will be REUSABLE by ALL scenarios with the same date!")
+            # AUTO-TRIGGER: Populate OpeningInventorySnapshot from SQL Server when inventory is uploaded
+            print(f"🚀 AUTO-TRIGGERING OpeningInventorySnapshot population for date {snapshot_date}...")
+            print(f"   This will fetch fresh data from SQL Server and create shared snapshots!")
             try:
                 from .models import OpeningInventorySnapshot
                 from datetime import datetime
@@ -3068,45 +3137,42 @@ def upload_on_hand_stock(request, version):
                 # Convert snapshot_date string to date object
                 snapshot_date_obj = datetime.strptime(snapshot_date, '%Y-%m-%d').date()
                 
-                # Force refresh the SHARED inventory snapshot with fresh data
-                snapshot_result = OpeningInventorySnapshot.get_or_create_snapshot(
-                    scenario=scenario,  # Only used for tracking and fallback
+                # Use the proper method to get/create snapshot from SQL Server
+                inventory_by_group = OpeningInventorySnapshot.get_or_create_snapshot(
+                    scenario=scenario,
                     snapshot_date=snapshot_date_obj,
-                    force_refresh=True,  # Always refresh after new inventory upload
+                    force_refresh=True,  # Force refresh to get fresh SQL Server data
                     user=request.user,
-                    reason='inventory_upload'
+                    reason='inventory_upload_trigger'
                 )
                 
-                if snapshot_result:
-                    snapshot_count = len(snapshot_result)
-                    total_value = sum(snapshot_result.values())
-                    print(f"📊 SHARED Opening Inventory Snapshot created: {snapshot_count} product groups, total value: ${total_value:,.2f}")
-                    print(f"📊 This snapshot can now be used by ANY scenario with date {snapshot_date}!")
-                    logger.warning(f"📊 SHARED Opening Inventory Snapshot populated: {snapshot_count} product groups")
+                if inventory_by_group:
+                    total_value = sum(inventory_by_group.values())
+                    group_count = len(inventory_by_group)
                     
                     messages.success(request, 
                         f'Successfully uploaded {len(bulk_objs):,} inventory records for {snapshot_date}. '
-                        f'SHARED opening inventory snapshot created with {snapshot_count} product groups (Total: ${total_value:,.2f}). '
-                        f'This snapshot is now available for ALL scenarios using {snapshot_date} - no duplication needed! '
-                        f'Future inventory projections will be 95% faster!'
+                        f'OpeningInventorySnapshot created from SQL Server with {group_count} product groups (Total: ${total_value:,.2f}). '
+                        f'This snapshot is now shared across ALL scenarios using {snapshot_date}!'
                     )
+                    print(f"✅ SUCCESS: OpeningInventorySnapshot populated from SQL Server - {group_count} groups, ${total_value:,.2f} total")
                 else:
-                    logger.warning("⚠️ SHARED Opening Inventory Snapshot population returned empty result")
                     messages.success(request, 
                         f'Successfully uploaded {len(bulk_objs):,} inventory records for {snapshot_date}. '
-                        f'SHARED opening inventory snapshot population completed but returned no data.'
+                        f'However, OpeningInventorySnapshot could not be populated from SQL Server.'
                     )
+                    print(f"⚠️ WARNING: OpeningInventorySnapshot population returned empty results")
                     
             except Exception as snapshot_error:
-                logger.error(f"❌ SHARED SNAPSHOT POPULATION ERROR: {snapshot_error}")
-                print(f"❌ Failed to populate SHARED Opening Inventory Snapshot: {snapshot_error}")
+                logger.error(f"❌ OpeningInventorySnapshot population failed: {snapshot_error}")
+                print(f"❌ Failed to populate OpeningInventorySnapshot from SQL Server: {snapshot_error}")
                 import traceback
                 print(f"Full traceback: {traceback.format_exc()}")
                 
                 # Don't fail the entire upload - just warn the user
                 messages.success(request, 
                     f'Successfully uploaded {len(bulk_objs):,} inventory records for {snapshot_date}. '
-                    f'However, SHARED opening inventory snapshot population failed: {str(snapshot_error)}. '
+                    f'However, OpeningInventorySnapshot population from SQL Server failed: {str(snapshot_error)}. '
                     f'Inventory projections may be slower until this is resolved.'
                 )
         else:
@@ -3154,6 +3220,131 @@ def copy_on_hand_stock(request, version):
         'target_scenario': target_scenario,
         'all_scenarios': all_scenarios,
     })
+
+
+@login_required
+def populate_opening_inventory_snapshot(request, version):
+    """
+    Populate OpeningInventorySnapshot from SQL Server data for inventory projections.
+    This is separated from upload_on_hand_stock to keep concerns separate.
+    """
+    scenario = get_object_or_404(scenarios, version=version)
+    
+    if request.method == 'POST':
+        snapshot_date_str = request.POST.get('snapshot_date')
+        
+        if not snapshot_date_str:
+            messages.error(request, 'Please select a snapshot date.')
+            return render(request, 'website/populate_opening_inventory_snapshot.html', {'scenario': scenario})
+        
+        try:
+            from .models import OpeningInventorySnapshot, MasterDataInventory
+            from datetime import datetime
+            
+            # Convert snapshot_date string to date object
+            snapshot_date_obj = datetime.strptime(snapshot_date_str, '%Y-%m-%d').date()
+            
+            print(f"🚀 POPULATING OpeningInventorySnapshot from SQL Server for date {snapshot_date_obj}...")
+            
+            # Use the proper method to get/create snapshot from SQL Server
+            inventory_by_group = OpeningInventorySnapshot.get_or_create_snapshot(
+                scenario=scenario,
+                snapshot_date=snapshot_date_obj,
+                force_refresh=True,  # Force refresh to get fresh SQL Server data
+                user=request.user,
+                reason='manual_populate'
+            )
+            
+            if inventory_by_group:
+                total_value = sum(inventory_by_group.values())
+                group_count = len(inventory_by_group)
+                
+                messages.success(request, 
+                    f'Successfully populated OpeningInventorySnapshot from SQL Server for {snapshot_date_obj}. '
+                    f'Created {group_count} parent product groups with total value: ${total_value:,.2f}. '
+                    f'This snapshot is now shared across ALL scenarios using {snapshot_date_obj}!'
+                )
+                print(f"✅ SUCCESS: OpeningInventorySnapshot populated - {group_count} groups, ${total_value:,.2f} total")
+            else:
+                messages.error(request, 
+                    f'Failed to populate OpeningInventorySnapshot from SQL Server for {snapshot_date_obj}. '
+                    f'No data was returned from the SQL Server query.'
+                )
+                print(f"⚠️ WARNING: OpeningInventorySnapshot population returned empty results")
+                
+        except Exception as e:
+            messages.error(request, f'Error populating OpeningInventorySnapshot: {str(e)}')
+            print(f"❌ Error populating OpeningInventorySnapshot: {e}")
+            import traceback
+            print(f"Full traceback: {traceback.format_exc()}")
+            
+        return redirect('edit_scenario', version=version)
+    
+    # GET request - show form to select snapshot date
+    # Get available snapshot dates from MasterDataInventory
+    from .models import MasterDataInventory
+    available_dates = MasterDataInventory.objects.filter(
+        version=scenario
+    ).values_list('date_of_snapshot', flat=True).distinct().order_by('-date_of_snapshot')
+    
+    return render(request, 'website/populate_opening_inventory_snapshot.html', {
+        'scenario': scenario,
+        'available_dates': available_dates,
+    })
+
+
+@login_required  
+def delete_opening_inventory_snapshot(request, version):
+    """
+    Delete OpeningInventorySnapshot records for a specific scenario.
+    """
+    scenario = get_object_or_404(scenarios, version=version)
+    
+    if request.method == 'POST':
+        snapshot_date_str = request.POST.get('snapshot_date')
+        
+        if not snapshot_date_str:
+            messages.error(request, 'Please select a snapshot date to delete.')
+            return redirect('edit_scenario', version=version)
+        
+        try:
+            from .models import OpeningInventorySnapshot
+            from datetime import datetime
+            
+            # Convert snapshot_date string to date object
+            snapshot_date_obj = datetime.strptime(snapshot_date_str, '%Y-%m-%d').date()
+            
+            # Delete snapshot records for this date
+            deleted_count = OpeningInventorySnapshot.objects.filter(
+                snapshot_date=snapshot_date_obj
+            ).delete()
+            
+            if deleted_count[0] > 0:
+                messages.success(request, 
+                    f'Successfully deleted {deleted_count[0]} OpeningInventorySnapshot records for {snapshot_date_obj}. '
+                    f'This affects ALL scenarios using this snapshot date.'
+                )
+                print(f"✅ Deleted {deleted_count[0]} OpeningInventorySnapshot records for {snapshot_date_obj}")
+            else:
+                messages.warning(request, f'No OpeningInventorySnapshot records found for {snapshot_date_obj}.')
+                
+        except Exception as e:
+            messages.error(request, f'Error deleting OpeningInventorySnapshot: {str(e)}')
+            print(f"❌ Error deleting OpeningInventorySnapshot: {e}")
+            
+        return redirect('edit_scenario', version=version)
+    
+    # GET request - show confirmation page
+    from .models import OpeningInventorySnapshot
+    available_dates = OpeningInventorySnapshot.objects.values_list(
+        'snapshot_date', flat=True
+    ).distinct().order_by('-snapshot_date')
+    
+    return render(request, 'website/delete_opening_inventory_snapshot.html', {
+        'scenario': scenario,
+        'available_dates': available_dates,
+    })
+
 
 from django.shortcuts import render, get_object_or_404, redirect
 from .models import MasterDataCustomersModel, MasterDataForecastRegionModel  # Replace `Customers` with your actual model name
@@ -6311,10 +6502,8 @@ def work_transfer_between_sites(request, version):
     from django.http import JsonResponse
     from .work_transfer_polars import get_work_transfer_data_polars, save_transfers_polars
     
-    print(f"� WORK TRANSFER DEBUG: Function called - Method: {request.method}, Version: {version}")
-    print(f"� WORK TRANSFER DEBUG: User: {request.user}, Authenticated: {request.user.is_authenticated}")
-    print(f"🔥 WORK TRANSFER DEBUG: GET parameters: {dict(request.GET)}")
-    print(f"🔥 WORK TRANSFER DEBUG: Full URL: {request.build_absolute_uri()}")
+    print(f"🔍 DEBUG: work_transfer_between_sites called - Method: {request.method}, Version: {version}")
+    print(f"🔍 DEBUG: GET parameters: {dict(request.GET)}")
     
     scenario = get_object_or_404(scenarios, version=version)
     
@@ -8103,313 +8292,256 @@ def production_insights_dashboard(request, version):
 
 
 @login_required
-def production_allocation_view(request, version):
-    """Production allocation management - search products and manage splits"""
-    scenario = get_object_or_404(scenarios, version=version)
-    
-    search_term = request.GET.get('search', '').strip()
-    products = []
-    selected_product = None
-    production_data = []
-    
-    if search_term and len(search_term) >= 2:
-        # Simple Django filter - fast and efficient
-        products = CalculatedProductionModel.objects.filter(
-            version=scenario,
-            product__Product__icontains=search_term
-        ).select_related('product').values(
-            'product__Product',
-            'product__ProductDescription'
-        ).distinct().order_by('product__Product')[:50]
-    
-    # If specific product selected
-    product_id = request.GET.get('product_id')
-    if product_id:
-        selected_product = product_id
-        
-        # Get actual production data for this product grouped by month/site
-        from django.db.models import Sum
-        from collections import defaultdict
-        import calendar
-        
-        production_records = CalculatedProductionModel.objects.filter(
-            version=scenario,
-            product__Product=product_id
-        ).select_related('site').values(
-            'pouring_date__year',
-            'pouring_date__month',
-            'site__SiteName'
-        ).annotate(
-            total_qty=Sum('production_quantity'),
-            total_tonnes=Sum('tonnes')
-        ).order_by('pouring_date__year', 'pouring_date__month')
-        
-        # DEBUG: Print query info for troubleshooting
-        print(f"DEBUG: Looking for product '{product_id}' in scenario '{scenario.version}'")
-        print(f"DEBUG: Found {production_records.count()} production records")
-        if production_records.count() == 0:
-            # Check if product exists at all
-            all_products = CalculatedProductionModel.objects.filter(version=scenario).values('product__Product').distinct().count()
-            print(f"DEBUG: Total distinct products in scenario: {all_products}")
-            
-        # Group production data by month
-        monthly_production = defaultdict(list)
-        
-        for record in production_records:
-            year = record['pouring_date__year']
-            month = record['pouring_date__month']
-            
-            # Create month key like "Jul-25"
-            month_abbr = calendar.month_abbr[month]
-            year_short = str(year)[-2:]  # Last 2 digits of year
-            month_key = f"{month_abbr}-{year_short}"
-            
-            monthly_production[month_key].append({
-                'site': record['site__SiteName'],
-                'qty': record['total_qty'],
-                'tonnes': record['total_tonnes']
-            })
-        
-        # Convert to list for template
-        production_data = []
-        for month_key, sites_data in sorted(monthly_production.items()):
-            # Calculate total for the month
-            total_qty = sum(site['qty'] for site in sites_data)
-            
-            # Calculate percentages
-            sites_with_percent = []
-            for site_data in sites_data:
-                percentage = (site_data['qty'] / total_qty * 100) if total_qty > 0 else 0
-                sites_with_percent.append({
-                    'site': site_data['site'],
-                    'qty': site_data['qty'],
-                    'tonnes': site_data['tonnes'],
-                    'percentage': round(percentage, 1)
-                })
-            
-            production_data.append({
-                'month': month_key,
-                'sites': sites_with_percent,
-                'total_qty': total_qty
-            })
-    
-    context = {
-        'scenario': scenario,
-        'search_term': search_term,
-        'products': products,
-        'selected_product': selected_product,
-        'production_data': production_data,
-        'version': version
-    }
-    
-    return render(request, 'website/production_allocation.html', context)
-
-
-@login_required
-def search_products_for_allocation(request, version):
-    """Search products that have production data for allocation"""
-    scenario = get_object_or_404(scenarios, version=version)
+def product_allocation_search(request, version):
+    """Search for products with production data"""
     search_term = request.GET.get('search', '').strip()
     
     if len(search_term) < 2:
-        return JsonResponse({
-            'success': False,
-            'message': 'Please enter at least 2 characters'
-        })
-    
-    # Find products with production data - optimized for speed
-    from django.db.models import Sum, Count
-    
-    # Fast query without heavy aggregation
-    products = CalculatedProductionModel.objects.filter(
-        version=scenario,
-        product__Product__icontains=search_term
-    ).select_related('product').values(
-        'product__Product',
-        'product__ProductDescription'
-    ).distinct().order_by('product__Product')[:50]  # More results, faster query
-    
-    products_list = []
-    for p in products:
-        products_list.append({
-            'product': p['product__Product'],
-            'description': p['product__ProductDescription'] or '',
-            'total_qty': 0,  # Skip aggregation for speed
-            'total_tonnes': 0
-        })
-    
-    return JsonResponse({
-        'success': True,
-        'products': products_list,
-        'total_found': len(products_list),
-        'search_term': search_term
-    })
-
-
-@login_required  
-def get_product_allocation_data(request, version):
-    """Get production data for a specific product to show allocation form"""
-    scenario = get_object_or_404(scenarios, version=version)
-    product_id = request.GET.get('product_id')
-    
-    if not product_id:
-        return JsonResponse({'success': False, 'error': 'No product selected'})
+        return JsonResponse({'success': False, 'error': 'Please enter at least 2 characters'})
     
     try:
+        scenario = get_object_or_404(scenarios, version=version)
+        
+        # Find products in CalculatedProductionModel with aggregated data
+        products = CalculatedProductionModel.objects.filter(
+            version=scenario,
+            product__Product__icontains=search_term
+        ).values(
+            'product__Product',
+            'product__ProductDescription'
+        ).annotate(
+            total_qty=Sum('production_quantity')
+        ).order_by('product__Product')[:20]  # Limit to 20 results
+        
+        # Get the primary site for each product
+        product_list = []
+        for product in products:
+            # Get most common site for this product
+            primary_site = CalculatedProductionModel.objects.filter(
+                version=scenario,
+                product__Product=product['product__Product']
+            ).values('site__SiteName').annotate(
+                total=Sum('production_quantity')
+            ).order_by('-total').first()
+            
+            product_list.append({
+                'Product': product['product__Product'],
+                'ProductDescription': product['product__ProductDescription'] or '',
+                'total_qty': round(product['total_qty'], 1),
+                'site_name': primary_site['site__SiteName'] if primary_site else 'N/A'
+            })
+        
+        return JsonResponse({
+            'success': True,
+            'products': product_list
+        })
+        
+    except Exception as e:
+        return JsonResponse({'success': False, 'error': str(e)})
+
+
+@login_required
+def product_allocation_load(request, version):
+    """Load allocation data for a specific product"""
+    product_id = request.GET.get('product')
+    
+    if not product_id:
+        return JsonResponse({'success': False, 'error': 'Product ID required'})
+    
+    try:
+        scenario = get_object_or_404(scenarios, version=version)
         product = get_object_or_404(MasterDataProductModel, Product=product_id)
         
-        # Get monthly production data grouped by month
-        from django.db.models import Sum
-        from collections import defaultdict
-        import calendar
+        # Get all sites for dropdown
+        all_sites = list(MasterDataPlantModel.objects.values_list('SiteName', flat=True).order_by('SiteName'))
         
+        # Get production data by month
         production_data = CalculatedProductionModel.objects.filter(
             version=scenario,
             product=product
         ).values(
             'pouring_date__year',
-            'pouring_date__month', 
+            'pouring_date__month',
             'site__SiteName'
         ).annotate(
-            total_qty=Sum('production_quantity'),
-            total_tonnes=Sum('tonnes')
-        ).order_by('pouring_date__year', 'pouring_date__month')
+            total_qty=Sum('production_quantity')
+        ).order_by('pouring_date__year', 'pouring_date__month', '-total_qty')
         
-        # Group by month-year and find the primary site per month
-        monthly_data = defaultdict(lambda: {'total_qty': 0, 'total_tonnes': 0, 'sites': {}})
-        
+        # Group by month and get primary site
+        monthly_data = {}
         for record in production_data:
             year = record['pouring_date__year']
             month = record['pouring_date__month']
-            month_key = f"{calendar.month_abbr[month]}-{str(year)[2:]}"  # e.g., "Jul-25"
-            site = record['site__SiteName']
+            month_key = f"{['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][month-1]}-{str(year)[2:]}"
             
-            monthly_data[month_key]['total_qty'] += record['total_qty'] or 0
-            monthly_data[month_key]['total_tonnes'] += record['total_tonnes'] or 0
-            
-            if site not in monthly_data[month_key]['sites']:
-                monthly_data[month_key]['sites'][site] = {'qty': 0, 'tonnes': 0}
-            
-            monthly_data[month_key]['sites'][site]['qty'] += record['total_qty'] or 0
-            monthly_data[month_key]['sites'][site]['tonnes'] += record['total_tonnes'] or 0
-        
-        # Get all available sites
-        all_sites = list(MasterDataPlantModel.objects.values_list('SiteName', flat=True).order_by('SiteName'))
-        
-        # Format data for the frontend
-        allocation_data = []
-        for month_key, data in monthly_data.items():
-            # Find the primary site (site with most production)
-            primary_site = ''
-            max_qty = 0
-            for site, site_data in data['sites'].items():
-                if site_data['qty'] > max_qty:
-                    max_qty = site_data['qty'] 
-                    primary_site = site
-            
-            allocation_data.append({
-                'month': month_key,
-                'total_qty': round(data['total_qty'], 1),
-                'total_tonnes': round(data['total_tonnes'], 1),
-                'site1': primary_site,
-                'site1_qty': round(data['sites'].get(primary_site, {}).get('qty', 0), 1),
-                'site1_percent': 100.0,
-                'site2': '',
-                'site2_percent': 0.0,
-                'site3': '',
-                'site3_percent': 0.0
-            })
+            if month_key not in monthly_data:
+                monthly_data[month_key] = {
+                    'qty': round(record['total_qty'], 1),
+                    'site': record['site__SiteName']
+                }
         
         return JsonResponse({
             'success': True,
             'product_name': product.Product,
-            'product_description': product.ProductDescription or '',
-            'allocation_data': allocation_data,
+            'allocation_data': monthly_data,
             'all_sites': all_sites
         })
         
     except Exception as e:
-        return JsonResponse({
-            'success': False,
-            'error': str(e)
-        })
+        return JsonResponse({'success': False, 'error': str(e)})
 
-
-@login_required
-def save_production_allocation(request, version):
-    """Save the production allocation splits"""
-    if request.method != 'POST':
-        messages.error(request, 'Invalid request method')
-        return redirect('production_allocation_view', version=version)
-    
-    scenario = get_object_or_404(scenarios, version=version)
-    product_id = request.POST.get('product_id')
-    
-    if not product_id:
-        messages.error(request, 'Product ID is required')
-        return redirect('production_allocation_view', version=version)
-    
-    try:
-        # Delete existing allocations for this product
-        ProductionAllocationModel.objects.filter(
-            scenario=scenario,
-            product=product_id
-        ).delete()
-        
-        # Save new allocations from form
-        saved_count = 0
-        months = ['1', '2', '3', '4', '5', '6', '7', '8', '9', 'A', 'B', 'C']
-        
-        for month in months:
-            # Get data for each site
-            for site_num in ['1', '2', '3']:
-                site_field = f'month_{month}_site{site_num}'
-                percent_field = f'month_{month}_percent{site_num}'
-                
-                site_name = request.POST.get(site_field, '').strip()
-                percentage = request.POST.get(percent_field, '0').strip()
-                
-                if site_name and percentage and float(percentage) > 0:
-                    ProductionAllocationModel.objects.create(
-                        scenario=scenario,
-                        product=product_id,
-                        month=month,
-                        site=site_name,
-                        percentage=float(percentage),
-                        created_by=request.user
-                    )
-                    saved_count += 1
-        
-        messages.success(request, f'Successfully saved {saved_count} allocation entries for product {product_id}')
-        return redirect('production_allocation_view', version=version)
-        
-    except Exception as e:
-        messages.error(request, f'Error saving allocation: {str(e)}')
-        return redirect('production_allocation_view', version=version)
-
-
-# ========== MISSING VIEW FUNCTIONS FOR URL PATTERNS ==========
-# These functions are referenced in review_scenario.html but were missing from this views.py file
-
-# Removed placeholder auto_level_optimization - using real implementation above
-
-# Removed placeholder work_transfer_between_sites - using real implementation above
-# Removed placeholder reset_production_plan - using real implementation above
-
-@login_required
-def product_allocation_load(request, version):
-    """Product allocation load functionality"""
-    # Placeholder implementation - you may need to implement the actual logic
-    return JsonResponse({'status': 'success', 'message': 'Product allocation load placeholder'})
-
-@login_required
-def product_allocation_search(request, version):
-    """Product allocation search functionality"""
-    # Placeholder implementation - you may need to implement the actual logic
-    return JsonResponse({'status': 'success', 'message': 'Product allocation search placeholder'})
 
 @login_required
 def product_allocation_save(request, version):
-    """Product allocation save functionality"""
-    # Placeholder implementation - you may need to implement the actual logic
-    return JsonResponse({'status': 'success', 'message': 'Product allocation save placeholder'})
+    """Save production allocation splits"""
+    if request.method != 'POST':
+        return JsonResponse({'success': False, 'error': 'POST method required'})
+    
+    product_id = request.POST.get('product')
+    allocation_data = request.POST.get('allocation_data')
+    
+    if not product_id or not allocation_data:
+        return JsonResponse({'success': False, 'error': 'Product and allocation data required'})
+    
+    try:
+        scenario = get_object_or_404(scenarios, version=version)
+        product = get_object_or_404(MasterDataProductModel, Product=product_id)
+        allocation_data = json.loads(allocation_data)
+        
+        # Process each month's allocation
+        for month_key, data in allocation_data.items():
+            sites = data.get('sites', [])
+            percentages = [float(p) if p else 0 for p in data.get('percentages', [])]
+            total_qty = float(data.get('qty', 0))
+            
+            # Parse month-year back to date
+            month_name, year_short = month_key.split('-')
+            year = 2000 + int(year_short)
+            month_num = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'].index(month_name) + 1
+            
+            # Delete existing records for this product/month
+            CalculatedProductionModel.objects.filter(
+                version=scenario,
+                product=product,
+                pouring_date__year=year,
+                pouring_date__month=month_num
+            ).delete()
+            
+            # Create new records based on allocation
+            for i, site_name in enumerate(sites):
+                if site_name and i < len(percentages) and percentages[i] > 0:
+                    try:
+                        site = MasterDataPlantModel.objects.get(SiteName=site_name)
+                        allocated_qty = total_qty * (percentages[i] / 100)
+                        
+                        # Create new production record
+                        CalculatedProductionModel.objects.create(
+                            version=scenario,
+                            product=product,
+                            site=site,
+                            pouring_date=f"{year}-{month_num:02d}-15",  # Mid-month date
+                            production_quantity=allocated_qty,
+                            tonnes=allocated_qty * (product.DressMass or 0) / 1000,  # Convert to tonnes
+                            product_group=product.ProductGroup,
+                            parent_product_group=product.ParentProductGroup,
+                            price_aud=0,  # Will be calculated separately if needed
+                            production_aud=0,  # Will be calculated separately if needed
+                            revenue_aud=0,  # Will be calculated separately if needed
+                        )
+                        
+                    except MasterDataPlantModel.DoesNotExist:
+                        continue
+        
+        return JsonResponse({'success': True, 'message': 'Allocation saved successfully'})
+        
+    except Exception as e:
+        return JsonResponse({'success': False, 'error': str(e)})
+
+@login_required
+def production_allocation_view(request, version):
+    """Production Allocation View - displays production allocation data and allows editing"""
+    from django.shortcuts import render, get_object_or_404
+    from django.db.models import Sum, Count, Q
+    from django.http import JsonResponse
+    from .models import (
+        scenarios, ProductionAllocationModel, CalculatedProductionModel, 
+        MasterDataProductModel, MasterDataPlantModel
+    )
+    import json
+    from collections import defaultdict
+    import calendar
+    
+    # Get scenario
+    scenario = get_object_or_404(scenarios, version=version)
+    
+    # Get search parameters
+    search_term = request.GET.get('search', '').strip()
+    selected_product = request.GET.get('product', '')
+    
+    # Base queryset for production data
+    production_data = CalculatedProductionModel.objects.filter(version=version)
+    
+    # Apply search filters
+    if search_term:
+        production_data = production_data.filter(
+            Q(product_code__icontains=search_term) |
+            Q(product_description__icontains=search_term)
+        )
+    
+    if selected_product:
+        production_data = production_data.filter(product_code=selected_product)
+    
+    # Get monthly production data - group by product and month
+    monthly_data = defaultdict(lambda: defaultdict(float))
+    
+    for record in production_data.select_related():
+        product_key = f"{record.product_code} - {record.product_description}"
+        
+        # Parse date and get month/year
+        if hasattr(record, 'shipping_date') and record.shipping_date:
+            month_year = record.shipping_date.strftime('%Y-%m')
+            monthly_data[product_key][month_year] += float(record.calculated_production or 0)
+    
+    # Convert to list format for template
+    production_summary = []
+    for product, months in monthly_data.items():
+        row = {'product': product, 'months': dict(months)}
+        row['total'] = sum(months.values())
+        production_summary.append(row)
+    
+    # Get allocation data
+    allocation_data = ProductionAllocationModel.objects.filter(version=version)
+    if search_term:
+        allocation_data = allocation_data.filter(
+            Q(product_code__icontains=search_term) |
+            Q(product_description__icontains=search_term)
+        )
+    
+    # Get available products for dropdown
+    available_products = production_data.values('product_code', 'product_description').distinct()
+    
+    # Get month headers for the next 12 months
+    from datetime import datetime, timedelta
+    import calendar
+    
+    current_date = datetime.now()
+    month_headers = []
+    for i in range(12):
+        month_date = current_date + timedelta(days=30*i)
+        month_key = month_date.strftime('%Y-%m')
+        month_name = month_date.strftime('%b %Y')
+        month_headers.append({'key': month_key, 'name': month_name})
+    
+    context = {
+        'scenario': scenario,
+        'version': version,
+        'production_summary': production_summary,
+        'allocation_data': allocation_data,
+        'available_products': available_products,
+        'month_headers': month_headers,
+        'search_term': search_term,
+        'selected_product': selected_product,
+        'user_name': request.user.username if request.user.is_authenticated else 'Anonymous',
+    }
+    
+    return render(request, 'production_allocation.html', context)
