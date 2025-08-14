@@ -1,0 +1,88 @@
+{% extends "website/base.html" %}
+
+{% block title %}Populate Monthly Poured Data - {{ scenario.version }}{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <h2>Populate Monthly Poured Data</h2>
+    <p class="lead">Populate actual pour data per site from PowerBI for scenario <strong>{{ scenario.version }}</strong></p>
+    
+    <div class="row">
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-header">
+                    <h5>Select Snapshot Date</h5>
+                </div>
+                <div class="card-body">
+                    <form method="post">
+                        {% csrf_token %}
+                        
+                        <div class="form-group">
+                            <label for="snapshot_date">Snapshot Date:</label>
+                            <select name="snapshot_date" id="snapshot_date" class="form-control" required>
+                                <option value="">Select a snapshot date</option>
+                                {% for date in available_dates %}
+                                    <option value="{{ date|date:'Y-m-d' }}">{{ date|date:'M d, Y' }}</option>
+                                {% endfor %}
+                            </select>
+                            <small class="form-text text-muted">
+                                Choose the same snapshot date used in MasterDataInventory. 
+                                Data will be fetched for this month and all earlier months.
+                            </small>
+                        </div>
+                        
+                        <div class="alert alert-info">
+                            <strong>What this does:</strong>
+                            <ul class="mb-0">
+                                <li>Connects to bknew-sql02 PowerBI database</li>
+                                <li>Fetches actual monthly pour data by site (MTJ1, COI2, XUZ1, MER1, WUN1, WOD1, CHI1)</li>
+                                <li>Includes data for the snapshot month and all earlier months</li>
+                                <li>Organizes data by fiscal years (FY24, FY25, FY26, FY27)</li>
+                                <li>Calculates monthly tonnes from HeatProducts and Products tables</li>
+                                <li>Stores locally for fast access instead of slow PowerBI queries</li>
+                            </ul>
+                        </div>
+                        
+                        <button type="submit" class="btn btn-success" 
+                                onclick="this.disabled=true; this.form.submit(); showLoading('Populating actual pour data from PowerBI...');">
+                            <i class="fas fa-database"></i> Populate Monthly Poured Data
+                        </button>
+                        
+                        <a href="{% url 'edit_scenario' scenario.version %}" class="btn btn-secondary ml-2">
+                            <i class="fas fa-arrow-left"></i> Back to Scenario
+                        </a>
+                    </form>
+                </div>
+            </div>
+        </div>
+        
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-header">
+                    <h5>Data Source Information</h5>
+                </div>
+                <div class="card-body">
+                    <p><strong>Source Server:</strong> bknew-sql02</p>
+                    <p><strong>Database:</strong> Bradken_Data_Warehouse</p>
+                    <p><strong>Main Tables:</strong> PowerBI.HeatProducts, PowerBI.Products, PowerBI.Site</p>
+                    <p><strong>Data Range:</strong> From fiscal year start to selected snapshot date</p>
+                    
+                    <div class="alert alert-warning">
+                        <strong>Note:</strong> This operation may take several minutes depending on the data volume. 
+                        The system will fetch and process actual production data from all foundry sites.
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+function showLoading(message) {
+    // Show loading indicator
+    if (typeof showLoadingIndicator === 'function') {
+        showLoadingIndicator(message);
+    }
+}
+</script>
+{% endblock %}

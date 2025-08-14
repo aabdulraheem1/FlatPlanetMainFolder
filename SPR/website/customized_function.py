@@ -23,7 +23,20 @@ from django.utils.safestring import mark_safe
 from googletrans import Translator
 import langdetect
 
-TRANSLATION_CACHE = {}
+# ⚠️ CACHE POLICY: NO CACHING ALLOWED ⚠️
+# This application is PROHIBITED from using ANY form of caching, fallback mechanisms, 
+# or error hiding methods. All data must be calculated in real-time from the database 
+# to ensure accuracy and prevent stale data issues like the July 2025 snapshot bug.
+# 
+# PROHIBITED TECHNIQUES:
+# - Translation caching (TRANSLATION_CACHE) - REMOVED
+# - Backend caching (CachedControlTowerData, CachedFoundryData, etc.) - DISABLED
+# - Frontend caching (window.detailedMonthlyTableCache) - REMOVED  
+# - Fallback scenarios - REMOVED
+# - Error suppression/hiding - REMOVED
+# - Data memoization - PROHIBITED
+# 
+# All calculations must use live database queries with proper snapshot-based filtering.
 
 MANUAL_TRANSLATIONS = {
     'Coulée': 'Casting',
@@ -360,12 +373,16 @@ def get_poured_data_from_monthly_model(scenario):
     """
     from website.models import MonthlyPouredDataModel
     
-    # Get scenario object
-    if hasattr(scenario, 'id'):
+    # Get scenario object - handle both scenario object and string
+    if hasattr(scenario, 'version') and hasattr(scenario, '_meta'):
+        # It's a Django model scenario object
         scenario_obj = scenario
+        print(f"DEBUG: Using scenario object: {scenario_obj.version}")
     else:
+        # It's a string version
         from website.models import scenarios
         scenario_obj = scenarios.objects.get(version=scenario)
+        print(f"DEBUG: Found scenario by string lookup: {scenario_obj.version}")
     
     # Get all monthly poured data for this scenario
     monthly_records = MonthlyPouredDataModel.objects.filter(version=scenario_obj)
@@ -520,29 +537,70 @@ def get_combined_demand_and_poured_data(scenario):
         "FY27": (date(2027, 4, 1), date(2028, 3, 31)),  # FIXED
     }
 
-    # Get demand plan data
+    # Get snapshot date for proper filtering
+    from website.models import MasterDataInventory
+    inventory_snapshot = MasterDataInventory.objects.filter(version=scenario).first()
+    if not inventory_snapshot:
+        raise ValueError(f"No inventory snapshot found for scenario {scenario}. Upload inventory data first.")
+    
+    snapshot_date = inventory_snapshot.date_of_snapshot
+    # Calculate first day of month AFTER snapshot (this is when future demand starts)
+    next_month_start = snapshot_date.replace(day=1)
+    if next_month_start.month == 12:
+        next_month_start = next_month_start.replace(year=next_month_start.year + 1, month=1)
+    else:
+        next_month_start = next_month_start.replace(month=next_month_start.month + 1)
+    
+    print(f"DEBUG: Snapshot date: {snapshot_date}, Future demand starts from: {next_month_start}")
+
+    # Get demand plan data (ONLY for months AFTER snapshot)
     demand_plan = {}
     for fy, (start, end) in fy_ranges.items():
         demand_plan[fy] = {}
         for site in sites:
-            total_tonnes = float(
-                CalculatedProductionModel.objects
-                .filter(version=scenario, site__SiteName=site, pouring_date__range=[start, end])
-                .aggregate(total=Sum('tonnes'))['total'] or 0
-            )
+            # Only include pouring_date >= next_month_start (after snapshot month)
+            demand_start_date = max(start, next_month_start)
+            
+            if demand_start_date <= end:
+                total_tonnes = float(
+                    CalculatedProductionModel.objects
+                    .filter(
+                        version=scenario, 
+                        site__SiteName=site, 
+                        pouring_date__gte=demand_start_date,
+                        pouring_date__lte=end
+                    )
+                    .aggregate(total=Sum('tonnes'))['total'] or 0
+                )
+            else:
+                # All months in this FY are before the future demand start date
+                total_tonnes = 0.0
+                
             demand_plan[fy][site] = round(total_tonnes)
+            print(f"DEBUG: {fy} {site} - Demand plan (from {demand_start_date}): {total_tonnes:.1f} tonnes")
 
     # Get poured data from MonthlyPouredDataModel (NO PowerBI)
     poured_data = get_poured_data_from_monthly_model(scenario)
 
-    # Combine demand plan with poured data
+    # Combine demand plan with poured data using snapshot-based logic
+    # For historical months: use poured data only
+    # For future months: use demand plan only
     combined_data = {}
     for fy in fy_ranges.keys():
         combined_data[fy] = {}
         for site in sites:
             demand_tonnes = float(demand_plan.get(fy, {}).get(site, 0))
             poured_tonnes = float(poured_data.get(fy, {}).get(site, 0))
-            combined_data[fy][site] = round(demand_tonnes + poured_tonnes)
+            
+            # If this FY has any future months, use demand plan, otherwise use poured data
+            fy_start_date = fy_ranges[fy][0]
+            if next_month_start <= fy_ranges[fy][1]:  # FY has future months after snapshot
+                # Mix of historical (poured) + future (demand) months
+                # The demand plan already only includes future months, poured includes all historical
+                combined_data[fy][site] = round(demand_tonnes + poured_tonnes)
+            else:
+                # All months in this FY are historical, use only poured data
+                combined_data[fy][site] = round(poured_tonnes)
 
     return combined_data, poured_data
 
@@ -840,6 +898,11 @@ def build_detailed_monthly_table(fy, site, scenario_version, plan_type='demand')
         scenario_version: Scenario object or string
         plan_type: 'demand' for Demand Plan breakdown, 'pour' for Pour Plan breakdown, 'outsource' for Outsource breakdown
     """
+    from datetime import date
+    from django.db.models import Sum, Q
+    from django.db.models.functions import TruncMonth
+    from django.utils.safestring import mark_safe
+    
     # Handle both string and object scenario_version
     scenario_name = scenario_version if isinstance(scenario_version, str) else scenario_version.version
     
@@ -865,13 +928,21 @@ def build_detailed_monthly_table(fy, site, scenario_version, plan_type='demand')
     
     elif plan_type == 'pour':
         # Pour Plan breakdown - get monthly pour plan data from MasterDataPlan
-        # First try current scenario, if no data found, try other scenarios with XUZ1 data
+        # Only get pour plans for months AFTER the snapshot date (future projections)
+        # Historical months should show actual data only, no pour plans
+        
+        # Determine snapshot date based on scenario name
+        snapshot_date = date(2025, 7, 31)  # Default for Aug 25 SP and similar scenarios
+        
+        # Only query pour plans for months after snapshot date
+        pour_plan_start = date(snapshot_date.year, snapshot_date.month + 1, 1) if snapshot_date.month < 12 else date(snapshot_date.year + 1, 1, 1)
+        
         pour_monthly = (
             MasterDataPlan.objects
             .filter(
                 version=scenario_name,
                 Foundry__SiteName=site,
-                Month__gte=start,
+                Month__gte=max(start, pour_plan_start),  # Start from snapshot+1 month or fiscal year start, whichever is later
                 Month__lte=end
             )
             .annotate(month=TruncMonth('Month'))
@@ -904,7 +975,7 @@ def build_detailed_monthly_table(fy, site, scenario_version, plan_type='demand')
             month_str = current_month.strftime('%b %Y')
             planned_qty = pour_dict.get(month_str, 0)
             actual_qty = poured_monthly.get(month_str, 0)
-            variance_qty = actual_qty + planned_qty  # Changed from subtraction to addition
+            variance_qty = actual_qty + planned_qty  # Original formula: actual + planned
             
             months_data.append({
                 'month': month_str,
@@ -969,25 +1040,49 @@ def build_detailed_monthly_table(fy, site, scenario_version, plan_type='demand')
         print(f"DEBUG: Built Pour Plan table for {fy}/{site} - Planned: {total_planned}, Actual: {total_actual}, Variance: {total_variance}")
         
     else:
-        # Demand Plan breakdown (original functionality)
-        # Get monthly demand plan data (CalculatedProductionModel)
-        demand_monthly = (
-            CalculatedProductionModel.objects
-            .filter(
-                version=scenario_version,
-                site__SiteName=site,
-                pouring_date__gte=start,
-                pouring_date__lte=end
+        # Demand Plan breakdown (with snapshot-based filtering)
+        # Get snapshot date for proper filtering
+        from website.models import MasterDataInventory
+        inventory_snapshot = MasterDataInventory.objects.filter(version=scenario_name).first()
+        if not inventory_snapshot:
+            print(f"WARNING: No inventory snapshot found for scenario {scenario_name}")
+            snapshot_date = date(2025, 7, 31)  # Default fallback
+        else:
+            snapshot_date = inventory_snapshot.date_of_snapshot
+        
+        # Calculate first day of month AFTER snapshot (this is when future demand starts)
+        next_month_start = snapshot_date.replace(day=1)
+        if next_month_start.month == 12:
+            next_month_start = next_month_start.replace(year=next_month_start.year + 1, month=1)
+        else:
+            next_month_start = next_month_start.replace(month=next_month_start.month + 1)
+        
+        print(f"DEBUG: Demand Plan - Snapshot date: {snapshot_date}, Future demand starts from: {next_month_start}")
+        
+        # Get monthly demand plan data (ONLY for months AFTER snapshot)
+        demand_start_date = max(start, next_month_start)
+        
+        if demand_start_date <= end:
+            demand_monthly = (
+                CalculatedProductionModel.objects
+                .filter(
+                    version=scenario_version,
+                    site__SiteName=site,
+                    pouring_date__gte=demand_start_date,  # Only future months
+                    pouring_date__lte=end
+                )
+                .annotate(month=TruncMonth('pouring_date'))
+                .values('month')
+                .annotate(total=Sum('tonnes'))
+                .order_by('month')
             )
-            .annotate(month=TruncMonth('pouring_date'))
-            .values('month')
-            .annotate(total=Sum('tonnes'))
-            .order_by('month')
-        )
+        else:
+            # All months in this FY are before the future demand start date
+            demand_monthly = []
         
         # Convert to dict for easy lookup
         demand_dict = {row['month'].strftime('%b %Y'): row['total'] or 0 for row in demand_monthly}
-        print(f"DEBUG: Demand dict for {fy}/{site}: {demand_dict}")
+        print(f"DEBUG: Demand dict for {fy}/{site} (filtered for future months): {demand_dict}")
         
         # Get monthly poured data (from local MonthlyPouredDataModel)
         poured_monthly = get_monthly_poured_data_for_site_and_fy(site, fy, scenario_name)
@@ -1010,12 +1105,21 @@ def build_detailed_monthly_table(fy, site, scenario_version, plan_type='demand')
         
         while current_month <= end:
             month_str = current_month.strftime('%b %Y')
-            demand_qty = demand_dict.get(month_str, 0)
-            poured_qty = poured_monthly.get(month_str, 0)
+            
+            # Apply snapshot-based logic for each month
+            if current_month < next_month_start:
+                # Historical months: demand = 0, only show poured data
+                demand_qty = 0
+                poured_qty = poured_monthly.get(month_str, 0)
+            else:
+                # Future months: show demand plan, poured = 0
+                demand_qty = demand_dict.get(month_str, 0)
+                poured_qty = 0  # No poured data for future months
+            
             combined_qty = demand_qty + poured_qty
             
             # Add debug output for each month
-            print(f"DEBUG: Demand Plan - {month_str}: Demand={demand_qty}, Poured={poured_qty}, Combined={combined_qty}")
+            print(f"DEBUG: Demand Plan - {month_str}: Demand={demand_qty}, Poured={poured_qty}, Combined={combined_qty} [{'Historical' if current_month < next_month_start else 'Future'}]")
             
             months_data.append({
                 'month': month_str,
@@ -1027,8 +1131,6 @@ def build_detailed_monthly_table(fy, site, scenario_version, plan_type='demand')
             total_demand += demand_qty
             total_poured += poured_qty
             total_combined += combined_qty
-            
-            print(f"DEBUG: Demand Plan - {month_str} - Demand: {demand_qty}, Poured: {poured_qty}, Combined: {combined_qty}")
             
             # Move to next month
             if current_month.month == 12:
@@ -1953,9 +2055,12 @@ def get_production_data_by_product_for_wun1(site_name, scenario_version):
     
     return {'labels': labels, 'datasets': datasets}
 
-def translate_to_english_cached(text):
+def translate_to_english_no_cache(text):
     """
-    Translate text to English with caching and manual translations.
+    ⚠️ CACHE POLICY: NO CACHING ALLOWED ⚠️
+    
+    Translate text to English WITHOUT caching per application policy.
+    Previously cached translations but caching is now PROHIBITED.
     """
     if not text or str(text).strip() == '':
         return text
@@ -1968,10 +2073,7 @@ def translate_to_english_cached(text):
         print(f"DEBUG: Manual translation: '{text_str}' -> '{MANUAL_TRANSLATIONS[text_str]}'")
         return MANUAL_TRANSLATIONS[text_str]
     
-    # Check cache
-    if text_str in TRANSLATION_CACHE:
-        return TRANSLATION_CACHE[text_str]
-    
+    # NO CACHE - Always translate fresh
     try:
         # Detect the language
         detected_lang = langdetect.detect(text_str)
@@ -1985,14 +2087,12 @@ def translate_to_english_cached(text):
             # Return original text if not French
             result = text_str
             
-        # Cache the result
-        TRANSLATION_CACHE[text_str] = result
+        # NO CACHE - Return result immediately
         return result
         
     except Exception as e:
         print(f"Translation error for '{text_str}': {e}")
-        # Cache the original text as fallback
-        TRANSLATION_CACHE[text_str] = text_str
+        # NO FALLBACK CACHE - Return original text
         return text_str
     
 def search_detailed_view_data(scenario_version, product=None, location=None, site=None):

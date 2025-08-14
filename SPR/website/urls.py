@@ -57,6 +57,10 @@ urlpatterns = [
     path('populate_opening_inventory_snapshot/<str:version>/', views.populate_opening_inventory_snapshot, name='populate_opening_inventory_snapshot'),
     path('delete_opening_inventory_snapshot/<str:version>/', views.delete_opening_inventory_snapshot, name='delete_opening_inventory_snapshot'),
 
+    # Monthly Poured Data for Actual Pour per Site
+    path('populate_monthly_poured_data/<str:version>/', views.populate_monthly_poured_data, name='populate_monthly_poured_data'),
+    path('delete_monthly_poured_data/<str:version>/', views.delete_monthly_poured_data, name='delete_monthly_poured_data'),
+
     path('customers/', views.customers_list, name='CustomersList'),
     path('forecast-region/', views.forecast_region_list, name='ForecastRegionList'),
     path('forecast-region/', views.forecast_region_list, name='ForecastRegionList'),

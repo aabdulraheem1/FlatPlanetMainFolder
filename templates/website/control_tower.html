@@ -772,8 +772,21 @@
 </style>
 
 <script>
-// Cache for loaded table data to avoid repeated AJAX calls
-window.detailedMonthlyTableCache = {};
+/* 
+ * ⚠️ CACHE POLICY: NO CACHING ALLOWED ⚠️
+ * This application is PROHIBITED from using ANY form of caching, fallback mechanisms, 
+ * or error hiding methods. All data must be calculated in real-time from the database 
+ * to ensure accuracy and prevent stale data issues.
+ * 
+ * PROHIBITED TECHNIQUES:
+ * - Frontend caching (detailedMonthlyTableCache)
+ * - Backend caching (CachedControlTowerData) 
+ * - Fallback scenarios
+ * - Error suppression/hiding
+ * - Data memoization
+ * 
+ * All calculations must use live database queries only.
+ */
 
 document.addEventListener('DOMContentLoaded', function() {
     // Progressive Load button functionality
@@ -792,7 +805,7 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     });
     
-    console.log('Control Tower initialized with cached data from view');
+    console.log('Control Tower initialized with REAL-TIME data (NO CACHE)');
 });
 
 // Handle click events on demand plan, pour plan, and outsource numbers
@@ -820,14 +833,7 @@ document.addEventListener('click', function(e) {
         document.getElementById('monthlyBreakdownModalLabel').textContent = 
             `Monthly Breakdown - ${siteName} (${fy}) - ${planType}`;
         
-        // Check cache first - include plan type in cache key
-        const cacheKey = `${fy}-${site}-${planTypeParam}`;
-        if (window.detailedMonthlyTableCache[cacheKey]) {
-            console.log('📊 Using cached data for', fy, site, planTypeParam);
-            document.getElementById('modalContent').innerHTML = window.detailedMonthlyTableCache[cacheKey];
-            showModal();
-            return;
-        }
+        // NO CACHE - Always load fresh data
         
         // Show loading indicator
         document.getElementById('modalContent').innerHTML = `
@@ -835,22 +841,19 @@ document.addEventListener('click', function(e) {
                 <div class="spinner-border text-primary" role="status">
                     <span class="sr-only">Loading...</span>
                 </div>
-                <p class="mt-3">Loading monthly breakdown data...</p>
+                <p class="mt-3">Loading fresh monthly breakdown data (NO CACHE)...</p>
             </div>
         `;
         
         showModal();
         
-        // Load data via AJAX - include plan type
+        // Load data via AJAX - ALWAYS FRESH, NO CACHING
         fetch(`/scenario/{{ version }}/detailed-monthly-table/?fy=${fy}&site=${site}&plan_type=${planTypeParam}`)
             .then(response => response.json())
             .then(data => {
                 if (data.success) {
-                    console.log('✅ Loaded data via AJAX for', fy, site, planTypeParam);
-                    // Cache the data with plan type included
-                    const fullCacheKey = `${fy}-${site}-${planTypeParam}`;
-                    window.detailedMonthlyTableCache[fullCacheKey] = data.html;
-                    // Display the data
+                    console.log('✅ Loaded FRESH data (NO CACHE) for', fy, site, planTypeParam);
+                    // Display the data immediately - NO CACHING
                     document.getElementById('modalContent').innerHTML = data.html;
                 } else {
                     console.error('❌ Error loading data:', data.error);
@@ -880,5 +883,5 @@ function showModal() {
     modal.show();
 }
 
-console.log('🚀 AJAX-based modal handlers initialized');
+console.log('🚀 REAL-TIME modal handlers initialized (NO CACHE)');
 </script>

@@ -1,0 +1,69 @@
+{% extends "website/base.html" %}
+{% load static %}
+
+{% block title %}Copy Safety Stocks - {{ target_scenario.version }}{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2>Copy Safety Stocks to {{ target_scenario.version }}</h2>
+        <a href="{% url 'edit_scenario' target_scenario.version %}" class="btn btn-secondary">
+            <i class="fas fa-arrow-left"></i> Back to Scenario
+        </a>
+    </div>
+
+    <div class="card">
+        <div class="card-body">
+            <h5 class="card-title">Select Source Scenario</h5>
+            <p class="card-text text-muted">
+                Choose which scenario you want to copy safety stocks data from. All existing safety stocks data in "{{ target_scenario.version }}" will be replaced.
+            </p>
+
+            <form method="post" onsubmit="showLoading('Copying safety stocks data...');">
+                {% csrf_token %}
+                
+                <div class="mb-3">
+                    <label for="source_version" class="form-label">Source Scenario:</label>
+                    <select name="source_version" id="source_version" class="form-select" required>
+                        <option value="">-- Select a scenario --</option>
+                        {% for scenario in all_scenarios %}
+                            <option value="{{ scenario.version }}">{{ scenario.version }} - {{ scenario.scenario_description }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <div class="alert alert-warning" role="alert">
+                    <strong>Warning:</strong> This action will delete all existing safety stocks data in "{{ target_scenario.version }}" and replace it with data from the selected source scenario.
+                </div>
+
+                <div class="d-flex gap-2">
+                    <button type="submit" class="btn btn-primary" onclick="return confirm('Are you sure you want to copy safety stocks data? This will replace all existing data in {{ target_scenario.version }}.');">
+                        <i class="fas fa-copy"></i> Copy Safety Stocks
+                    </button>
+                    <a href="{% url 'edit_scenario' target_scenario.version %}" class="btn btn-secondary">Cancel</a>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+    function showLoading(message) {
+        const loadingOverlay = document.createElement('div');
+        loadingOverlay.id = 'loading-overlay';
+        loadingOverlay.style.position = 'fixed';
+        loadingOverlay.style.top = '0';
+        loadingOverlay.style.left = '0';
+        loadingOverlay.style.width = '100%';
+        loadingOverlay.style.height = '100%';
+        loadingOverlay.style.backgroundColor = 'rgba(0, 0, 0, 0.5)';
+        loadingOverlay.style.color = 'white';
+        loadingOverlay.style.display = 'flex';
+        loadingOverlay.style.justifyContent = 'center';
+        loadingOverlay.style.alignItems = 'center';
+        loadingOverlay.style.zIndex = '1000';
+        loadingOverlay.innerHTML = `<div><span>${message}</span><br><img src="/static/icons/spinner.gif" alt="Loading..."></div>`;
+        document.body.appendChild(loadingOverlay);
+    }
+</script>
+{% endblock %}

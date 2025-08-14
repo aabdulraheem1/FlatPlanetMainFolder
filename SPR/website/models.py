@@ -1085,10 +1085,19 @@ class OpeningInventorySnapshot(models.Model):
 
 
 class MonthlyPouredDataModel(models.Model):
-    """
+    r"""
     Store monthly poured data locally for fast access
     Populated from PowerBI when inventory snapshot is uploaded via upload_on_hand_stock
     Replaces slow external PowerBI queries with fast local database access
+    
+    🚨 CRITICAL: This model's populate_for_scenario() method is NOT called automatically!
+    ❌ ISSUE IDENTIFIED: The populate_for_scenario() method exists but is never invoked from upload_on_hand_stock
+    ✅ TODO: Add MonthlyPouredDataModel.populate_for_scenario(scenario, snapshot_date) call to upload_on_hand_stock function
+    
+    ⚠️ DEVELOPER REMINDER: When creating analysis/debug files for this model:
+    - ALL analysis files must go in: C:\Users\aali\OneDrive - bradken.com\Data\Training\SPR\temporary\
+    - NO files should be created in project root or SPR directory
+    - Only Django app files belong in SPR/website/ directory
     """
     version = models.ForeignKey(scenarios, on_delete=models.CASCADE)
     site_name = models.CharField(max_length=250)

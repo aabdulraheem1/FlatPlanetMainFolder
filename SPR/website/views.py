@@ -1,3 +1,22 @@
+"""
+⚠️ CACHE POLICY: NO CACHING ALLOWED ⚠️
+
+This application is PROHIBITED from using ANY form of caching, fallback mechanisms, 
+or error hiding methods. All data must be calculated in real-time from the database 
+to ensure accuracy and prevent stale data issues like the July 2025 snapshot bug.
+
+PROHIBITED TECHNIQUES:
+- Backend caching (CachedControlTowerData, CachedFoundryData, etc.) - DISABLED  
+- Frontend caching (window.detailedMonthlyTableCache) - REMOVED
+- Translation caching (TRANSLATION_CACHE) - REMOVED
+- Fallback scenarios - REMOVED
+- Error suppression/hiding - REMOVED
+- Data memoization - PROHIBITED
+
+All calculations must use live database queries with proper snapshot-based filtering.
+The cached functions below have been disabled and replaced with real-time calculations.
+"""
+
 from django.shortcuts import render, redirect
 from django.views.decorators.http import require_http_methods
 import pandas as pd
@@ -49,7 +68,7 @@ from website.models import (AggregatedForecast, RevenueToCogsConversionModel,  S
 from website.customized_function import (get_monthly_cogs_and_revenue, get_forecast_data_by_parent_product_group, get_monthly_production_cogs,
 get_monthly_production_cogs_by_group, get_monthly_production_cogs_by_parent_group, get_combined_demand_and_poured_data, get_production_data_by_group,    get_top_products_per_month_by_group,
     get_dress_mass_data, get_forecast_data_by_product_group, get_forecast_data_by_region, get_monthly_pour_plan_for_site, calculate_control_tower_data,
-    get_inventory_data_with_start_date, get_foundry_chart_data, get_forecast_data_by_data_source, get_forecast_data_by_customer, translate_to_english_cached,
+    get_inventory_data_with_start_date, get_foundry_chart_data, get_forecast_data_by_data_source, get_forecast_data_by_customer, translate_to_english_no_cache,
     get_stored_inventory_data, get_enhanced_inventory_data, get_monthly_cogs_by_parent_group,
     search_detailed_view_data)
 
@@ -59,7 +78,9 @@ from . models import (RevenueToCogsConversionModel, FixedPlantConversionModifier
 
 def run_management_command(command, *args):
     import os
-    manage_py = os.path.join(settings.BASE_DIR, 'manage.py')
+    # Fix: Use current directory instead of BASE_DIR since manage.py is in the SPR subfolder
+    current_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # Go up from website/ to SPR/
+    manage_py = os.path.join(current_dir, 'manage.py')
     cmd = [sys.executable, manage_py, command] + [str(arg) for arg in args]
     result = subprocess.run(cmd, capture_output=True, text=True)
     return result
@@ -808,6 +829,11 @@ def edit_scenario(request, version):
     safety_stocks_has_data = MasterDataSafetyStocks.objects.filter(version=scenario).exists()
     manually_assign_production_requirement_has_data = MasterDataManuallyAssignProductionRequirement.objects.filter(version=scenario).exists()
 
+    # Check if OpeningInventorySnapshot has data (shared across scenarios by date)
+    from .models import OpeningInventorySnapshot, MonthlyPouredDataModel
+    opening_inventory_snapshot = OpeningInventorySnapshot.objects.exists()
+    monthly_poured_data = MonthlyPouredDataModel.objects.filter(version=scenario).exists()
+
     # Retrieve missing regions from the session
     missing_regions = request.session.pop('missing_regions', None)
 
@@ -847,6 +873,8 @@ def edit_scenario(request, version):
         'site_allocation_has_data': site_allocation_has_data,
         'safety_stocks_has_data': safety_stocks_has_data,
         'manually_assign_production_requirement_has_data': manually_assign_production_requirement_has_data,
+        'opening_inventory_snapshot': opening_inventory_snapshot,
+        'monthly_poured_data': monthly_poured_data,
     })
 
 
@@ -2063,17 +2091,19 @@ def calculate_aggregated_data(request, version):
 
 
 def get_cached_control_tower_data(scenario):
-    """Get cached control tower data or fall back to real-time calculation"""
-    try:
-        cached = CachedControlTowerData.objects.get(version=scenario)
-        return {
-            'combined_demand_plan': cached.combined_demand_plan,
-            'poured_data': cached.poured_data,
-            'pour_plan': cached.pour_plan,
-        }
-    except CachedControlTowerData.DoesNotExist:
-        # Fall back to real-time calculation
-        return calculate_control_tower_data(scenario.version)
+    """
+    ⚠️ CACHE POLICY: NO CACHING ALLOWED ⚠️
+    
+    This function previously used caching but has been DISABLED per policy.
+    All data must be calculated in real-time from the database to ensure 
+    accuracy and prevent stale data issues like the July 2025 snapshot bug.
+    
+    PROHIBITED: CachedControlTowerData, fallback mechanisms, error hiding
+    REQUIRED: Real-time calculation using fixed snapshot-based filtering
+    """
+    # NO CACHE - Always calculate fresh data with proper snapshot filtering
+    print(f"DEBUG: Calculating REAL-TIME control tower data for {scenario.version} (NO CACHE)")
+    return calculate_control_tower_data(scenario.version)
 
 
 def get_cached_foundry_data(scenario):
@@ -3343,6 +3373,109 @@ def delete_opening_inventory_snapshot(request, version):
     return render(request, 'website/delete_opening_inventory_snapshot.html', {
         'scenario': scenario,
         'available_dates': available_dates,
+    })
+
+
+@login_required
+def populate_monthly_poured_data(request, version):
+    """
+    Populate MonthlyPouredDataModel from SQL Server PowerBI for actual pour data per site.
+    Fetches data for the snapshot month and all earlier months from bknew server.
+    """
+    scenario = get_object_or_404(scenarios, version=version)
+    
+    if request.method == 'POST':
+        snapshot_date_str = request.POST.get('snapshot_date')
+        
+        if not snapshot_date_str:
+            messages.error(request, 'Please select a snapshot date.')
+            return render(request, 'website/populate_monthly_poured_data.html', {'scenario': scenario})
+        
+        try:
+            from .models import MonthlyPouredDataModel, MasterDataInventory
+            from datetime import datetime
+            
+            # Convert snapshot_date string to date object
+            snapshot_date_obj = datetime.strptime(snapshot_date_str, '%Y-%m-%d').date()
+            
+            print(f"🚀 POPULATING MonthlyPouredDataModel from bknew SQL Server for snapshot date {snapshot_date_obj}...")
+            
+            # Use the MonthlyPouredDataModel's populate method
+            MonthlyPouredDataModel.populate_for_scenario(scenario, snapshot_date_obj)
+            
+            # Count the created records
+            record_count = MonthlyPouredDataModel.objects.filter(version=scenario).count()
+            
+            if record_count > 0:
+                messages.success(request, 
+                    f'Successfully populated MonthlyPouredDataModel from PowerBI. '
+                    f'Created {record_count} monthly pour records for scenario {scenario.version}. '
+                    f'Data includes actual pour per site for snapshot date {snapshot_date_obj} and earlier months.'
+                )
+                print(f"✅ SUCCESS: MonthlyPouredDataModel populated - {record_count} records created")
+            else:
+                messages.warning(request, 
+                    f'MonthlyPouredDataModel population completed but no records were created for {snapshot_date_obj}. '
+                    f'This could indicate no pour data is available for the selected date range.'
+                )
+                print(f"⚠️ WARNING: MonthlyPouredDataModel population returned no records")
+                
+        except Exception as e:
+            messages.error(request, f'Error populating MonthlyPouredDataModel: {str(e)}')
+            print(f"❌ Error populating MonthlyPouredDataModel: {e}")
+            import traceback
+            print(f"Full traceback: {traceback.format_exc()}")
+            
+        return redirect('edit_scenario', version=version)
+    
+    # GET request - show form to select snapshot date
+    # Get available snapshot dates from MasterDataInventory
+    from .models import MasterDataInventory
+    available_dates = MasterDataInventory.objects.filter(
+        version=scenario
+    ).values_list('date_of_snapshot', flat=True).distinct().order_by('-date_of_snapshot')
+    
+    return render(request, 'website/populate_monthly_poured_data.html', {
+        'scenario': scenario,
+        'available_dates': available_dates,
+    })
+
+
+@login_required
+def delete_monthly_poured_data(request, version):
+    """
+    Delete MonthlyPouredDataModel records for the current scenario.
+    """
+    scenario = get_object_or_404(scenarios, version=version)
+    
+    if request.method == 'POST':
+        try:
+            from .models import MonthlyPouredDataModel
+            
+            # Delete all records for this scenario
+            deleted_count = MonthlyPouredDataModel.objects.filter(version=scenario).delete()
+            
+            if deleted_count[0] > 0:
+                messages.success(request, 
+                    f'Successfully deleted {deleted_count[0]} MonthlyPouredDataModel records for scenario {scenario.version}.'
+                )
+                print(f"✅ Deleted {deleted_count[0]} MonthlyPouredDataModel records for scenario {scenario.version}")
+            else:
+                messages.warning(request, f'No MonthlyPouredDataModel records found for scenario {scenario.version}.')
+                
+        except Exception as e:
+            messages.error(request, f'Error deleting MonthlyPouredDataModel records: {str(e)}')
+            print(f"❌ Error deleting MonthlyPouredDataModel: {e}")
+            
+        return redirect('edit_scenario', version=version)
+    
+    # GET request - show confirmation page
+    from .models import MonthlyPouredDataModel
+    record_count = MonthlyPouredDataModel.objects.filter(version=scenario).count()
+    
+    return render(request, 'website/delete_monthly_poured_data.html', {
+        'scenario': scenario,
+        'record_count': record_count,
     })
 
 
@@ -7451,7 +7584,7 @@ def method_of_manufacturing_fetch_data_from_mssql(request):
                             operation_desc_raw = getattr(row, 'OperationDesc', f'Operation {operation_sequence}')
                             
                             # NEW: Translate operation description from French to English
-                            operation_description = translate_to_english_cached(operation_desc_raw)
+                            operation_description = translate_to_english_no_cache(operation_desc_raw)
                             print(f"Translated '{operation_desc_raw}' to '{operation_description}'")
 
                             # Skip if any key fields are None

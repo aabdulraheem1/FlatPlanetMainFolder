@@ -164,29 +164,45 @@ class Command(BaseCommand):
             for entry in MasterDataCastToDespatchModel.objects.filter(version=scenario)
         }
 
-        # Load cost data (keeping your existing cost logic)
-        cost_df = pl.from_pandas(pd.DataFrame(list(
-            ProductSiteCostModel.objects.filter(version=scenario)
-            .values('version_id', 'product_id', 'site_id', 'cost_aud', 'revenue_cost_aud')
-        )))
+        # Load cost data from AggregatedForecast (PERFORMANCE ENHANCEMENT: Use aggregated COGS/Qty ratio)
+        self.stdout.write("📊 Loading cost data from AggregatedForecast (fast Polars method)...")
+        cost_start_time = time.time()
         
-        inventory_df = pl.from_pandas(pd.DataFrame(list(
-            MasterDataInventory.objects.filter(version=scenario)
-            .values('version_id', 'product', 'site_id', 'cost_aud')
-        )))
-
-        # Build cost lookup dicts
-        cost_lookup = {}
-        for row in cost_df.filter(pl.col('cost_aud').is_not_null()).iter_rows(named=True):
-            cost_lookup[str(row['product_id'])] = row['cost_aud']
+        aggregated_forecast_data = list(
+            AggregatedForecast.objects.filter(version=scenario)
+            .values('product_id', 'cogs_aud', 'qty')
+        )
+        
+        if aggregated_forecast_data:
+            # Use Polars for fast aggregation
+            cost_df = pl.from_pandas(pd.DataFrame(aggregated_forecast_data))
             
-        inv_cost_lookup = {}
-        for row in inventory_df.filter(pl.col('cost_aud').is_not_null()).iter_rows(named=True):
-            inv_cost_lookup[str(row['product'])] = row['cost_aud']
+            # Filter out records with zero or null qty to avoid division by zero
+            cost_df = cost_df.filter(
+                (pl.col('qty').is_not_null()) & 
+                (pl.col('qty') > 0) & 
+                (pl.col('cogs_aud').is_not_null())
+            )
             
-        revenue_cost_lookup = {}
-        for row in cost_df.filter(pl.col('revenue_cost_aud').is_not_null()).iter_rows(named=True):
-            revenue_cost_lookup[str(row['product_id'])] = row['revenue_cost_aud']
+            # Group by product and calculate weighted average cost per unit
+            cost_summary = cost_df.group_by('product_id').agg([
+                pl.col('cogs_aud').sum().alias('total_cogs'),
+                pl.col('qty').sum().alias('total_qty')
+            ]).with_columns([
+                (pl.col('total_cogs') / pl.col('total_qty')).alias('cost_per_unit')
+            ]).filter(pl.col('total_qty') > 0)  # Additional safety check
+            
+            # Build cost lookup dict from aggregated forecast data
+            cost_lookup = {}
+            for row in cost_summary.iter_rows(named=True):
+                cost_lookup[str(row['product_id'])] = row['cost_per_unit']
+                
+            cost_load_time = time.time() - cost_start_time
+            self.stdout.write(f"✅ Loaded cost data for {len(cost_lookup)} products from AggregatedForecast in {cost_load_time:.3f}s")
+            self.stdout.write(f"🚀 PERFORMANCE: Using AggregatedForecast COGS/Qty ratio instead of multiple cost tables")
+        else:
+            cost_lookup = {}
+            self.stdout.write("⚠️  No AggregatedForecast data found - cost lookup will be empty")
 
         product_map = {row['Product']: row for row in product_df.iter_rows(named=True)}
         site_map = {row['SiteName']: row for row in site_df.iter_rows(named=True)}
@@ -294,12 +310,8 @@ class Command(BaseCommand):
                 tonnes = (production_quantity * dress_mass) / 1000
 
                 product_key = str(product_row['Product'])
-                costs = [
-                    cost_lookup.get(product_key, 0),
-                    inv_cost_lookup.get(product_key, 0),
-                    revenue_cost_lookup.get(product_key, 0)
-                ]
-                cost = max(costs) if any(costs) else 0
+                # Use simplified cost calculation from AggregatedForecast COGS/Qty ratio
+                cost = cost_lookup.get(product_key, 0)
                 cogs_aud = cost * production_quantity
 
                 # Get customer invoice data

@@ -25,13 +25,13 @@ TEMPLATES_DIR = Path(__file__).resolve().parent.parent / 'templates'  # Explicit
 
 # Verify the templates directory exists at startup
 if not TEMPLATES_DIR.exists():
-    print(f"❌ ERROR: Templates directory not found at {TEMPLATES_DIR}")
+    print(f"ERROR: Templates directory not found at {TEMPLATES_DIR}")
     print(f"   Current file: {__file__}")
     print(f"   BASE_DIR: {BASE_DIR}")
 else:
-    print(f"✅ Templates directory found at {TEMPLATES_DIR}")
+    print(f"Templates directory found at {TEMPLATES_DIR}")
     sample_template = TEMPLATES_DIR / 'website' / 'list_scenarios.html'
-    print(f"✅ list_scenarios.html exists: {sample_template.exists()}")
+    print(f"list_scenarios.html exists: {sample_template.exists()}")
 
 
 # Quick-start development settings - unsuitable for production
