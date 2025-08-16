@@ -222,12 +222,18 @@ class Command(BaseCommand):
                 'wip': row['wip_stock_qty'] or 0
             }
 
+        # Calculate pouring dates using a proper approach that avoids the DataFrame filtering bug
+        pouring_dates = []
+        for row in replenishments.iter_rows(named=True):
+            site = row['Site']
+            shipping_date = row['ShippingDate']
+            cast_days = cast_to_despatch.get((site, scenario.version), 0)
+            pouring_date = shipping_date - timedelta(days=cast_days)
+            pouring_dates.append(pouring_date)
+        
+        # Add the calculated pouring dates back to the DataFrame
         replenishments = replenishments.with_columns([
-            pl.col('ShippingDate').map_elements(
-                lambda shipping_date: shipping_date - timedelta(
-                    days=cast_to_despatch.get((replenishments.filter(pl.col('ShippingDate') == shipping_date)['Site'][0], scenario.version), 0)
-                ), return_dtype=pl.Date
-            ).alias('pouring_date')
+            pl.Series('pouring_date', pouring_dates)
         ])
         
         # Apply inventory date logic

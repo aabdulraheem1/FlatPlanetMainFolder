@@ -17,7 +17,8 @@ from website.models import (
     CalculatedProductionModel,
     MasterDataCastToDespatchModel,
     MasterDataInventory,
-    MasterDataSafetyStocks
+    MasterDataSafetyStocks,
+    MasterDataEpicorMethodOfManufacturingModel
 )
 # Remove the slow PowerBI import - we'll read customer data locally
 # from website.powerbi_invoice_integration import get_customer_mapping_dict
@@ -70,29 +71,50 @@ def select_site(
     foundry_sites,
     can_assign_foundry_fn
 ):
-    # Priority 1: Manual assignment
-    manual_lookup_key = (scenario.version, product, period)
+    # Priority 1: Manual assignment (simplified - just product and scenario match)
+    manual_lookup_key = (scenario.version, product)
     manual_site = manual_assign_map.get(manual_lookup_key)
     if manual_site:
-        site = getattr(manual_site, 'SiteName', manual_site)
-        return site
+        # Even manual assignments should respect foundry assignment rules
+        if manual_site in foundry_sites:
+            if not can_assign_foundry_fn(product, manual_site):
+                return None  # Block manual assignment to foundry if manufacturing operations don't allow it
+        return manual_site
+    
     # Priority 2: Order Book
     site = order_book_map.get((scenario.version, product))
     if site:
-        return site
+        # Check foundry assignment rules for order book sites
+        if site in foundry_sites:
+            if not can_assign_foundry_fn(product, site):
+                site = None  # Continue to next priority if foundry assignment is blocked
+            else:
+                return site
+        else:
+            return site
+    
     # Priority 3: Production History
     foundry = production_map.get((scenario.version, product))
     if foundry:
-        return foundry
+        # Check foundry assignment rules for production history sites
+        if foundry in foundry_sites:
+            if not can_assign_foundry_fn(product, foundry):
+                foundry = None  # Continue to next priority if foundry assignment is blocked
+            else:
+                return foundry
+        else:
+            return foundry
+    
     # Priority 4: Supplier
     vendor_id = supplier_map.get((scenario.version, product))
     if vendor_id:
+        # Check foundry assignment rules for supplier sites
+        if vendor_id in foundry_sites:
+            if not can_assign_foundry_fn(product, vendor_id):
+                return None  # No assignment if supplier is foundry but manufacturing doesn't allow it
         return vendor_id
-    # Foundry assignment check
-    if site and site in foundry_sites and not manual_site:
-        if not can_assign_foundry_fn(product):
-            return None
-    return site
+    
+    return None
 
 class Command(BaseCommand):
     help = 'Calculate replenishment needs based on SMART forecast and inventory data'
@@ -108,6 +130,57 @@ class Command(BaseCommand):
             type=str,
             help="Optional: Calculate for a specific product only.",
         )
+    
+    def can_assign_to_foundry_optimized(self, product, proposed_site, mom_df, foundry_assignment_cache):
+        """
+        Optimized foundry assignment check using pre-loaded Polars DataFrame and caching.
+        
+        Rules:
+        1. If product has MOM record but NO Pour/Moulding/Casting operations → Cannot assign to foundries
+        2. If product has NO MOM record → Can assign to foundries
+        3. If product has MOM record WITH Pour/Moulding/Casting operations → Can assign to foundries
+        """
+        foundry_sites = {'XUZ1', 'MTJ1', 'COI2', 'MER1', 'WOD1', 'WUN1', 'CHI1'}
+        
+        # If the proposed site is not a foundry, allow assignment
+        if proposed_site not in foundry_sites:
+            return True
+        
+        # Check cache first
+        if product in foundry_assignment_cache:
+            return foundry_assignment_cache[product]
+        
+        # Filter MOM records for this product using Polars
+        if len(mom_df) == 0:
+            # No MOM data at all, allow foundry assignment
+            foundry_assignment_cache[product] = True
+            return True
+        
+        product_mom_records = mom_df.filter(pl.col('ProductKey') == product)
+        
+        if len(product_mom_records) == 0:
+            # Rule 2: No MOM record for this product → Can assign to foundries
+            foundry_assignment_cache[product] = True
+            return True
+        
+        # Check if any operation contains foundry-related keywords
+        foundry_keywords = ['pour', 'moulding', 'casting', 'coulée', 'moulage']
+        
+        # Use Polars to check for foundry operations efficiently
+        has_foundry_operations = product_mom_records.with_columns([
+            pl.col('OperationDesc').fill_null('').str.to_lowercase().alias('operation_lower')
+        ]).filter(
+            pl.col('operation_lower').str.contains('|'.join(foundry_keywords))
+        )
+        
+        if len(has_foundry_operations) > 0:
+            # Rule 3: Has foundry operations → Can assign to foundries
+            foundry_assignment_cache[product] = True
+            return True
+        
+        # Rule 1: Has MOM record but no foundry operations → Cannot assign to foundries
+        foundry_assignment_cache[product] = False
+        return False
 
     def handle(self, *args, **kwargs):
         # Start overall timing
@@ -211,6 +284,13 @@ class Command(BaseCommand):
                     'PartNum', 'Plant', 'SafetyQty'
                 ))
                 safety_stock_df = pl.from_pandas(pd.DataFrame(safety_stock_data)) if safety_stock_data else pl.DataFrame()
+                
+                # Load Method of Manufacturing data for foundry assignment logic
+                mom_data = list(MasterDataEpicorMethodOfManufacturingModel.objects.all().values(
+                    'ProductKey', 'OperationDesc'
+                ))
+                mom_df = pl.from_pandas(pd.DataFrame(mom_data)) if mom_data else pl.DataFrame()
+                
                 step_duration = time.time() - step_start
                 self.stdout.write(f"✅ Step 3: Master data loaded ({step_duration:.3f}s)")
                 
@@ -225,48 +305,73 @@ class Command(BaseCommand):
                 
                 # Time each dictionary separately to identify bottlenecks
                 dict_start = time.time()
-                order_book_data = MasterDataOrderBook.objects.filter(version=scenario).exclude(site__isnull=True).exclude(site__exact='')
+                order_book_data = MasterDataOrderBook.objects.filter(version=scenario).exclude(site__isnull=True).exclude(site__exact='').only('version', 'productkey', 'site')
+                if single_product:
+                    order_book_data = order_book_data.filter(productkey=single_product)
                 self.stdout.write(f"   📋 Order Book query: {time.time() - dict_start:.3f}s ({len(order_book_data)} records)")
                 
                 dict_start = time.time()
-                production_data = MasterDataHistoryOfProductionModel.objects.filter(version=scenario).exclude(Foundry__isnull=True).exclude(Foundry__exact='')
+                production_data = MasterDataHistoryOfProductionModel.objects.filter(version=scenario).exclude(Foundry__isnull=True).exclude(Foundry__exact='').only('version', 'Product', 'Foundry')
+                if single_product:
+                    production_data = production_data.filter(Product=single_product)
                 self.stdout.write(f"   🏭 Production History query: {time.time() - dict_start:.3f}s ({len(production_data)} records)")
                 
                 dict_start = time.time()
-                supplier_data = MasterDataEpicorSupplierMasterDataModel.objects.filter(version=scenario).exclude(VendorID__isnull=True).exclude(VendorID__exact='')
-                self.stdout.write(f"   🚚 Supplier query: {time.time() - dict_start:.3f}s ({len(supplier_data)} records)")
+                supplier_data = MasterDataEpicorSupplierMasterDataModel.objects.filter(version=scenario).exclude(VendorID__isnull=True).exclude(VendorID__exact='').only('version', 'PartNum', 'VendorID')
+                if single_product:
+                    supplier_data = supplier_data.filter(PartNum=single_product)
+                    self.stdout.write(f"   🚚 Supplier query (FILTERED for single product): {time.time() - dict_start:.3f}s ({len(supplier_data)} records)")
+                else:
+                    self.stdout.write(f"   🚚 Supplier query (FULL - expect slow): {time.time() - dict_start:.3f}s ({len(supplier_data)} records)")
                 
                 dict_start = time.time()
                 manual_assign_data = MasterDataManuallyAssignProductionRequirement.objects.filter(
                     version=scenario
-                ).select_related('Product', 'Site').values(
-                    'version__version', 'Product__Product', 'ShippingDate', 'Site__SiteName'
-                )
-                self.stdout.write(f"   📍 Manual Assignment query: {time.time() - dict_start:.3f}s ({len(manual_assign_data)} records)")
+                ).select_related('Product', 'Site')
+                if single_product:
+                    manual_assign_data = manual_assign_data.filter(Product__Product=single_product)
+                    manual_assign_values = manual_assign_data.values('version__version', 'Product__Product', 'Site__SiteName')
+                    self.stdout.write(f"   📍 Manual Assignment query (FILTERED): {time.time() - dict_start:.3f}s ({len(manual_assign_data)} records)")
+                else:
+                    manual_assign_values = manual_assign_data.values('version__version', 'Product__Product', 'Site__SiteName')
+                    self.stdout.write(f"   📍 Manual Assignment query (FULL): {time.time() - dict_start:.3f}s ({len(manual_assign_data)} records)")
                 
-                # Build dictionaries from the data
+                # Build dictionaries from the data - OPTIMIZED VERSION
                 dict_start = time.time()
                 
+                # Optimize Order Book mapping - use list comprehension for better performance
                 order_book_map = {
                     (ob.version.version, ob.productkey): ob.site
                     for ob in order_book_data
+                    if ob.version and ob.productkey and ob.site  # Filter nulls during creation
                 }
+                self.stdout.write(f"   🔧 Order Book dict built: {time.time() - dict_start:.3f}s")
                 
+                dict_start = time.time()
                 production_map = {
                     (prod.version.version, prod.Product): prod.Foundry
                     for prod in production_data
+                    if prod.version and prod.Product and prod.Foundry  # Filter nulls during creation
                 }
+                self.stdout.write(f"   🔧 Production dict built: {time.time() - dict_start:.3f}s")
                 
+                # CRITICAL OPTIMIZATION: Supplier dictionary construction 
+                dict_start = time.time()
                 supplier_map = {
                     (sup.version.version, sup.PartNum): sup.VendorID
                     for sup in supplier_data
+                    if sup.version and sup.PartNum and sup.VendorID
                 }
+                self.stdout.write(f"   🔧 Supplier dict built: {time.time() - dict_start:.3f}s")
                 
+                # OPTIMIZATION: Filter manual assignment data for single product mode
+                dict_start = time.time()
                 manual_assign_map = {
-                    (m['version__version'], m['Product__Product'], m['ShippingDate']): m['Site__SiteName']
-                    for m in manual_assign_data
-                    if m['Product__Product'] and m['Site__SiteName']  # Filter out nulls
+                    (m['version__version'], m['Product__Product']): m['Site__SiteName']
+                    for m in manual_assign_values
+                    if m['Product__Product'] and m['Site__SiteName']
                 }
+                self.stdout.write(f"   🔧 Manual assignment dict built: {time.time() - dict_start:.3f}s")
                 
                 self.stdout.write(f"   🔧 Dictionary construction: {time.time() - dict_start:.3f}s")
                 self.stdout.write(f"   📊 Final counts - Order Book: {len(order_book_map)}, Production: {len(production_map)}, Supplier: {len(supplier_map)}, Manual: {len(manual_assign_map)}")
@@ -277,10 +382,16 @@ class Command(BaseCommand):
                 
                 # Step 5: Data validation and filtering
                 step_start = time.time()
-                def can_assign_foundry_fn(product):
-                    # Implement foundry assignment check if needed
-                    # Example: Only allow foundry assignment if product exists in production_map
-                    return (scenario.version, product) in production_map
+                
+                # Initialize foundry assignment cache for performance
+                foundry_assignment_cache = {}
+                
+                def can_assign_foundry_fn(product, proposed_site=None):
+                    """
+                    Enhanced foundry assignment logic using Method of Manufacturing data with caching.
+                    This integrates with the optimized class method using Polars.
+                    """
+                    return self.can_assign_to_foundry_optimized(product, proposed_site, mom_df, foundry_assignment_cache)
                 forecast_df = forecast_df.with_columns([
                     pl.col('Location').map_elements(extract_site_code, return_dtype=pl.Utf8).alias('site_code')
                 ])
@@ -305,6 +416,8 @@ class Command(BaseCommand):
                 ])
                 step_duration = time.time() - step_start
                 self.stdout.write(f"✅ Step 5: Data validation and filtering ({step_duration:.3f}s)")
+                self.stdout.write(f"   🔍 MOM data loaded: {len(mom_df)} manufacturing operation records")
+                self.stdout.write(f"   🏭 Foundry assignment cache initialized for performance")
                 
                 # Step 6: Process replenishment records (CRITICAL PATH)
                 step_start = time.time()
@@ -365,6 +478,7 @@ class Command(BaseCommand):
                     site_selection_pct = 0.0
                     
                 self.stdout.write(f"   🎯 Site selection time: {site_selection_time:.3f}s ({site_selection_pct:.1f}%)")
+                self.stdout.write(f"   🏭 Foundry assignment cache hits: {len(foundry_assignment_cache)} unique products")
                 
                 # Step 7: Bulk create records
                 step_start = time.time()

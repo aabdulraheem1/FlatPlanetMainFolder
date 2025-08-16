@@ -3730,19 +3730,35 @@ def populate_inventory_projection_model(scenario_version):
         step_time = time.time()
         projection_records = []
         
-        # Get unique parent groups from forecast data
-        parent_groups = set(parent_group for _, parent_group in forecast_dict.keys())
+        # Get unique parent groups from BOTH forecast and production data
+        forecast_parent_groups = set(parent_group for _, parent_group in forecast_dict.keys())
+        production_parent_groups = set(parent_group for _, parent_group in production_dict.keys())
+        parent_groups = forecast_parent_groups | production_parent_groups  # Union of both sets
         if not parent_groups:
-            raise ValueError(f"❌ NO FALLBACK: No parent groups found in forecast data for scenario '{scenario_version}'. "
+            raise ValueError(f"❌ NO FALLBACK: No parent groups found in forecast OR production data for scenario '{scenario_version}'. "
                            f"System configured to FAIL FAST.")
-        print(f"🎯 NO FALLBACK: Processing {len(parent_groups)} parent groups")
+        print(f"🎯 NO FALLBACK: Processing {len(parent_groups)} parent groups (forecast: {len(forecast_parent_groups)}, production: {len(production_parent_groups)})")
         
-        # Get all unique months and sort them
-        all_months = sorted(set(month for month, _ in forecast_dict.keys()))
+        # Get all unique months from BOTH forecast and production data - CRITICAL FIX
+        forecast_months = set(month for month, _ in forecast_dict.keys())
+        production_months = set(month for month, _ in production_dict.keys())
+        all_months = sorted(forecast_months | production_months)  # Union of both sets
         if not all_months:
-            raise ValueError(f"❌ NO FALLBACK: No months found in forecast data for scenario '{scenario_version}'. "
+            raise ValueError(f"❌ NO FALLBACK: No months found in forecast OR production data for scenario '{scenario_version}'. "
                            f"System configured to FAIL FAST.")
-        print(f"📅 NO FALLBACK: Processing {len(all_months)} months from {all_months[0]}")
+        print(f"📅 NO FALLBACK: Processing {len(all_months)} months from {all_months[0]} (forecast: {len(forecast_months)}, production: {len(production_months)})")
+        
+        # Generate exactly 24 months starting from the month after snapshot date to ensure complete coverage
+        generated_months = []
+        current_month = start_month
+        for i in range(24):  # Exactly 24 months
+            # Convert to datetime to match SQL query results
+            generated_months.append(datetime(current_month.year, current_month.month, 1))
+            current_month = (current_month + relativedelta(months=1)).replace(day=1)
+        
+        # Use the union of data-driven months and 24-month business rule
+        all_months_final = sorted(set(all_months) | set(generated_months))
+        print(f"📅 NO FALLBACK: Final processing {len(all_months_final)} months including 24-month business rule coverage")
         
         for parent_group in parent_groups:
             if not parent_group:
@@ -3752,7 +3768,7 @@ def populate_inventory_projection_model(scenario_version):
             current_inventory = opening_inventory_data.get(parent_group, 0)
             
             # Process each month sequentially
-            for month in all_months:
+            for month in all_months_final:
                 forecast_key = (month, parent_group)
                 
                 # Get forecast data

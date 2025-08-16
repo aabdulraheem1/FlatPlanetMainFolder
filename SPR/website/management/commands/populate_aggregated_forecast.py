@@ -130,19 +130,17 @@ class Command(BaseCommand):
             forecast_df_pd = pd.read_sql_query(
                 """SELECT * FROM website_smart_forecast_model 
                    WHERE version_id = ? 
-                   AND Product = ?
-                   AND (Qty IS NOT NULL AND Qty != 0)""", 
+                   AND Product = ?""", 
                 engine, params=(version, single_product)
             )
-            self.stdout.write(f"🎯 Loading SMART forecast data for single product: {single_product}")
+            self.stdout.write(f"🎯 Loading ALL SMART forecast data for single product: {single_product} (including zero quantities)")
         else:
             forecast_df_pd = pd.read_sql_query(
                 """SELECT * FROM website_smart_forecast_model 
-                   WHERE version_id = ? 
-                   AND (Qty IS NOT NULL AND Qty != 0)""", 
+                   WHERE version_id = ?""", 
                 engine, params=(version,)
             )
-            self.stdout.write("🌐 Loading SMART forecast data for all products")
+            self.stdout.write("🌐 Loading ALL SMART forecast data for all products (including zero quantities)")
         
         step_duration = time.time() - step_start
         self.stdout.write(f"✅ Step 4: SMART forecast data loaded - {len(forecast_df_pd)} records ({step_duration:.3f}s)")

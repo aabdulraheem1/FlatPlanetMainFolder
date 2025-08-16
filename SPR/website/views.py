@@ -33,6 +33,7 @@ See TRACKING_SYSTEM_WARNINGS.md for complete tracking system rules.
 from django.shortcuts import render, redirect
 from django.views.decorators.http import require_http_methods
 import pandas as pd
+import polars as pl
 import math
 import random
 import time
@@ -2363,10 +2364,77 @@ def ScenarioWarningList(request, version):
     user_name = request.user.username
     scenario = get_object_or_404(scenarios, version=version)
 
-    # Products in forecast but not in master data
-    forecast_products_set = set(SMART_Forecast_Model.objects.values_list('Product', flat=True).distinct())
+    # Products in forecast but not in master data - WITH TONNAGE DATA AND GROUPING BY PRODUCT_GROUP
+    forecast_products_set = set(SMART_Forecast_Model.objects.filter(version=scenario).values_list('Product', flat=True).distinct())
     master_products_set = set(MasterDataProductModel.objects.values_list('Product', flat=True))
-    products_not_in_master_data = forecast_products_set - master_products_set
+    products_not_in_master_data_codes = forecast_products_set - master_products_set
+    
+    # Get tonnage data AND product group information for products not in master data
+    products_not_in_master_data_with_details = []
+    grouped_products_not_in_master_data = defaultdict(lambda: {'products': [], 'total_tonnes': 0, 'count': 0})
+    
+    if products_not_in_master_data_codes:
+        # Get tonnage data where available from AggregatedForecast
+        aggregated_data_dict = {}
+        aggregated_data = list(
+            AggregatedForecast.objects
+            .filter(version=scenario, product__Product__in=products_not_in_master_data_codes)
+            .values('product__Product')
+            .annotate(total_tonnes=Sum('qty'))
+        )
+        
+        # Create dictionary for quick lookup
+        for item in aggregated_data:
+            aggregated_data_dict[item['product__Product']] = item['total_tonnes'] or 0
+        
+        # Get product group information from SMART forecast
+        smart_product_groups = {}
+        smart_group_data = list(
+            SMART_Forecast_Model.objects.filter(
+                version=scenario, 
+                Product__in=products_not_in_master_data_codes
+            ).values('Product', 'Product_Group')
+            .distinct()
+        )
+        
+        # Create lookup for product groups
+        for item in smart_group_data:
+            product = item['Product']
+            if product not in smart_product_groups:
+                smart_product_groups[product] = item['Product_Group'] or 'Unknown Group'
+        
+        # Create list for ALL products not in master data, with tonnage and group info
+        for product_code in products_not_in_master_data_codes:
+            product_data = {
+                'product__Product': product_code,
+                'total_tonnes': aggregated_data_dict.get(product_code, 0),  # 0 if no tonnage data
+                'product_group': smart_product_groups.get(product_code, 'Unknown Group')
+            }
+            products_not_in_master_data_with_details.append(product_data)
+            
+            # Group by product group
+            group_name = product_data['product_group']
+            grouped_products_not_in_master_data[group_name]['products'].append(product_data)
+            grouped_products_not_in_master_data[group_name]['total_tonnes'] += product_data['total_tonnes']
+            grouped_products_not_in_master_data[group_name]['count'] += 1
+        
+        # Sort products within each group by tonnage descending
+        for group_name in grouped_products_not_in_master_data:
+            grouped_products_not_in_master_data[group_name]['products'] = sorted(
+                grouped_products_not_in_master_data[group_name]['products'],
+                key=lambda x: x['total_tonnes'],
+                reverse=True
+            )
+        
+        # Sort the overall list by tonnage descending (for backward compatibility)
+        products_not_in_master_data_with_details = sorted(
+            products_not_in_master_data_with_details,
+            key=lambda x: x['total_tonnes'],
+            reverse=True
+        )
+    
+    # Also keep the original set for backward compatibility
+    products_not_in_master_data = products_not_in_master_data_codes
 
     # Products without dress mass (fetch only needed fields)
     products_without_dress_mass = (
@@ -2404,11 +2472,204 @@ def ScenarioWarningList(request, version):
     for product in products_not_allocated_to_foundries:
         grouped_products[product['Product__ParentProductGroup']].append(product)
 
+    # NEW SECTION: Products where select_site() returns None - OPTIMIZED WITH POLARS
+    from website.management.commands.populate_calculated_replenishment_v2 import extract_site_code
+    from website.models import (
+        MasterDataOrderBook, MasterDataHistoryOfProductionModel, 
+        MasterDataEpicorSupplierMasterDataModel, MasterDataManuallyAssignProductionRequirement,
+        MasterDataCustomersModel
+    )
+    import polars as pl
+    import pandas as pd
+    
+    # Step 1: Get all AggregatedForecast data with tonnages - FAST
+    aggregated_forecast_data = list(
+        AggregatedForecast.objects
+        .filter(version=scenario)
+        .values('product__Product', 'product__ProductDescription', 'product__ParentProductGroup', 'qty')
+    )
+    
+    if not aggregated_forecast_data:
+        grouped_products_missing_replenishment_sorted = {}
+        total_missing_tonnes = 0 
+        total_missing_products = 0
+    else:
+        # Convert to Polars for fast processing
+        forecast_df = pl.from_pandas(pd.DataFrame(aggregated_forecast_data))
+        
+        # Group by product and sum tonnes - VECTORIZED
+        product_tonnes_df = (
+            forecast_df
+            .group_by(['product__Product', 'product__ProductDescription', 'product__ParentProductGroup'])
+            .agg(pl.col('qty').sum().alias('total_tonnes'))
+            .sort('total_tonnes', descending=True)
+        )
+        
+        # Step 1.5: Get forecast region and customer data for each product from SMART forecast
+        smart_forecast_extra_data = list(
+            SMART_Forecast_Model.objects.filter(
+                version=scenario
+            ).exclude(
+                Forecast_Region__isnull=True
+            ).exclude(
+                Forecast_Region__exact=''
+            ).values('Product', 'Forecast_Region', 'Customer_code')
+        )
+        
+        # Create lookup for forecast region and customer per product
+        product_forecast_data = {}
+        if smart_forecast_extra_data:
+            for item in smart_forecast_extra_data:
+                product = item['Product']
+                if product not in product_forecast_data:
+                    product_forecast_data[product] = {
+                        'forecast_region': item['Forecast_Region'],
+                        'customer_code': item['Customer_code']
+                    }
+        
+        # Get customer names lookup
+        customer_names = {}
+        if smart_forecast_extra_data:
+            customer_codes = set(item['Customer_code'] for item in smart_forecast_extra_data if item['Customer_code'])
+            customer_data = list(
+                MasterDataCustomersModel.objects.filter(
+                    CustomerId__in=customer_codes
+                ).values('CustomerId', 'CustomerName')
+            )
+            customer_names = {c['CustomerId']: c['CustomerName'] for c in customer_data}
+        
+        # Step 2: Get SMART forecast data for site checking - FAST BULK QUERY
+        smart_forecast_data = list(
+            SMART_Forecast_Model.objects.filter(
+                version=scenario,
+                Qty__gt=0
+            ).exclude(
+                Data_Source__in=['Fixed Plant', 'Revenue Forecast']
+            ).values('Product', 'Location')
+        )
+        
+        if smart_forecast_data:
+            smart_df = pl.from_pandas(pd.DataFrame(smart_forecast_data))
+            
+            # Extract site codes - VECTORIZED
+            smart_df = smart_df.with_columns([
+                pl.col('Location').map_elements(extract_site_code, return_dtype=pl.Utf8).alias('site_code')
+            ]).filter(pl.col('site_code').is_not_null())
+            
+            # Get valid sites
+            valid_sites = set(MasterDataPlantModel.objects.values_list('SiteName', flat=True))
+            smart_df = smart_df.filter(pl.col('site_code').is_in(valid_sites))
+            
+            # Step 3: Build lookup data - BATCH QUERIES
+            order_book_data = list(
+                MasterDataOrderBook.objects.filter(version=scenario)
+                .exclude(site__isnull=True).exclude(site__exact='')
+                .values('productkey', 'site')
+            )
+            
+            production_data = list(
+                MasterDataHistoryOfProductionModel.objects.filter(version=scenario)
+                .exclude(Foundry__isnull=True).exclude(Foundry__exact='')
+                .values('Product', 'Foundry')
+            )
+            
+            supplier_data = list(
+                MasterDataEpicorSupplierMasterDataModel.objects.filter(version=scenario)
+                .exclude(VendorID__isnull=True).exclude(VendorID__exact='')
+                .values('PartNum', 'VendorID')
+            )
+            
+            manual_data = list(
+                MasterDataManuallyAssignProductionRequirement.objects.filter(version=scenario)
+                .select_related('Product', 'Site')
+                .values('Product__Product', 'Site__SiteName')
+            )
+            
+            # Convert to Polars DataFrames for fast lookups
+            order_df = pl.from_pandas(pd.DataFrame(order_book_data)) if order_book_data else pl.DataFrame()
+            production_df = pl.from_pandas(pd.DataFrame(production_data)) if production_data else pl.DataFrame()
+            supplier_df = pl.from_pandas(pd.DataFrame(supplier_data)) if supplier_data else pl.DataFrame()
+            manual_df = pl.from_pandas(pd.DataFrame(manual_data)) if manual_data else pl.DataFrame()
+            
+            # Step 4: Determine which products have site assignments - VECTORIZED JOINS
+            products_with_sites = set()
+            
+            # Check manual assignments - FAST SET OPERATIONS
+            if len(manual_df) > 0:
+                manual_products = set(manual_df['Product__Product'].to_list())
+                products_with_sites.update(manual_products)
+            
+            # Check order book - FAST JOIN
+            if len(order_df) > 0:
+                order_products = set(order_df['productkey'].to_list())
+                products_with_sites.update(order_products)
+            
+            # Check production history - FAST JOIN  
+            if len(production_df) > 0:
+                production_products = set(production_df['Product'].to_list())
+                products_with_sites.update(production_products)
+            
+            # Check suppliers - FAST JOIN
+            if len(supplier_df) > 0:
+                supplier_products = set(supplier_df['PartNum'].to_list())
+                products_with_sites.update(supplier_products)
+            
+            # Step 5: Filter products that DON'T have site assignments - VECTORIZED
+            products_missing_sites = (
+                product_tonnes_df
+                .filter(~pl.col('product__Product').is_in(products_with_sites))
+                .to_pandas()
+                .to_dict('records')
+            )
+            
+        else:
+            # No SMART forecast data, all products are missing
+            products_missing_sites = product_tonnes_df.to_pandas().to_dict('records')
+        
+        # Step 6: Group by parent product group and add forecast/customer data - FAST PYTHON OPERATIONS
+        grouped_products_missing_replenishment = defaultdict(list)
+        total_missing_tonnes = 0
+        total_missing_products = 0
+        
+        for product in products_missing_sites:
+            product_code = product['product__Product']
+            
+            # Add forecast region and customer information
+            if product_code in product_forecast_data:
+                forecast_info = product_forecast_data[product_code]
+                product['forecast_region'] = forecast_info['forecast_region']
+                product['customer_code'] = forecast_info['customer_code']
+                product['customer_name'] = customer_names.get(forecast_info['customer_code'], 'Unknown Customer')
+            else:
+                product['forecast_region'] = 'No Region Data'
+                product['customer_code'] = 'No Customer Data'
+                product['customer_name'] = 'No Customer Data'
+            
+            grouped_products_missing_replenishment[product['product__ParentProductGroup']].append(product)
+            total_missing_tonnes += product['total_tonnes'] or 0
+            total_missing_products += 1
+        
+        # Sort products within each group by tonnage (descending) and calculate group totals
+        grouped_products_missing_replenishment_sorted = {}
+        for parent_group, products in grouped_products_missing_replenishment.items():
+            # Products are already sorted by tonnage from the Polars query
+            group_total_tonnes = sum(p['total_tonnes'] or 0 for p in products)
+            grouped_products_missing_replenishment_sorted[parent_group] = {
+                'products': products,
+                'total_tonnes': group_total_tonnes,
+                'count': len(products)
+            }
+
     context = {
         'scenario': scenario,
         'products_not_in_master_data': products_not_in_master_data,
+        'products_not_in_master_data_with_tonnes': products_not_in_master_data_with_details,
+        'grouped_products_not_in_master_data': dict(grouped_products_not_in_master_data),
         'grouped_products_without_dress_mass': dict(grouped_products_without_dress_mass),
         'grouped_products': dict(grouped_products),
+        'grouped_products_missing_replenishment': grouped_products_missing_replenishment_sorted,
+        'total_missing_tonnes': total_missing_tonnes,
+        'total_missing_products': total_missing_products,
         'missing_regions': missing_regions,
         'user_name': user_name,
     }
@@ -2422,8 +2683,19 @@ def create_product(request):
             form.save()
             return redirect('ProductsList')  # Redirect to a list of products or another page
     else:
-        form = ProductForm()
-    return render(request, 'website/create_product.html', {'form': form})
+        # Check if product_code is provided as query parameter
+        initial_data = {}
+        product_code = request.GET.get('product_code')
+        if product_code:
+            initial_data['Product'] = product_code
+        
+        form = ProductForm(initial=initial_data)
+    
+    context = {
+        'form': form,
+        'pre_filled_product': request.GET.get('product_code', '')
+    }
+    return render(request, 'website/create_product.html', context)
 
 from sqlalchemy import create_engine, text
 from django.shortcuts import get_object_or_404
@@ -5406,10 +5678,66 @@ def test_product_calculation(request, version):
             
             # Count total master data records
             total_master_records = master_count + inventory_data.count() + production_history.count() + order_book.count()
-            
+
+            # --- Sites Section ---
+            from website.models import MasterDataManuallyAssignProductionRequirement
+            manually_assigned_sites = MasterDataManuallyAssignProductionRequirement.objects.filter(
+                version__version=version,
+                Product__Product=selected_product
+            )
+
             master_time = time.time() - master_start
             print(f"   📋 Master data queries: {master_time:.3f}s")
-            
+
+            # --- Customer Incoterms Section ---
+            # Get all unique customer codes from aggregated forecast
+            customer_codes = set([f.Customer_code for f in smart_forecast if f.Customer_code])
+            incoterm_rows = []
+            from website.models import MasterdataIncoTermsModel, MasterDataIncotTermTypesModel
+            for code in customer_codes:
+                incoterm_obj = MasterdataIncoTermsModel.objects.filter(version__version=version, CustomerCode=code).first()
+                if incoterm_obj:
+                    incoterm_type_obj = incoterm_obj.Incoterm
+                    incoterm_type = incoterm_type_obj.IncoTermCaregory if incoterm_type_obj else "N/A"
+                    incoterm_name = incoterm_type_obj.IncoTerm if incoterm_type_obj else "N/A"
+                else:
+                    incoterm_name = "N/A"
+                    incoterm_type = "N/A"
+                incoterm_rows.append({
+                    'customer_code': code,
+                    'incoterm': incoterm_name,
+                    'incoterm_type': incoterm_type
+                })
+
+            # --- Freight Section ---
+            # Get all unique regions from SMART forecast and sites from production data
+            regions = set([f.Forecast_Region for f in smart_forecast if f.Forecast_Region])
+            sites = set([str(p.site) for p in production_data if p.site])
+            from website.models import MasterDataFreightModel, MasterDataForecastRegionModel, MasterDataPlantModel
+            freight_rows = []
+            for region in regions:
+                for site_name in sites:
+                    # Find site object
+                    site_obj = MasterDataPlantModel.objects.filter(SiteName=site_name).first()
+                    region_obj = MasterDataForecastRegionModel.objects.filter(Forecast_region=region).first()
+                    if site_obj and region_obj:
+                        freight_obj = MasterDataFreightModel.objects.filter(version__version=version, ForecastRegion=region_obj, ManufacturingSite=site_obj).first()
+                        if freight_obj:
+                            freight_rows.append({
+                                'region': region,
+                                'site': site_name,
+                                'plant_to_port': freight_obj.PlantToDomesticPortDays,
+                                'ocean_freight': freight_obj.OceanFreightDays,
+                                'port_to_customer': freight_obj.PortToCustomerDays
+                            })
+                        else:
+                            freight_rows.append({
+                                'region': region,
+                                'site': site_name,
+                                'plant_to_port': 'N/A',
+                                'ocean_freight': 'N/A',
+                                'port_to_customer': 'N/A'
+                            })
             # Update context with all the data
             context.update({
                 'aggregated_forecast': smart_forecast,
@@ -5424,7 +5752,12 @@ def test_product_calculation(request, version):
                 'master_data_count': total_master_records,
                 'safety_stocks_count': safety_stocks_data.count(),
                 'inventory_count': inventory_data.count(),
-                'product_obj': product_obj
+                'product_obj': product_obj,
+                'customer_incoterms': incoterm_rows,
+                'freight_info': freight_rows,
+                'order_book': order_book,
+                'production_history': production_history,
+                'manually_assigned_sites': manually_assigned_sites
             })
             
             # Update timing info if it exists
@@ -8820,3 +9153,67 @@ def production_allocation_view(request, version):
     }
     
     return render(request, 'website/production_allocation.html', context)
+
+
+@login_required
+def manual_site_assignment(request, version, product_code):
+    """View for manually assigning a site to a product for replenishment allocation."""
+    try:
+        scenario = scenarios.objects.get(version=version)
+        product = MasterDataProductModel.objects.get(Product=product_code)
+    except (scenarios.DoesNotExist, MasterDataProductModel.DoesNotExist):
+        return render(request, 'website/error.html', {
+            'error_message': 'Scenario or Product not found.'
+        })
+    
+    # Get existing assignment if any
+    try:
+        assignment = MasterDataManuallyAssignProductionRequirement.objects.get(
+            version=scenario,
+            Product=product
+        )
+    except MasterDataManuallyAssignProductionRequirement.DoesNotExist:
+        assignment = None
+    
+    if request.method == 'POST':
+        site_name = request.POST.get('site_name', '').strip()
+        
+        if site_name:
+            try:
+                # Validate that the site exists
+                site = MasterDataPlantModel.objects.get(SiteName=site_name)
+                
+                # Create or update the assignment
+                if assignment:
+                    assignment.Site = site
+                    assignment.save()
+                else:
+                    MasterDataManuallyAssignProductionRequirement.objects.create(
+                        version=scenario,
+                        Product=product,
+                        Site=site
+                    )
+                
+                return redirect('scenario_warning_list', version=version)
+                
+            except MasterDataPlantModel.DoesNotExist:
+                error_message = f"Site '{site_name}' not found in master data."
+        else:
+            # Delete the assignment if site_name is empty
+            if assignment:
+                assignment.delete()
+            return redirect('scenario_warning_list', version=version)
+    
+    # Get all available sites for validation/autocomplete
+    all_sites = MasterDataPlantModel.objects.all().values_list('SiteName', flat=True).order_by('SiteName')
+    
+    context = {
+        'scenario': scenario,
+        'product': product,
+        'assignment': assignment,
+        'all_sites': json.dumps(list(all_sites)),
+        'error_message': locals().get('error_message', ''),
+        'user_name': request.user.username if request.user.is_authenticated else 'Anonymous',
+    }
+    
+    return render(request, 'website/manual_site_assignment.html', context)

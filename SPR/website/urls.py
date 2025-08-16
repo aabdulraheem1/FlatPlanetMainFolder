@@ -37,6 +37,8 @@ urlpatterns = [
     path('scenario/supplier-review/<str:version>/', views_cached.supplier_review_cached, name='supplier_review'),
     path('scenario/calculate-aggregated/<str:version>/', views.calculate_aggregated_data, name='calculate_aggregated_data'),
     path('warningList/<str:version>', views.ScenarioWarningList, name='warningList'),
+    path('warningList/<str:version>', views.ScenarioWarningList, name='scenario_warning_list'),
+    path('manual-site-assignment/<str:version>/<str:product_code>/', views.manual_site_assignment, name='manual_site_assignment'),
     path('create_product/', views.create_product, name='create_product'),
     path('update_product_allocation/<str:version>/', views.update_product_allocation, name='update_product_allocation'),
     path('delete_product_allocation/<str:version>/', views.delete_product_allocation, name='delete_product_allocation'),
@@ -219,6 +221,9 @@ urlpatterns = [
     path('product-allocation-load/<str:version>/', views.product_allocation_load, name='product_allocation_load'),
     path('product-allocation-save/<str:version>/', views.product_allocation_save, name='product_allocation_save'),
     path('production_allocation/<str:version>/', views.production_allocation_view, name='production_allocation_view'),
+
+    # Redirect common URL mistakes
+    path('list-scenario/<str:version>/', lambda request, version: redirect('scenario_warning_list', version=version), name='list_scenario_redirect'),
 
     # Add other URL patterns as needed
 ]
