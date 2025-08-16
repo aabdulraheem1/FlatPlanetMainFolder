@@ -1,5 +1,9 @@
 """
+🚫🚫🚫 CRITICAL WARNING TO ALL DEVELOPERS 🚫🚫🚫
+
 ⚠️ CACHE POLICY: NO CACHING ALLOWED ⚠️
+⚠️ FALLBACK POLICY: NO FALLBACKS ALLOWED ⚠️
+⚠️ TRACKING POLICY: REAL-TIME ONLY ⚠️
 
 This application is PROHIBITED from using ANY form of caching, fallback mechanisms, 
 or error hiding methods. All data must be calculated in real-time from the database 
@@ -8,13 +12,22 @@ to ensure accuracy and prevent stale data issues like the July 2025 snapshot bug
 PROHIBITED TECHNIQUES:
 - Backend caching (CachedControlTowerData, CachedFoundryData, etc.) - DISABLED  
 - Frontend caching (window.detailedMonthlyTableCache) - REMOVED
+- Calculation tracking fallbacks (try/except with default button states) - FORBIDDEN
+- Signal handler caching or batching - FORBIDDEN
+- Default button colors when tracking fails - FORBIDDEN
 - Translation caching (TRANSLATION_CACHE) - REMOVED
 - Fallback scenarios - REMOVED
 - Error suppression/hiding - REMOVED
 - Data memoization - PROHIBITED
 
+🔥 THE CALCULATION TRACKING SYSTEM MUST NEVER HAVE FALLBACKS 🔥
+🔥 IF TRACKING FAILS, THE ENTIRE SYSTEM MUST FAIL 🔥
+🔥 BUTTON COLORS MUST ALWAYS REFLECT REAL-TIME DATABASE STATE 🔥
+
 All calculations must use live database queries with proper snapshot-based filtering.
 The cached functions below have been disabled and replaced with real-time calculations.
+
+See TRACKING_SYSTEM_WARNINGS.md for complete tracking system rules.
 """
 
 from django.shortcuts import render, redirect
@@ -880,10 +893,45 @@ def edit_scenario(request, version):
 
 @login_required
 def list_scenarios(request):
+    """
+    ⚠️ ⚠️ ⚠️  CRITICAL WARNING TO ALL FUTURE DEVELOPERS  ⚠️ ⚠️ ⚠️
+    
+    🚫 NO FALLBACKS ALLOWED! 🚫
+    🚫 NO CACHING ALLOWED! 🚫 
+    🚫 NO DEFAULT BUTTON STATES! 🚫
+    
+    This view MUST use the real-time calculation tracking system.
+    If the tracking system fails, THE ENTIRE SYSTEM MUST FAIL.
+    
+    DO NOT ADD:
+    - try/except blocks around tracking calls
+    - fallback button states 
+    - default values when tracking fails
+    - any caching mechanisms
+    
+    If this breaks, FIX THE ROOT CAUSE - don't add fallbacks!
+    The tracking system is mission-critical for data integrity.
+    """
     user_name = request.user.username
     all_scenarios = scenarios.objects.all()
-    return render(request, 'website/list_scenarios.html', {'scenarios': all_scenarios,
-                                                           'user_name':user_name})
+    
+    # 🔴 STRICT REAL-TIME TRACKING - NO FALLBACKS 🔴
+    from .calculation_tracking import get_calculation_button_state
+    
+    scenario_data = []
+    for scenario in all_scenarios:
+        # Get button state - if this fails, the system MUST fail
+        button_state = get_calculation_button_state(scenario)
+        
+        scenario_data.append({
+            'scenario': scenario,
+            'button_state': button_state
+        })
+    
+    return render(request, 'website/list_scenarios.html', {
+        'scenario_data': scenario_data,
+        'user_name': user_name
+    })
 
 @login_required
 def delete_scenario(request, version):
@@ -4987,8 +5035,21 @@ def get_inventory_chart_data(request, version):
 def calculate_model(request, version):
     """
     Run the management commands to calculate the model for the given version.
+    Includes real-time change tracking - NO CACHING ALLOWED.
     """
+    from .calculation_tracking import mark_calculation_started, mark_calculation_completed, mark_calculation_failed
+    
     print("calculate_model called with version:", version)
+    
+    # Get scenario and mark calculation as started
+    try:
+        scenario = scenarios.objects.get(version=version)
+        mark_calculation_started(scenario)
+        print(f"🚀 Starting calculation for scenario '{version}'")
+    except scenarios.DoesNotExist:
+        messages.error(request, f"Scenario '{version}' not found.")
+        return redirect('list_scenarios')
+    
     try:
         # Step 1: Run the first command: populate_aggregated_forecast
         print("Running populate_aggregated_forecast")
@@ -5035,8 +5096,7 @@ def calculate_model(request, version):
 
         # Step 7: Reset optimization state to allow Auto Level Optimization again
         try:
-            from .models import scenarios, ScenarioOptimizationState
-            scenario = scenarios.objects.get(version=version)
+            from .models import ScenarioOptimizationState
             opt_state, created = ScenarioOptimizationState.objects.get_or_create(
                 version=scenario,
                 defaults={'auto_optimization_applied': False}
@@ -5050,9 +5110,18 @@ def calculate_model(request, version):
             print(f"ERROR: Failed to reset optimization state: {opt_error}")
             messages.warning(request, f"Model calculated successfully, but failed to reset Auto Level Optimization state: {opt_error}")
 
+        # MARK CALCULATION AS COMPLETED SUCCESSFULLY
+        mark_calculation_completed(scenario)
+        print(f"✅ Successfully completed calculation for scenario '{version}'")
+        messages.success(request, f"🎯 Model calculation completed successfully for scenario '{version}'. All data is now up-to-date and ready for review.")
+
     except Exception as e:
         import traceback
         traceback.print_exc()
+        
+        # MARK CALCULATION AS FAILED
+        mark_calculation_failed(scenario, str(e))
+        print(f"❌ Calculation failed for scenario '{version}': {e}")
         messages.error(request, f"An error occurred while calculating the model: {e}")
 
     # Redirect back to the list of scenarios
@@ -6095,7 +6164,29 @@ def auto_level_optimization(request, version):
                 
                 # Calculate gaps (Pour Plan - Current Demand) for each month
                 monthly_gaps = {}
-                scenario_start_date = datetime(2025, 7, 1).date()  # Don't move production before scenario start
+                # FIXED: Use snapshot date + 1 month instead of current date for proper scenario planning
+                from .models import OpeningInventorySnapshot
+                try:
+                    inventory_snapshot = OpeningInventorySnapshot.objects.first()
+                    if inventory_snapshot and inventory_snapshot.date_of_snapshot:
+                        snapshot_date = inventory_snapshot.date_of_snapshot
+                        # Calculate first day of the month AFTER the snapshot month
+                        next_month = snapshot_date.replace(day=28) + timedelta(days=4)  # Get next month safely
+                        scenario_start_date = next_month.replace(day=1)  # First day of next month
+                        print(f"DEBUG: Using inventory snapshot date: {snapshot_date}")
+                        print(f"DEBUG: Scenario start date (first day after snapshot month): {scenario_start_date}")
+                    else:
+                        # Fallback to current date if no snapshot available
+                        from django.utils import timezone
+                        current_date = timezone.now().date()
+                        scenario_start_date = current_date.replace(day=1)
+                        print(f"DEBUG: No snapshot found, using current date fallback: {scenario_start_date}")
+                except Exception as e:
+                    print(f"DEBUG: Error getting snapshot date: {e}")
+                    from django.utils import timezone
+                    current_date = timezone.now().date()
+                    scenario_start_date = current_date.replace(day=1)
+                    print(f"DEBUG: Exception fallback to current date: {scenario_start_date}")
                 
                 for month_key, pour_capacity in monthly_pour_plan.items():
                     # Only consider months at or after the scenario start date
@@ -8603,78 +8694,129 @@ def production_allocation_view(request, version):
     import json
     from collections import defaultdict
     import calendar
+    from datetime import datetime, timedelta
     
     # Get scenario
     scenario = get_object_or_404(scenarios, version=version)
     
     # Get search parameters
     search_term = request.GET.get('search', '').strip()
-    selected_product = request.GET.get('product', '')
+    selected_product = request.GET.get('product_id', '') or request.GET.get('product', '')
     
-    # Base queryset for production data
-    production_data = CalculatedProductionModel.objects.filter(version=version)
+    # Base queryset for production data - correct field access
+    production_data = CalculatedProductionModel.objects.filter(version=scenario)
     
-    # Apply search filters
+    # Get products list for search results
+    products = []
+    if search_term:
+        # Get distinct products that match search term - search only in product code
+        products_queryset = production_data.filter(
+            Q(product__Product__icontains=search_term)
+        ).select_related('product').distinct()
+        
+        # Convert to list of dictionaries with correct field structure
+        products = []
+        seen_products = set()
+        for record in products_queryset:
+            if record.product.Product not in seen_products:
+                products.append({
+                    'product__Product': record.product.Product,
+                    'product__ProductDescription': record.product.ProductDescription
+                })
+                seen_products.add(record.product.Product)
+    
+    # Apply search filters - search only in product code
     if search_term:
         production_data = production_data.filter(
-            Q(product_code__icontains=search_term) |
-            Q(product_description__icontains=search_term)
+            Q(product__Product__icontains=search_term)
         )
     
     if selected_product:
-        production_data = production_data.filter(product_code=selected_product)
+        production_data = production_data.filter(product__Product=selected_product)
     
     # Get monthly production data - group by product and month
-    monthly_data = defaultdict(lambda: defaultdict(float))
+    monthly_data = defaultdict(lambda: defaultdict(lambda: {'qty': 0, 'sites': set()}))
     
-    for record in production_data.select_related():
-        product_key = f"{record.product_code} - {record.product_description}"
+    for record in production_data.select_related('product', 'site'):
+        product_key = record.product.Product
         
-        # Parse date and get month/year
-        if hasattr(record, 'shipping_date') and record.shipping_date:
-            month_year = record.shipping_date.strftime('%Y-%m')
-            monthly_data[product_key][month_year] += float(record.calculated_production or 0)
+        # Parse date and get month/year in format "Jul-25"
+        if hasattr(record, 'pouring_date') and record.pouring_date:
+            month_year = record.pouring_date.strftime('%b-%y')
+            monthly_data[product_key][month_year]['qty'] += float(record.production_quantity or 0)
+            if record.site:
+                monthly_data[product_key][month_year]['sites'].add(record.site.SiteName)
     
     # Convert to list format for template
     production_summary = []
     for product, months in monthly_data.items():
-        row = {'product': product, 'months': dict(months)}
-        row['total'] = sum(months.values())
-        production_summary.append(row)
+        month_list = []
+        for month, data in months.items():
+            month_list.append({
+                'month': month,
+                'qty': data['qty'],
+                'sites': list(data['sites'])
+            })
+        
+        # Sort months chronologically
+        month_list.sort(key=lambda x: datetime.strptime(x['month'], '%b-%y'))
+        
+        production_summary.append({
+            'product': product,
+            'months': month_list,
+            'total': sum(m['qty'] for m in month_list)
+        })
     
-    # Get allocation data
-    allocation_data = ProductionAllocationModel.objects.filter(version=version)
-    if search_term:
-        allocation_data = allocation_data.filter(
-            Q(product_code__icontains=search_term) |
-            Q(product_description__icontains=search_term)
-        )
+    # Get production data for selected product if provided
+    production_data_for_product = None
+    if selected_product:
+        # Get production records for the selected product
+        records = CalculatedProductionModel.objects.filter(
+            version=scenario,
+            product__Product=selected_product
+        ).select_related('product', 'site').order_by('pouring_date')
+        
+        if records.exists():
+            # Group by month
+            monthly_production = defaultdict(lambda: {'total_qty': 0, 'sites': []})
+            
+            for record in records:
+                if record.pouring_date:
+                    month_key = record.pouring_date.strftime('%b-%y')
+                    monthly_production[month_key]['total_qty'] += float(record.production_quantity or 0)
+                    
+                    site_info = {
+                        'site': record.site.SiteName if record.site else 'Unknown',
+                        'percentage': 100.0,  # Default 100% for current allocation
+                        'qty': float(record.production_quantity or 0)
+                    }
+                    monthly_production[month_key]['sites'].append(site_info)
+            
+            # Convert to list format
+            production_data_for_product = []
+            for month, data in monthly_production.items():
+                production_data_for_product.append({
+                    'month': month,
+                    'total_qty': data['total_qty'],
+                    'sites': data['sites']
+                })
+                
+            # Sort by month
+            production_data_for_product.sort(key=lambda x: datetime.strptime(x['month'], '%b-%y'))
     
-    # Get available products for dropdown
-    available_products = production_data.values('product_code', 'product_description').distinct()
-    
-    # Get month headers for the next 12 months
-    from datetime import datetime, timedelta
-    import calendar
-    
-    current_date = datetime.now()
-    month_headers = []
-    for i in range(12):
-        month_date = current_date + timedelta(days=30*i)
-        month_key = month_date.strftime('%Y-%m')
-        month_name = month_date.strftime('%b %Y')
-        month_headers.append({'key': month_key, 'name': month_name})
+    # Get all available sites for dropdown
+    available_sites = MasterDataPlantModel.objects.all().values('SiteName').distinct()
     
     context = {
         'scenario': scenario,
         'version': version,
         'production_summary': production_summary,
-        'allocation_data': allocation_data,
-        'available_products': available_products,
-        'month_headers': month_headers,
+        'production_data': production_data_for_product,
+        'available_sites': available_sites,
         'search_term': search_term,
         'selected_product': selected_product,
+        'products': products,  # Add the products list for search results
         'user_name': request.user.username if request.user.is_authenticated else 'Anonymous',
     }
     
-    return render(request, 'production_allocation.html', context)
+    return render(request, 'website/production_allocation.html', context)

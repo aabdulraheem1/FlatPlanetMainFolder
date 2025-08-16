@@ -71,7 +71,7 @@
             </div>
             <div class="card-body">
                 {% if production_data %}
-                    <form method="POST" action="{% url 'save_production_allocation' version=version %}">
+                    <form method="POST" action="{% url 'product_allocation_save' version=version %}">>
                         {% csrf_token %}
                         <input type="hidden" name="product_id" value="{{ selected_product }}">
                         

@@ -8,6 +8,30 @@
 # USER EXPLICITLY REJECTED ALL CACHING AND FALLBACK APPROACHES
 # ==================================================================================
 
+# ==================================================================================
+# MODEL CLASSIFICATION FOR CHANGE TRACKING:
+#
+# 🟢 INPUT MODELS (tracked for changes):
+#   - Master data models that users can modify (MasterDataPlantModel, etc.)
+#   - Forecast data (SMART_Forecast_Model, Revenue_Forecast_Model) 
+#   - Configuration models (scenarios, MasterDataCapacityModel, etc.)
+#   - Models with version/scenario fields that contain USER INPUT data
+#
+# 🔴 CALCULATED/OUTPUT MODELS (excluded from change tracking):
+#   - CalculatedProductionModel - populated BY calculate_model process
+#   - CalcualtedReplenishmentModel - populated BY calculate_model process  
+#   - AggregatedForecast - populated BY calculate_model process
+#   - All Cached* models - temporary calculation results
+#   - InventoryProjectionModel - calculated from input data
+#   - OpeningInventorySnapshot - cached external data
+#   - MonthlyPouredDataModel - cached external data
+#
+# 🔍 HOW TO DISTINGUISH:
+#   - INPUT: User enters/modifies this data directly
+#   - OUTPUT: Calculate_model process populates this data
+#   - If unsure, ask: "Does the user directly edit this data, or is it calculated?"
+# ==================================================================================
+
 from django.db import models
 
 # Create your models here.
@@ -78,8 +102,26 @@ class scenarios(models.Model):
     approval1 = models.BooleanField(default=False)
     approval2 = models.BooleanField(default=False)
     approval3 = models.BooleanField(default=False)
+    
+    # Model calculation tracking - NO CACHING, REAL-TIME CHANGE DETECTION
+    last_calculated = models.DateTimeField(null=True, blank=True, help_text="When calculate_model was last run successfully")
+    calculation_status = models.CharField(max_length=50, default='never_calculated', choices=[
+        ('never_calculated', 'Never Calculated'),
+        ('up_to_date', 'Up to Date'),
+        ('changes_detected', 'Changes Detected - Recalculation Needed'),
+        ('calculating', 'Currently Calculating'),
+        ('calculation_failed', 'Calculation Failed')
+    ], help_text="Current calculation status")
+
+# ========== INPUT MODELS - TRACKED FOR CHANGES ==========
+# 🟢 These models contain user input data and are tracked for changes
 
 class SMART_Forecast_Model(models.Model):
+    """
+    🟢 INPUT MODEL - TRACKED FOR CHANGES
+    Contains forecast data that users can upload/modify directly.
+    Changes to this model should trigger recalculation.
+    """
     version = models.ForeignKey(scenarios,  on_delete=models.CASCADE)
     Data_Source = models.CharField(max_length=100,blank=True, null=True)
     Forecast_Region = models.CharField(max_length=100,blank=True, null=True)
@@ -95,14 +137,19 @@ class SMART_Forecast_Model(models.Model):
     Qty = models.FloatField(default=0, null=True,blank=True)
     Tonnes = models.FloatField(default=0, null=True, blank=True) # New field to store pre-calculated Tonnes
     
-
-
-
-   
+    # Timestamp fields for change tracking
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
     def __str__(self):
         return self.Product   
     
 class Revenue_Forecast_Model(models.Model):
+    """
+    🟢 INPUT MODEL - TRACKED FOR CHANGES
+    Contains revenue forecast data that users can upload/modify directly.
+    Changes to this model should trigger recalculation.
+    """
     version = models.ForeignKey(scenarios , on_delete=models.CASCADE)
     Data_Source = models.CharField(max_length=100,blank=True, null=True)
     Forecast_Region = models.CharField(max_length=100,blank=True, null=True)
@@ -110,6 +157,10 @@ class Revenue_Forecast_Model(models.Model):
     ProductGroupDescription = models.CharField(max_length=100,blank=True, null=True)
     Period_AU = models.DateField( null=True)
     Revenue = models.FloatField(default=0, null=True)
+    
+    # Timestamp fields for change tracking
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
    
     def __str__(self):
         return self.Product
@@ -126,6 +177,10 @@ class MasterDataOrderBook(models.Model):
     version = models.ForeignKey(scenarios , on_delete=models.CASCADE)
     site = models.CharField(max_length=100)
     productkey = models.CharField(max_length=100)
+    
+    # Timestamp fields for change tracking
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
 
     def __str__(self):
         return f"{self.version.version} - {self.productkey}"
@@ -374,6 +429,11 @@ class MasterDataScheduleModel(models.Model):
         return f"{self.version} - {self.Plant}"
 
 class AggregatedForecast(models.Model):
+    """
+    🔴 CALCULATED/OUTPUT MODEL - EXCLUDED FROM CHANGE TRACKING
+    This model is populated BY the calculate_model process, not input TO it.
+    Contains aggregated forecast data calculated from SMART_Forecast_Model and Revenue_Forecast_Model.
+    """
     version = models.ForeignKey(scenarios , on_delete=models.CASCADE)
     tonnes = models.FloatField(default=0, null=True, blank=True)
     customer_code = models.CharField(max_length=100, blank=True, null=True)
@@ -413,6 +473,10 @@ class MasterDataFreightModel(models.Model):
     PlantToDomesticPortDays = models.IntegerField()
     OceanFreightDays = models.IntegerField()
     PortToCustomerDays = models.IntegerField()
+    
+    # Timestamp fields for change tracking
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
 
     def __str__(self):
         return f"{self.version.version} - {self.ForecastRegion.Forecast_region} - {self.ManufacturingSite.SiteName}"
@@ -426,6 +490,11 @@ class MasterDataCastToDespatchModel(models.Model):
         return self.version.version
 
 class CalcualtedReplenishmentModel(models.Model):
+    """
+    🔴 CALCULATED/OUTPUT MODEL - EXCLUDED FROM CHANGE TRACKING
+    This model is populated BY the calculate_model process, not input TO it.
+    Contains calculated replenishment requirements based on forecast and inventory data.
+    """
     version = models.ForeignKey(scenarios , on_delete=models.CASCADE)
     Product = models.ForeignKey(MasterDataProductModel, on_delete=models.CASCADE)
     Location = models.CharField( max_length=100, null=True, blank=True)  # Allow NULL values
@@ -439,6 +508,11 @@ class CalcualtedReplenishmentModel(models.Model):
         return f"{self.version.version} - {self.Product} - {self.Site}"
     
 class CalculatedProductionModel(models.Model):
+    """
+    🔴 CALCULATED/OUTPUT MODEL - EXCLUDED FROM CHANGE TRACKING
+    This model is populated BY the calculate_model process, not input TO it.
+    Contains calculated production schedules based on replenishment requirements.
+    """
     version = models.ForeignKey(scenarios , on_delete=models.CASCADE)
     product = models.ForeignKey(MasterDataProductModel, on_delete=models.CASCADE)
     site = models.ForeignKey(MasterDataPlantModel, max_length=250, null=True, blank=True, on_delete=models.CASCADE)
@@ -627,6 +701,38 @@ class SiteAllocationModel(models.Model):
     
     def __str__(self):
         return f"{self.Product.Product} - {self.Site.SiteName} - {self.AllocationPercentage}%"
+
+class ProductionAllocationModel(models.Model):
+    """
+    🟢 INPUT MODEL - TRACKED FOR CHANGES
+    Model to store production allocation percentages by product, site, and month.
+    Used for percentage-based work transfer allocation in production planning.
+    This contains user input data for allocation decisions.
+    """
+    version = models.ForeignKey(scenarios, on_delete=models.CASCADE, help_text="Scenario version")
+    product = models.ForeignKey(MasterDataProductModel, on_delete=models.CASCADE, help_text="Product to allocate")
+    site = models.ForeignKey(MasterDataPlantModel, on_delete=models.CASCADE, help_text="Site to allocate to")
+    month_year = models.CharField(max_length=10, help_text="Format: 'Jul-25', 'Aug-25', etc.")
+    allocation_percentage = models.FloatField(default=0.0, help_text="Percentage of total production (0-100)")
+    
+    # Additional fields for compatibility with views
+    product_code = models.CharField(max_length=250, blank=True, null=True, help_text="Product code for search/filter")
+    product_description = models.CharField(max_length=500, blank=True, null=True, help_text="Product description for search/filter")
+    
+    class Meta:
+        unique_together = ['version', 'product', 'site', 'month_year']
+        verbose_name = "Production Allocation"
+        verbose_name_plural = "Production Allocations"
+    
+    def save(self, *args, **kwargs):
+        """Auto-populate product_code and product_description from related product"""
+        if self.product:
+            self.product_code = self.product.Product
+            self.product_description = self.product.ProductDescription
+        super().save(*args, **kwargs)
+    
+    def __str__(self):
+        return f"{self.version.version} - {self.product.Product} - {self.site.SiteName} - {self.month_year}: {self.allocation_percentage}%"
     
 class MasterDataEpicorMethodOfManufacturingModel(models.Model):
     Company = models.CharField(max_length=50, null=True, blank=True)
@@ -660,6 +766,10 @@ class MasterDataSafetyStocks(models.Model):
     MinimumQty = models.DecimalField(max_digits=15, decimal_places=5, blank=True, null=True)
     SafetyQty = models.DecimalField(max_digits=15, decimal_places=5, blank=True, null=True)
     
+    # Timestamp fields for change tracking
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
     class Meta:
         db_table = 'MasterDataSafetyStocks'
         unique_together = ('version', 'Plant', 'PartNum')
@@ -678,10 +788,15 @@ class ScenarioOptimizationState(models.Model):
         return f"{self.version.version} - Optimized: {self.auto_optimization_applied}"
 
 
-# ========== CACHED CALCULATION MODELS ==========
+# ========== CALCULATED/OUTPUT MODELS - EXCLUDED FROM CHANGE TRACKING ==========
+# 🔴 These models contain calculated/cached data, not user input
+# 🔴 They are populated BY the calculation process, not input TO it
 
 class CachedControlTowerData(models.Model):
-    """Cache control tower calculations to avoid expensive real-time computation"""
+    """
+    🔴 CALCULATED/OUTPUT MODEL - EXCLUDED FROM CHANGE TRACKING
+    Cache control tower calculations to avoid expensive real-time computation
+    """
     version = models.OneToOneField(scenarios, on_delete=models.CASCADE, primary_key=True)
     combined_demand_plan = models.JSONField()  # Store the demand plan data
     poured_data = models.JSONField()          # Store the poured data  

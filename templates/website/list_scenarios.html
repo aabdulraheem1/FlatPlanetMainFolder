@@ -1,4 +1,28 @@
 {% extends 'website/base.html' %}
+{% load tz %}
+
+{% comment %}
+🚫🚫🚫 CRITICAL WARNING TO ALL FUTURE DEVELOPERS 🚫🚫🚫
+
+⚠️  NO STATIC BUTTON COLORS ALLOWED  ⚠️
+⚠️  NO DEFAULT BUTTON STATES ALLOWED  ⚠️  
+⚠️  NO FALLBACK TEMPLATES ALLOWED  ⚠️
+
+This template REQUIRES dynamic button states from the tracking system.
+The buttons MUST change colors based on real-time calculation status.
+
+REQUIRED DYNAMIC STATES:
+- GREEN: Changes detected / Never calculated
+- GREY: Already calculated and up-to-date  
+- RED: Calculation failed
+- BLUE: Calculation in progress
+
+If item.button_state is missing or empty, the SYSTEM MUST FAIL.
+DO NOT add fallback colors or default button classes!
+
+🔥 STATIC BUTTONS WILL CAUSE INCORRECT USER ACTIONS 🔥
+🔥 MISSING STATUS WILL CAUSE DATA CORRUPTION 🔥
+{% endcomment %}
 
 {% block title %}List of Scenarios{% endblock %}
 
@@ -8,23 +32,62 @@
     <thead>
         <tr>
             <th>Version</th>
+            <th>Last Calculated</th>
+            <th>Status</th>
             <th>Actions</th>
         </tr>
     </thead>
     <tbody>
-        {% for scenario in scenarios %}
+        {% for item in scenario_data %}
         <tr>
-            <td>{{ scenario.version }}</td>
+            <td>{{ item.scenario.version }}</td>
             <td>
-                <a href="{% url 'review_scenario' scenario.version %}" class="btn btn-info btn-sm">Review</a>
-                <a href="{% url 'edit_scenario' scenario.version %}" class="btn btn-primary btn-sm">Edit</a>
-                <a href="{% url 'delete_scenario' scenario.version %}" class="btn btn-danger btn-sm"
+                {% if item.scenario.last_calculated %}
+                    {% timezone "America/New_York" %}{{ item.scenario.last_calculated|date:"M d, Y H:i" }}{% endtimezone %}
+                {% else %}
+                    <span class="text-muted">Never</span>
+                {% endif %}
+            </td>
+            <td>
+                {% if item.scenario.calculation_status == 'never_calculated' %}
+                    <span class="badge badge-secondary">Never Calculated</span>
+                {% elif item.scenario.calculation_status == 'up_to_date' %}
+                    <span class="badge badge-success">Up to Date</span>
+                {% elif item.scenario.calculation_status == 'changes_detected' %}
+                    <span class="badge badge-warning">Changes Detected</span>
+                {% elif item.scenario.calculation_status == 'calculating' %}
+                    <span class="badge badge-info">Calculating...</span>
+                {% elif item.scenario.calculation_status == 'calculation_failed' %}
+                    <span class="badge badge-danger">Calculation Failed</span>
+                {% endif %}
+            </td>
+            <td>
+                <a href="{% url 'review_scenario' item.scenario.version %}" class="btn btn-info btn-sm">Review</a>
+                <a href="{% url 'edit_scenario' item.scenario.version %}" class="btn btn-primary btn-sm">Edit</a>
+                <a href="{% url 'delete_scenario' item.scenario.version %}" class="btn btn-danger btn-sm"
                     onclick="return confirmDelete()">Delete</a>
-                <a href="{% url 'warningList' scenario.version %}" class="btn btn-warning btn-sm">Warning!</a>
-                <a href="{% url 'calculate_model' scenario.version %}" class="btn btn-success btn-sm"
-                    onclick="return confirm('Are you sure you want to calculate the model for this scenario?');">Calculate
-                    the Model</a>
-                <a href="{% url 'test_product_calculation' scenario.version %}" class="btn btn-info btn-sm" 
+                <a href="{% url 'warningList' item.scenario.version %}" class="btn btn-warning btn-sm">Warning!</a>
+                
+                <!-- SMART CALCULATE MODEL BUTTON WITH REAL-TIME CHANGE DETECTION -->
+                <a href="{% url 'calculate_model' item.scenario.version %}" 
+                   class="btn {{ item.button_state.button_class }} btn-sm calculate-btn"
+                   {% if item.button_state.button_disabled %}disabled{% endif %}
+                   title="{{ item.button_state.tooltip }}"
+                   data-toggle="tooltip"
+                   data-disabled="{{ item.button_state.button_disabled|yesno:'true,false' }}">
+                    {% if item.scenario.calculation_status == 'calculating' %}
+                        <i class="fas fa-spinner fa-spin"></i> 
+                    {% elif item.button_state.button_class == 'btn-success' %}
+                        <i class="fas fa-play"></i> 
+                    {% elif item.button_state.button_class == 'btn-secondary' %}
+                        <i class="fas fa-check-circle"></i> 
+                    {% elif item.button_state.button_class == 'btn-danger' %}
+                        <i class="fas fa-redo"></i> 
+                    {% endif %}
+                    {{ item.button_state.button_text }}
+                </a>
+                
+                <a href="{% url 'test_product_calculation' item.scenario.version %}" class="btn btn-info btn-sm" 
                     title="Test calculation for a specific product (much faster)">
                     <i class="fas fa-flask"></i> Test Product</a>
             </td>
@@ -33,9 +96,38 @@
     </tbody>
 </table>
 
+<!-- Real-time Change Detection Info -->
+<div class="alert alert-info mt-3">
+    <h5><i class="fas fa-info-circle"></i> Smart Calculate Model Button</h5>
+    <ul>
+        <li><strong class="text-success">Green Button:</strong> Changes detected or never calculated - ready to run</li>
+        <li><strong class="text-secondary">Grey Button:</strong> Model already calculated and up-to-date - click to force recalculation</li>
+        <li><strong class="text-danger">Red Button:</strong> Previous calculation failed - click to retry</li>
+        <li><strong class="text-info">Blue Button:</strong> Calculation currently in progress - please wait</li>
+    </ul>
+    <p class="mb-0"><small class="text-muted">Real-time change detection checks all models with version/scenario fields. No caching - always fresh data.</small></p>
+</div>
+
 <script>
     function confirmDelete() {
         return confirm('Are you sure you want to delete this scenario?');
     }
+    
+    // Initialize Bootstrap tooltips for button hover info
+    $(document).ready(function(){
+        $('[data-toggle="tooltip"]').tooltip();
+        
+        // Handle calculate button clicks
+        $('.calculate-btn').click(function(e) {
+            var isDisabled = $(this).data('disabled') === 'true';
+            if (!isDisabled) {
+                return confirm('Are you sure you want to calculate the model for this scenario?');
+            }
+            return true; // Allow click even for disabled buttons (force recalculation)
+        });
+        
+        // Auto-refresh page every 30 seconds to show calculation progress
+        // setTimeout(function(){ location.reload(); }, 30000);
+    });
 </script>
 {% endblock %}
