@@ -714,22 +714,13 @@ class ProductionAllocationModel(models.Model):
     site = models.ForeignKey(MasterDataPlantModel, on_delete=models.CASCADE, help_text="Site to allocate to")
     month_year = models.CharField(max_length=10, help_text="Format: 'Jul-25', 'Aug-25', etc.")
     allocation_percentage = models.FloatField(default=0.0, help_text="Percentage of total production (0-100)")
-    
-    # Additional fields for compatibility with views
-    product_code = models.CharField(max_length=250, blank=True, null=True, help_text="Product code for search/filter")
-    product_description = models.CharField(max_length=500, blank=True, null=True, help_text="Product description for search/filter")
+    created_date = models.DateTimeField(auto_now_add=True, help_text="Timestamp when record was created")
+    modified_date = models.DateTimeField(auto_now=True, help_text="Timestamp when record was last modified")
     
     class Meta:
         unique_together = ['version', 'product', 'site', 'month_year']
         verbose_name = "Production Allocation"
         verbose_name_plural = "Production Allocations"
-    
-    def save(self, *args, **kwargs):
-        """Auto-populate product_code and product_description from related product"""
-        if self.product:
-            self.product_code = self.product.Product
-            self.product_description = self.product.ProductDescription
-        super().save(*args, **kwargs)
     
     def __str__(self):
         return f"{self.version.version} - {self.product.Product} - {self.site.SiteName} - {self.month_year}: {self.allocation_percentage}%"

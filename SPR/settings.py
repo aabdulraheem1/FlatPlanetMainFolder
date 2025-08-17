@@ -102,10 +102,10 @@ WSGI_APPLICATION = 'wsgi.application'
 DATABASES = {
     'default': {
         'ENGINE': 'mssql',
-        'NAME': 'SPR',           # Replace with your database name
+        'NAME': 'SPR',           # Restored from GitHub - SPR database
         'USER': '',           # Replace with your SQL Server username
         'PASSWORD': '',   # Replace with your SQL Server password
-        'HOST': 'localhost',              # Or your SQL Server host
+        'HOST': 'localhost',              # Restored from GitHub - localhost
         'PORT': '',                       # Default is 1433, leave blank unless using a different port
         'OPTIONS': {
             'driver': 'ODBC Driver 17 for SQL Server',  # Or 'ODBC Driver 18 for SQL Server' if installed

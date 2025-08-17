@@ -1,0 +1,294 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Excel Upload Debug - {{ version }}</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            line-height: 1.4;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        .debug-section {
+            background: #f5f5f5;
+            padding: 15px;
+            margin: 10px 0;
+            border-radius: 5px;
+            border-left: 4px solid #007cba;
+        }
+        .error {
+            border-left-color: #dc3545;
+            background: #f8d7da;
+        }
+        .warning {
+            border-left-color: #ffc107;
+            background: #fff3cd;
+        }
+        .success {
+            border-left-color: #28a745;
+            background: #d4edda;
+        }
+        .row-analysis {
+            margin: 10px 0;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 3px;
+        }
+        .issues {
+            color: #dc3545;
+            font-weight: bold;
+        }
+        .valid {
+            color: #28a745;
+        }
+        .invalid {
+            color: #dc3545;
+        }
+        .skipped {
+            color: #6c757d;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 10px 0;
+        }
+        th, td {
+            border: 1px solid #ddd;
+            padding: 8px;
+            text-align: left;
+        }
+        th {
+            background-color: #f8f9fa;
+        }
+        .upload-form {
+            background: #e9ecef;
+            padding: 20px;
+            border-radius: 5px;
+            margin: 20px 0;
+        }
+        .btn {
+            background: #007cba;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 3px;
+            cursor: pointer;
+        }
+        .btn:hover {
+            background: #005a87;
+        }
+        .loading {
+            display: none;
+            color: #007cba;
+        }
+        .small-text {
+            font-size: 0.8em;
+            color: #666;
+        }
+        .collapsible {
+            background-color: #f1f1f1;
+            color: #444;
+            cursor: pointer;
+            padding: 10px;
+            width: 100%;
+            border: none;
+            text-align: left;
+            outline: none;
+            font-size: 15px;
+            border-radius: 3px;
+            margin: 2px 0;
+        }
+        .collapsible:hover {
+            background-color: #ccc;
+        }
+        .content {
+            padding: 0 10px;
+            display: none;
+            overflow: hidden;
+            background-color: #f9f9f9;
+            border-radius: 0 0 3px 3px;
+        }
+        .content.show {
+            display: block;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Excel Upload Debug Tool</h1>
+        <h2>Scenario: {{ version }}</h2>
+        
+        <div class="upload-form">
+            <h3>Upload Excel File for Analysis</h3>
+            <form id="debugForm" enctype="multipart/form-data">
+                <input type="file" name="excel_file" accept=".xlsx,.xls" required>
+                <button type="submit" class="btn">Analyze Excel File</button>
+                <div class="loading" id="loading">Analyzing file... Please wait.</div>
+            </form>
+        </div>
+        
+        <div id="results" style="display: none;">
+            <!-- Results will be populated here -->
+        </div>
+    </div>
+
+    <script>
+        document.getElementById('debugForm').addEventListener('submit', function(e) {
+            e.preventDefault();
+            
+            const loading = document.getElementById('loading');
+            const results = document.getElementById('results');
+            
+            loading.style.display = 'block';
+            results.style.display = 'none';
+            
+            const formData = new FormData(this);
+            
+            fetch('{% url "debug_excel_upload" version %}', {
+                method: 'POST',
+                body: formData,
+                headers: {
+                    'X-CSRFToken': '{{ csrf_token }}'
+                }
+            })
+            .then(response => response.json())
+            .then(data => {
+                loading.style.display = 'none';
+                displayResults(data);
+            })
+            .catch(error => {
+                loading.style.display = 'none';
+                results.innerHTML = `<div class="debug-section error"><h3>Error</h3><p>${error}</p></div>`;
+                results.style.display = 'block';
+            });
+        });
+        
+        function displayResults(data) {
+            const results = document.getElementById('results');
+            let html = '';
+            
+            if (data.error) {
+                html = `<div class="debug-section error"><h3>Error</h3><p>${data.error}</p></div>`;
+            } else {
+                // Excel Info
+                html += `<div class="debug-section">
+                    <h3>📁 Excel File Information</h3>
+                    <p><strong>Filename:</strong> ${data.excel_info.filename}</p>
+                    <p><strong>Total Rows:</strong> ${data.excel_info.total_rows}</p>
+                    <p><strong>Columns:</strong> ${data.excel_info.columns.join(', ')}</p>
+                    ${data.excel_info.missing_columns.length > 0 ? 
+                        `<p class="error"><strong>Missing Required Columns:</strong> ${data.excel_info.missing_columns.join(', ')}</p>` : 
+                        '<p class="valid"><strong>✓ All required columns present</strong></p>'
+                    }
+                </div>`;
+                
+                // Summary Statistics
+                const stats = data.summary_statistics;
+                html += `<div class="debug-section">
+                    <h3>📊 Analysis Summary</h3>
+                    <table>
+                        <tr><td>Total Rows Analyzed</td><td>${stats.total_rows_analyzed}</td></tr>
+                        <tr><td>Header/Empty Rows Skipped</td><td>${stats.header_rows_skipped}</td></tr>
+                        <tr><td class="error">Product Not Found</td><td>${stats.product_not_found}</td></tr>
+                        <tr><td class="error">Date Format Errors</td><td>${stats.date_format_errors}</td></tr>
+                        <tr><td class="error">No Valid Sites</td><td>${stats.no_valid_sites}</td></tr>
+                        <tr><td class="error">Percentage Sum Errors</td><td>${stats.percentage_sum_errors}</td></tr>
+                        <tr><td class="valid">Valid Rows</td><td>${stats.valid_rows}</td></tr>
+                    </table>
+                </div>`;
+                
+                // Recommendations
+                if (data.recommendations && data.recommendations.length > 0) {
+                    html += `<div class="debug-section warning">
+                        <h3>💡 Recommendations</h3>
+                        <ul>`;
+                    data.recommendations.forEach(rec => {
+                        html += `<li>${rec}</li>`;
+                    });
+                    html += `</ul></div>`;
+                }
+                
+                // Invalid Products List
+                if (stats.unique_invalid_products.length > 0) {
+                    html += `<button class="collapsible">❌ Invalid Products (${stats.unique_invalid_products.length})</button>
+                    <div class="content">
+                        <p class="small-text">These products were not found in the database:</p>
+                        <p>${stats.unique_invalid_products.slice(0, 50).join(', ')}${stats.unique_invalid_products.length > 50 ? '...' : ''}</p>
+                    </div>`;
+                }
+                
+                // Invalid Sites List
+                if (stats.unique_invalid_sites.length > 0) {
+                    html += `<button class="collapsible">🏭 Invalid Sites (${stats.unique_invalid_sites.length})</button>
+                    <div class="content">
+                        <p class="small-text">These sites were not found in the database:</p>
+                        <p>${stats.unique_invalid_sites.join(', ')}</p>
+                    </div>`;
+                }
+                
+                // Detailed Row Analysis
+                html += `<button class="collapsible">🔍 Detailed Row Analysis (First ${data.detailed_row_analysis.length} rows)</button>
+                <div class="content">`;
+                
+                data.detailed_row_analysis.forEach(row => {
+                    const statusClass = row.status.toLowerCase();
+                    html += `<div class="row-analysis">
+                        <h4>Row ${row.row_number} - <span class="${statusClass}">${row.status}</span></h4>`;
+                    
+                    if (row.issues.length > 0) {
+                        html += `<div class="issues">Issues: ${row.issues.join(', ')}</div>`;
+                    }
+                    
+                    html += `<p><strong>Product:</strong> ${row.cleaned_product || row.raw_data.Product} 
+                        ${row.product_status === 'VALID' ? '<span class="valid">✓</span>' : '<span class="invalid">✗</span>'}
+                    </p>`;
+                    
+                    if (row.parsed_date) {
+                        html += `<p><strong>Date:</strong> ${row.parsed_date} 
+                            ${row.date_status === 'VALID' ? '<span class="valid">✓</span>' : '<span class="invalid">✗</span>'}
+                        </p>`;
+                    }
+                    
+                    if (row.sites_analysis && row.sites_analysis.length > 0) {
+                        html += `<p><strong>Sites:</strong></p><ul>`;
+                        row.sites_analysis.forEach(site => {
+                            html += `<li>Site${site.site_number}: ${site.cleaned_name || site.raw_name} (${site.cleaned_percentage || site.raw_percentage}%)`;
+                            if (site.issues.length > 0) {
+                                html += ` <span class="error">${site.issues.join(', ')}</span>`;
+                            }
+                            html += `</li>`;
+                        });
+                        html += `</ul>`;
+                        
+                        if (row.total_percentage) {
+                            html += `<p><strong>Total Percentage:</strong> ${row.total_percentage}%</p>`;
+                        }
+                    }
+                    
+                    html += `</div>`;
+                });
+                
+                html += `</div>`;
+            }
+            
+            results.innerHTML = html;
+            results.style.display = 'block';
+            
+            // Add collapsible functionality
+            const collapsibles = document.querySelectorAll('.collapsible');
+            collapsibles.forEach(coll => {
+                coll.addEventListener('click', function() {
+                    this.classList.toggle('active');
+                    const content = this.nextElementSibling;
+                    content.classList.toggle('show');
+                });
+            });
+        }
+    </script>
+</body>
+</html>

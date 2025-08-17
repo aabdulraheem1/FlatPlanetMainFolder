@@ -5308,65 +5308,87 @@ def calculate_model(request, version):
     """
     Run the management commands to calculate the model for the given version.
     Includes real-time change tracking - NO CACHING ALLOWED.
+    Enhanced with detailed performance monitoring and timing breakdown.
     """
+    import time
+    from datetime import datetime
     from .calculation_tracking import mark_calculation_started, mark_calculation_completed, mark_calculation_failed
     
-    print("calculate_model called with version:", version)
-    
+    # Start overall timing
+    overall_start_time = time.time()
+    print("=" * 80)
+    print(f"🚀 STARTING CALCULATE_MODEL FOR VERSION: {version}")
+    print(f"📅 Started at: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    print("=" * 80)
+
     # Get scenario and mark calculation as started
     try:
+        scenario_start = time.time()
         scenario = scenarios.objects.get(version=version)
         mark_calculation_started(scenario)
-        print(f"🚀 Starting calculation for scenario '{version}'")
+        scenario_duration = time.time() - scenario_start
+        print(f"✅ Scenario lookup and calculation start: {scenario_duration:.3f}s")
     except scenarios.DoesNotExist:
         messages.error(request, f"Scenario '{version}' not found.")
         return redirect('list_scenarios')
-    
+
     try:
         # Step 1: Run the first command: populate_aggregated_forecast
-        print("Running populate_aggregated_forecast")
-        print("version:", version)
+        step1_start = time.time()
+        print(f"⏱️  [{datetime.now().strftime('%H:%M:%S')}] STEP 1: Running populate_aggregated_forecast")
         AggForecastCommand().handle(version=version)
-        messages.success(request, f"Aggregated forecast has been successfully populated for version '{version}'.")
+        step1_duration = time.time() - step1_start
+        print(f"✅ [{datetime.now().strftime('%H:%M:%S')}] STEP 1 COMPLETED: populate_aggregated_forecast ({step1_duration:.2f}s)")
+        messages.success(request, f"Aggregated forecast completed in {step1_duration:.2f}s for version '{version}'.")
 
         # Step 2: Run the second command: populate_calculated_replenishment_v2
-        print("Running populate_calculated_replenishment_v2")
-        print("version:", version)
+        step2_start = time.time()
+        print(f"⏱️  [{datetime.now().strftime('%H:%M:%S')}] STEP 2: Running populate_calculated_replenishment_v2")
         ReplenishmentCommand().handle(version=version)
-        messages.success(request, f"Calculated replenishment (V2) has been successfully populated for version '{version}'.")
+        step2_duration = time.time() - step2_start
+        print(f"✅ [{datetime.now().strftime('%H:%M:%S')}] STEP 2 COMPLETED: populate_calculated_replenishment_v2 ({step2_duration:.2f}s)")
+        messages.success(request, f"Calculated replenishment (V2) completed in {step2_duration:.2f}s for version '{version}'.")
 
         # Step 3: Run the third command: populate_calculated_production
-        print("Running populate_calculated_production")
-        print("version:", version)
+        step3_start = time.time()
+        print(f"⏱️  [{datetime.now().strftime('%H:%M:%S')}] STEP 3: Running populate_calculated_production")
         ProductionCommand().handle(scenario_version=version)
-        messages.success(request, f"Calculated production has been successfully populated for version '{version}'.")
+        step3_duration = time.time() - step3_start
+        print(f"✅ [{datetime.now().strftime('%H:%M:%S')}] STEP 3 COMPLETED: populate_calculated_production ({step3_duration:.2f}s)")
+        messages.success(request, f"Calculated production completed in {step3_duration:.2f}s for version '{version}'.")
 
         # Step 4: SKIPPED - Aggregated data calculation (replaced with real-time polars queries)
-        print("SKIPPING populate_all_aggregated_data - now using direct polars queries")
-        print("version:", version)
-        print("Performance improvement: 12+ minutes reduced to 1-3 seconds with polars")
-        # NOTE: populate_all_aggregated_data removed - direct polars queries provide 218x-720x performance improvement
-        
+        step4_start = time.time()
+        print(f"⏱️  [{datetime.now().strftime('%H:%M:%S')}] STEP 4: SKIPPING populate_all_aggregated_data - now using direct polars queries")
+        print("🚀 Performance improvement: 12+ minutes reduced to 1-3 seconds with polars")
+        step4_duration = time.time() - step4_start
+        print(f"✅ [{datetime.now().strftime('%H:%M:%S')}] STEP 4 SKIPPED: Aggregated data ({step4_duration:.3f}s)")
         messages.success(request, f"Aggregated chart data calculation SKIPPED for version '{version}' - now using real-time polars queries.")
 
         # Step 5: SKIPPED - Control Tower cache (replaced with real-time polars queries)
-        print("SKIPPING cache_review_data - now using real-time polars queries")
-        print("version:", version)
-        print("Performance improvement: Control Tower cache eliminated, data now real-time")
-        # NOTE: cache_review_data removed - direct polars queries provide real-time Control Tower data
-        
+        step5_start = time.time()
+        print(f"⏱️  [{datetime.now().strftime('%H:%M:%S')}] STEP 5: SKIPPING cache_review_data - now using real-time polars queries")
+        print("🚀 Performance improvement: Control Tower cache eliminated, data now real-time")
+        step5_duration = time.time() - step5_start
+        print(f"✅ [{datetime.now().strftime('%H:%M:%S')}] STEP 5 SKIPPED: Control Tower cache ({step5_duration:.3f}s)")
         messages.success(request, f"Control Tower cache calculation SKIPPED for version '{version}' - now using real-time polars queries.")
 
         # Step 6: Populate inventory projections
-        print("Running populate_inventory_projection_model")
+        step6_start = time.time()
+        print(f"⏱️  [{datetime.now().strftime('%H:%M:%S')}] STEP 6: Running populate_inventory_projection_model")
         from website.customized_function import populate_inventory_projection_model
         projection_success = populate_inventory_projection_model(version)
+        step6_duration = time.time() - step6_start
+        print(f"✅ [{datetime.now().strftime('%H:%M:%S')}] STEP 6 COMPLETED: populate_inventory_projection_model ({step6_duration:.2f}s)")
+        
         if projection_success:
-            messages.success(request, f"Inventory projections have been successfully populated for version '{version}'.")
+            messages.success(request, f"Inventory projections completed in {step6_duration:.2f}s for version '{version}'.")
         else:
             messages.warning(request, f"Failed to populate inventory projections for version '{version}'. Check debug logs.")
 
         # Step 7: Reset optimization state to allow Auto Level Optimization again
+        step7_start = time.time()
+        print(f"⏱️  [{datetime.now().strftime('%H:%M:%S')}] STEP 7: Resetting optimization state")
         try:
             from .models import ScenarioOptimizationState
             opt_state, created = ScenarioOptimizationState.objects.get_or_create(
@@ -5376,25 +5398,51 @@ def calculate_model(request, version):
             if not created:
                 opt_state.auto_optimization_applied = False
                 opt_state.save()
-            print(f"SUCCESS: Reset optimization state for {version} - auto_optimization_applied = {opt_state.auto_optimization_applied}")
-            messages.success(request, f"Auto Level Optimization has been enabled for version '{version}'.")
+            step7_duration = time.time() - step7_start
+            print(f"✅ [{datetime.now().strftime('%H:%M:%S')}] STEP 7 COMPLETED: Reset optimization state ({step7_duration:.3f}s)")
+            messages.success(request, f"Auto Level Optimization enabled for version '{version}'.")
         except Exception as opt_error:
-            print(f"ERROR: Failed to reset optimization state: {opt_error}")
+            step7_duration = time.time() - step7_start
+            print(f"❌ [{datetime.now().strftime('%H:%M:%S')}] STEP 7 FAILED: Reset optimization state ({step7_duration:.3f}s) - {opt_error}")
             messages.warning(request, f"Model calculated successfully, but failed to reset Auto Level Optimization state: {opt_error}")
 
         # MARK CALCULATION AS COMPLETED SUCCESSFULLY
+        completion_start = time.time()
         mark_calculation_completed(scenario)
-        print(f"✅ Successfully completed calculation for scenario '{version}'")
-        messages.success(request, f"🎯 Model calculation completed successfully for scenario '{version}'. All data is now up-to-date and ready for review.")
+        completion_duration = time.time() - completion_start
+        
+        # Calculate total time and print detailed breakdown
+        total_duration = time.time() - overall_start_time
+        print("=" * 80)
+        print(f"🎉 CALCULATE_MODEL COMPLETED SUCCESSFULLY")
+        print(f"📊 DETAILED TIMING BREAKDOWN:")
+        print(f"   Step 1 - Aggregated Forecast: {step1_duration:.2f}s ({step1_duration/total_duration*100:.1f}%)")
+        print(f"   Step 2 - Replenishment V2: {step2_duration:.2f}s ({step2_duration/total_duration*100:.1f}%)")
+        print(f"   Step 3 - Production Calculation: {step3_duration:.2f}s ({step3_duration/total_duration*100:.1f}%)")
+        print(f"   Step 6 - Inventory Projections: {step6_duration:.2f}s ({step6_duration/total_duration*100:.1f}%)")
+        print(f"   Other Steps: {(scenario_duration + step4_duration + step5_duration + step7_duration + completion_duration):.2f}s")
+        print(f"⏱️  TOTAL EXECUTION TIME: {total_duration:.2f} seconds ({total_duration/60:.1f} minutes)")
+        print(f"📅 Finished at: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+        print("=" * 80)
+        
+        messages.success(request, f"🎯 Model calculation completed successfully in {total_duration:.1f} seconds ({total_duration/60:.1f} minutes) for scenario '{version}'. All data is now up-to-date and ready for review.")
 
     except Exception as e:
         import traceback
         traceback.print_exc()
         
+        # Calculate partial duration for error reporting
+        error_duration = time.time() - overall_start_time
+        
         # MARK CALCULATION AS FAILED
         mark_calculation_failed(scenario, str(e))
-        print(f"❌ Calculation failed for scenario '{version}': {e}")
-        messages.error(request, f"An error occurred while calculating the model: {e}")
+        print("=" * 80)
+        print(f"❌ CALCULATE_MODEL FAILED")
+        print(f"⏱️  Failed after: {error_duration:.2f} seconds ({error_duration/60:.1f} minutes)")
+        print(f"📅 Failed at: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+        print(f"🔥 Error: {e}")
+        print("=" * 80)
+        messages.error(request, f"An error occurred while calculating the model (after {error_duration:.1f}s): {e}")
 
     # Redirect back to the list of scenarios
     return redirect('list_scenarios')
@@ -9014,6 +9062,777 @@ def product_allocation_save(request, version):
     except Exception as e:
         return JsonResponse({'success': False, 'error': str(e)})
 
+
+@login_required
+def download_allocation_template(request, version):
+    """Download Excel template for production allocation"""
+    import io
+    from openpyxl import Workbook
+    from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+    from openpyxl.utils import get_column_letter
+    from django.http import HttpResponse
+    
+    try:
+        scenario = get_object_or_404(scenarios, version=version)
+        
+        # Create workbook
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "Production Allocation Template"
+        
+        # Define styles
+        header_font = Font(bold=True, color="FFFFFF")
+        header_fill = PatternFill(start_color="366092", end_color="366092", fill_type="solid")
+        example_fill = PatternFill(start_color="E7F3FF", end_color="E7F3FF", fill_type="solid")
+        border = Border(
+            left=Side(style='thin'),
+            right=Side(style='thin'),
+            top=Side(style='thin'),
+            bottom=Side(style='thin')
+        )
+        
+        # Headers
+        headers = [
+            "Product", "Date", 
+            "Site1_Name", "Site1_Percentage", 
+            "Site2_Name", "Site2_Percentage", 
+            "Site3_Name", "Site3_Percentage"
+        ]
+        
+        # Write headers
+        for col, header in enumerate(headers, 1):
+            cell = ws.cell(row=1, column=col, value=header)
+            cell.font = header_font
+            cell.fill = header_fill
+            cell.alignment = Alignment(horizontal='center')
+            cell.border = border
+        
+        # Example data rows (starting from row 2)
+        example_data = [
+            ["2037-203-01B", "1 Aug 25", "Brisbane Foundry", "60", "Sydney Foundry", "40", "", "0"],
+            ["2037-203-01B", "1 Sep 25", "Brisbane Foundry", "100", "", "0", "", "0"],
+            ["PROD-123-XYZ", "1 Oct 25", "Melbourne Foundry", "30", "Brisbane Foundry", "50", "Sydney Foundry", "20"],
+            ["EXAMPLE-PROD", "1 Nov 26", "Brisbane Foundry", "75", "Sydney Foundry", "25", "", "0"]
+        ]
+        
+        for row_idx, row_data in enumerate(example_data, 2):  # Start from row 2
+            for col_idx, value in enumerate(row_data, 1):
+                cell = ws.cell(row=row_idx, column=col_idx, value=value)
+                cell.border = border
+                if col_idx in [4, 6, 8]:  # Percentages
+                    cell.alignment = Alignment(horizontal='center')
+                elif col_idx in [1]:  # Product
+                    cell.alignment = Alignment(horizontal='left')
+                else:  # Date and site names
+                    cell.alignment = Alignment(horizontal='center')
+        
+        # Auto-adjust column widths
+        column_widths = [15, 12, 18, 12, 18, 12, 18, 12]  # Adjusted for new column structure
+        for col, width in enumerate(column_widths, 1):
+            ws.column_dimensions[get_column_letter(col)].width = width
+        
+        # Add notes section starting from row 7
+        notes_start_row = 7
+        notes = [
+            "INSTRUCTIONS:",
+            "• Product: Must match existing products in the system",
+            "• Date: Use format '1 Aug 25', '1 Nov 26' (first day of month with 2-digit year)",
+            "• Total_Qty: Will be calculated automatically from existing production data",
+            "• Site Names: Must exactly match existing site names in the system",
+            "• Percentages: Must sum to exactly 100% per product/date combination",
+            "• Leave Site2/Site3 columns blank if not needed (set percentages to 0)",
+            "",
+            "DATE FORMAT EXAMPLES:",
+            "• '1 Aug 25' = August 1, 2025",
+            "• '1 Sep 25' = September 1, 2025", 
+            "• '1 Nov 26' = November 1, 2026",
+            "• '1 Dec 25' = December 1, 2025",
+            "",
+            "VALIDATION RULES:",
+            "• Percentages must sum to exactly 100% per row",
+            "• Product codes and site names must exist in the system",
+            "• System will find existing Total_Qty for each Product/Date combination",
+            "• If no existing production data found, that row will be skipped with warning",
+            "• Duplicate Product/Date combinations will overwrite existing allocations",
+            "",
+            "PROCESS:",
+            "1. System finds existing production quantity for Product + Date",
+            "2. Deletes current allocation records for that Product + Date", 
+            "3. Creates new allocation records based on your percentages",
+            "4. allocated_qty = existing_total_qty × (percentage ÷ 100)"
+        ]
+        
+        for i, note in enumerate(notes):
+            ws.cell(row=notes_start_row + i, column=1, value=note)
+            if note.startswith("NOTES:") or note.startswith("VALIDATION"):
+                ws.cell(row=notes_start_row + i, column=1).font = Font(bold=True)
+        
+        # Save to memory
+        output = io.BytesIO()
+        wb.save(output)
+        output.seek(0)
+        
+        # Create response
+        response = HttpResponse(
+            output.getvalue(),
+            content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        )
+        response['Content-Disposition'] = f'attachment; filename="Production_Allocation_Template_{version}.xlsx"'
+        
+        return response
+        
+    except Exception as e:
+        return JsonResponse({'success': False, 'error': str(e)})
+
+
+@login_required
+def upload_allocation_excel(request, version):
+    """Upload and process Excel file for production allocation"""
+    import pandas as pd
+    import json
+    from datetime import datetime
+    from django.db.models import Sum
+    from .models import ProductionAllocationModel
+    from django.utils import timezone
+    
+    if request.method != 'POST':
+        return JsonResponse({'success': False, 'error': 'POST method required'})
+    
+    if 'excel_file' not in request.FILES:
+        return JsonResponse({'success': False, 'error': 'No Excel file provided'})
+    
+    try:
+        scenario = get_object_or_404(scenarios, version=version)
+        excel_file = request.FILES['excel_file']
+        
+        # Read Excel file
+        df = pd.read_excel(excel_file)
+        
+        # Validate required columns
+        required_columns = [
+            'Product', 'Date', 
+            'Site1_Name', 'Site1_Percentage'
+        ]
+        
+        missing_columns = [col for col in required_columns if col not in df.columns]
+        if missing_columns:
+            return JsonResponse({
+                'success': False, 
+                'error': f'Missing required columns: {", ".join(missing_columns)}'
+            })
+        
+        # Process data
+        records_processed = 0
+        warnings = []
+        errors = []
+        total_rows_examined = 0
+        skipped_header_empty = 0
+        rejected_product_not_found = 0
+        rejected_date_format = 0
+        rejected_duplicate = 0
+        rejected_no_sites = 0
+        rejected_no_production_data = 0  # New counter
+        rejected_percentage_sum = 0
+        
+        # Get all valid products and sites for validation
+        valid_products = set(MasterDataProductModel.objects.values_list('Product', flat=True))
+        valid_sites = set(MasterDataPlantModel.objects.values_list('SiteName', flat=True))
+        
+        # Debug information
+        debug_msg = f"DEBUG: Found {len(valid_products)} valid products in system"
+        warnings.append(debug_msg)
+        print(f"🔍 EXCEL UPLOAD DEBUG: {debug_msg}")
+        
+        debug_msg = f"DEBUG: Found {len(valid_sites)} valid sites in system"
+        warnings.append(debug_msg)
+        print(f"🔍 EXCEL UPLOAD DEBUG: {debug_msg}")
+        
+        debug_msg = f"DEBUG: First 5 products: {list(valid_products)[:5]}"
+        warnings.append(debug_msg)
+        print(f"🔍 EXCEL UPLOAD DEBUG: {debug_msg}")
+        
+        debug_msg = f"DEBUG: First 5 sites: {list(valid_sites)[:5]}"
+        warnings.append(debug_msg)
+        print(f"🔍 EXCEL UPLOAD DEBUG: {debug_msg}")
+        
+        # Check if sample site from Excel exists
+        sample_site = 'RAVAUD01'
+        site_exists = sample_site in valid_sites
+        debug_msg = f"DEBUG: Sample site '{sample_site}' exists: {site_exists}"
+        warnings.append(debug_msg)
+        print(f"🔍 EXCEL UPLOAD DEBUG: {debug_msg}")
+        
+        debug_msg = f"DEBUG: Excel has {len(df)} total rows"
+        warnings.append(debug_msg)
+        print(f"🔍 EXCEL UPLOAD DEBUG: {debug_msg}")
+        
+        debug_msg = f"DEBUG: Excel columns: {list(df.columns)}"
+        warnings.append(debug_msg)
+        print(f"🔍 EXCEL UPLOAD DEBUG: {debug_msg}")
+        
+        # Sample first few non-empty rows for debugging
+        for i in range(min(5, len(df))):
+            sample_row = df.iloc[i]
+            debug_msg = f"DEBUG: Sample row {i}: {dict(sample_row)}"
+            warnings.append(debug_msg)
+            print(f"🔍 EXCEL UPLOAD DEBUG: {debug_msg}")
+        
+        print(f"🔍 EXCEL UPLOAD DEBUG: Starting to process rows...")
+        
+        # Group by Product/Month/Year
+        processed_combinations = set()
+        invalid_products = set()  # Track invalid products to avoid duplicates
+        
+        # Limit processing to prevent timeout
+        max_rows_to_process = 50000  # Increased limit to process more rows
+        
+        for index, row in df.iterrows():
+            # Limit processing for debugging
+            if index >= max_rows_to_process:
+                debug_msg = f"DEBUG: Stopping at row {index} for debugging (limit: {max_rows_to_process})"
+                warnings.append(debug_msg)
+                print(f"🔍 EXCEL UPLOAD DEBUG: {debug_msg}")
+                break
+                
+            try:
+                total_rows_examined += 1
+                
+                # Add detailed debugging for first few rows
+                if index < 10:
+                    debug_msg = f"DEBUG: Row {index + 1} raw data: Product={repr(row.get('Product', 'MISSING'))}, Date={repr(row.get('Date', 'MISSING'))}"
+                    warnings.append(debug_msg)
+                    print(f"🔍 EXCEL UPLOAD DEBUG: {debug_msg}")
+                
+                # Skip header row and any empty rows
+                if index < 1 or pd.isna(row['Product']) or str(row['Product']).strip() == '' or str(row['Product']).startswith('Product'):
+                    skipped_header_empty += 1
+                    if index < 10:
+                        debug_msg = f"DEBUG: Skipping row {index + 1} (header or empty)"
+                        warnings.append(debug_msg)
+                        print(f"🔍 EXCEL UPLOAD DEBUG: {debug_msg}")
+                    continue
+                
+                product_code = str(row['Product']).strip()
+                date_value = row['Date']
+                
+                if index < 10:
+                    debug_msg = f"DEBUG: Row {index + 1} cleaned: Product='{product_code}', Date='{date_value}' (type: {type(date_value)})"
+                    warnings.append(debug_msg)
+                    print(f"🔍 EXCEL UPLOAD DEBUG: {debug_msg}")
+                
+                # Handle different date formats
+                try:
+                    if pd.isna(date_value):
+                        warnings.append(f"Row {index + 1}: Date is empty")
+                        rejected_date_format += 1
+                        continue
+                    
+                    # If it's a pandas Timestamp, convert to datetime
+                    if isinstance(date_value, pd.Timestamp):
+                        date_obj = date_value.to_pydatetime()
+                        month_num = date_obj.month
+                        year = date_obj.year
+                        month_names = ['', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 
+                                     'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+                        month_str = month_names[month_num]
+                        year_str = str(year)[-2:]  # Last 2 digits
+                        
+                        if index < 10:
+                            debug_msg = f"DEBUG: Row {index + 1} parsed timestamp: month={month_str}, year={year}"
+                            warnings.append(debug_msg)
+                            print(f"🔍 EXCEL UPLOAD DEBUG: {debug_msg}")
+                    
+                    # If it's a string, parse "1 Aug 25" format
+                    else:
+                        date_str = str(date_value).strip()
+                        # Split the date string: "1 Aug 25" -> ["1", "Aug", "25"]
+                        date_parts = date_str.split()
+                        if len(date_parts) != 3:
+                            warnings.append(f"Row {index + 1}: Invalid date format '{date_str}'. Use '1 Aug 25' format")
+                            rejected_date_format += 1
+                            continue
+                        
+                        day, month_str, year_str = date_parts
+                        
+                        # Convert 2-digit year to 4-digit
+                        year = int("20" + year_str) if len(year_str) == 2 else int(year_str)
+                        
+                        # Validate month
+                        month_mapping = {
+                            'Jan': 1, 'Feb': 2, 'Mar': 3, 'Apr': 4, 'May': 5, 'Jun': 6,
+                            'Jul': 7, 'Aug': 8, 'Sep': 9, 'Oct': 10, 'Nov': 11, 'Dec': 12
+                        }
+                        if month_str not in month_mapping:
+                            warnings.append(f"Row {index + 1}: Invalid month '{month_str}'. Use 3-letter format (Jan, Feb, etc.)")
+                            rejected_date_format += 1
+                            continue
+                        
+                        month_num = month_mapping[month_str]
+                        
+                        if index < 10:
+                            debug_msg = f"DEBUG: Row {index + 1} parsed string: month={month_str}, year={year}"
+                            warnings.append(debug_msg)
+                            print(f"🔍 EXCEL UPLOAD DEBUG: {debug_msg}")
+                
+                except (ValueError, IndexError, AttributeError) as e:
+                    warnings.append(f"Row {index + 1}: Error parsing date '{date_value}': {str(e)}")
+                    rejected_date_format += 1
+                    print(f"⚠️ EXCEL UPLOAD WARNING: Row {index + 1}: Error parsing date '{date_value}': {str(e)}")
+                    continue
+                
+                # Validate product exists - collect invalid products but continue processing
+                if product_code not in valid_products:
+                    rejected_product_not_found += 1
+                    # Add to invalid products set (avoid duplicates)
+                    invalid_products.add(product_code)
+                    
+                    if rejected_product_not_found <= 10:
+                        debug_msg = f"DEBUG: Row {index + 1} - Product '{product_code}' not found. Available products sample: {list(valid_products)[:3]}"
+                        warnings.append(debug_msg)
+                        print(f"🔍 EXCEL UPLOAD DEBUG: {debug_msg}")
+                        
+                    # Show progress every 200th invalid product to track processing
+                    if rejected_product_not_found % 200 == 0:
+                        warning_msg = f"Row {index + 1}: Found {rejected_product_not_found} invalid products so far..."
+                        warnings.append(warning_msg)
+                        print(f"⚠️ EXCEL UPLOAD WARNING: {warning_msg}")
+                    
+                    continue
+                
+                # Product exists! Now debug the processing
+                valid_product_count = total_rows_examined - skipped_header_empty - rejected_product_not_found
+                if valid_product_count <= 10:  # Debug first 10 valid products
+                    debug_msg = f"DEBUG: Row {index + 1} - VALID product '{product_code}' found! Processing allocation..."
+                    warnings.append(debug_msg)
+                    print(f"🔍 EXCEL UPLOAD DEBUG: {debug_msg}")
+                
+                # Check for duplicate combinations
+                combination = (product_code, month_num, year)
+                if combination in processed_combinations:
+                    warnings.append(f"Row {index + 1}: Duplicate combination {product_code}/{month_str}/{year} - skipping")
+                    continue
+                processed_combinations.add(combination)
+                
+                # *** FORCE DEBUG FOR EARLY VALID PRODUCTS ***
+                valid_products_so_far = total_rows_examined - skipped_header_empty - rejected_product_not_found
+                if valid_products_so_far <= 5:
+                    debug_msg = f"🚨 FORCE DEBUG: Row {index + 1} - VALID PRODUCT #{valid_products_so_far}: '{product_code}'"
+                    warnings.append(debug_msg)
+                    print(f"🔍 EXCEL UPLOAD DEBUG: {debug_msg}")
+                
+                # Get product object - we don't need to check production data for allocation planning
+                try:
+                    product = MasterDataProductModel.objects.get(Product=product_code)
+                    
+                    # Force debug for first few valid products
+                    valid_products_processed = total_rows_examined - skipped_header_empty - rejected_product_not_found
+                    if valid_products_processed <= 5:
+                        debug_msg = f"🚨 VALID PRODUCT FOUND: Row {index + 1} - Product '{product_code}' exists! Valid product #{valid_products_processed}"
+                        warnings.append(debug_msg)
+                        print(f"🔍 EXCEL UPLOAD DEBUG: {debug_msg}")
+                    
+                except MasterDataProductModel.DoesNotExist:
+                    # This should not happen since we already validated above
+                    warnings.append(f"Row {index + 1}: Product '{product_code}' not found")
+                    continue
+                
+                # Extract site allocations
+                sites = []
+                percentages = []
+                site_validation_errors = []
+                
+                # Force debug for first few valid products (minimal logging)
+                current_valid_count = total_rows_examined - skipped_header_empty - rejected_product_not_found
+                if current_valid_count <= 2:
+                    debug_msg = f"DEBUG: Row {index + 1} processing sites for product '{product_code}'"
+                    print(f"🔍 EXCEL UPLOAD DEBUG: {debug_msg}")
+                
+                for site_num in [1, 2, 3]:
+                    site_name = row.get(f'Site{site_num}_Name', '')
+                    site_percentage = row.get(f'Site{site_num}_Percentage', 0)
+                    
+                    if pd.notna(site_name) and str(site_name).strip():
+                        site_name = str(site_name).strip()
+                        if site_name not in valid_sites:
+                            site_validation_errors.append(f"Site '{site_name}' not found in system")
+                            continue
+                        
+                        try:
+                            # Handle NaN values explicitly
+                            if pd.isna(site_percentage):
+                                continue  # Skip NaN percentages
+                                
+                            percentage = float(site_percentage)
+                            if percentage > 0:
+                                sites.append(site_name)
+                                percentages.append(percentage)
+                        except (ValueError, TypeError) as e:
+                            site_validation_errors.append(f"Invalid percentage '{site_percentage}' for {site_name}: {str(e)}")
+                
+                # Log site validation errors
+                if site_validation_errors and rejected_product_not_found <= 5:
+                    for error in site_validation_errors:
+                        warnings.append(f"Row {index + 1}: {error}")
+                        print(f"⚠️ EXCEL UPLOAD WARNING: Row {index + 1}: {error}")
+                
+                # Check if we have valid sites first
+                if not sites:
+                    rejected_no_sites += 1
+                    if rejected_no_sites <= 5:
+                        debug_msg = f"DEBUG: Row {index + 1} - No valid sites with percentages > 0"
+                        warnings.append(debug_msg)
+                        print(f"🔍 EXCEL UPLOAD DEBUG: {debug_msg}")
+                    continue
+                
+                # Validate percentages sum to 100 (only if we have sites)
+                total_percentage = sum(percentages)
+                
+                # Minimal debug for percentage validation (first 2 only)
+                if rejected_percentage_sum + records_processed <= 2:
+                    debug_msg = f"DEBUG: Row {index + 1} - Sites: {sites}, Total: {total_percentage}%"
+                    print(f"🔍 EXCEL UPLOAD DEBUG: {debug_msg}")
+                
+                if abs(total_percentage - 100.0) > 0.01:  # Allow for small floating point errors
+                    rejected_percentage_sum += 1
+                    if rejected_percentage_sum <= 5:  # Show first 5 percentage errors
+                        debug_msg = f"PERCENTAGE ERROR #{rejected_percentage_sum}: Row {index + 1} - Sum: {total_percentage}%, Sites: {list(zip(sites, percentages))}"
+                        warnings.append(debug_msg)
+                        print(f"⚠️ EXCEL UPLOAD WARNING: {debug_msg}")
+                    elif rejected_percentage_sum % 200 == 0:  # Show every 200th error for progress
+                        debug_msg = f"INFO: {rejected_percentage_sum} percentage errors found so far..."
+                        print(f"� EXCEL UPLOAD INFO: {debug_msg}")
+                    continue
+                
+                # Delete existing allocation records for this combination
+                try:
+                    # Format month_year as "Aug-25" format
+                    month_year = f"{month_str}-{year_str}"
+                    
+                    # DEBUG: Log successful records about to be created
+                    if records_processed < 10:
+                        debug_msg = f"🚨 CREATING RECORD #{records_processed + 1}: Product='{product_code}', Sites={sites}, Percentages={percentages}, Month={month_year}"
+                        warnings.append(debug_msg)
+                        print(f"🔍 EXCEL UPLOAD DEBUG: {debug_msg}")
+                    
+                    ProductionAllocationModel.objects.filter(
+                        version=scenario,
+                        product=product,
+                        month_year=month_year
+                    ).delete()
+                    
+                    # Create new allocation records
+                    for i, site_name in enumerate(sites):
+                        site = MasterDataPlantModel.objects.get(SiteName=site_name)
+                        
+                        # DEBUG: Log each site record creation
+                        if records_processed < 5:
+                            debug_msg = f"🚨 CREATING SITE RECORD: Site='{site_name}', Percentage={percentages[i]}"
+                            warnings.append(debug_msg)
+                            print(f"🔍 EXCEL UPLOAD DEBUG: {debug_msg}")
+                        
+                        ProductionAllocationModel.objects.create(
+                            version=scenario,
+                            product=product,
+                            site=site,
+                            month_year=month_year,
+                            allocation_percentage=percentages[i]
+                        )
+                        
+                        # DEBUG: Confirm creation
+                        if records_processed < 5:
+                            debug_msg = f"✅ SITE RECORD CREATED SUCCESSFULLY"
+                            warnings.append(debug_msg)
+                            print(f"🔍 EXCEL UPLOAD DEBUG: {debug_msg}")
+                    
+                    records_processed += 1
+                    
+                    # DEBUG: Confirm overall record completion
+                    if records_processed <= 10:
+                        debug_msg = f"✅ RECORD #{records_processed} COMPLETED SUCCESSFULLY!"
+                        warnings.append(debug_msg)
+                        print(f"🔍 EXCEL UPLOAD DEBUG: {debug_msg}")
+                    
+                except MasterDataPlantModel.DoesNotExist as e:
+                    error_msg = f"Row {index + 1}: Site not found - {str(e)}"
+                    warnings.append(error_msg)
+                    print(f"❌ EXCEL UPLOAD ERROR: {error_msg}")
+                except Exception as e:
+                    error_msg = f"Row {index + 1}: Error creating allocation records: {str(e)}"
+                    warnings.append(error_msg)
+                    print(f"❌ EXCEL UPLOAD ERROR: {error_msg}")
+            
+            except Exception as e:
+                errors.append(f"Row {index + 1}: Error processing row - {str(e)}")
+        
+        # Prepare response
+        print(f"🔍 EXCEL UPLOAD DEBUG: ===== PROCESSING SUMMARY =====")
+        print(f"🔍 EXCEL UPLOAD DEBUG: Total rows examined: {total_rows_examined}")
+        print(f"🔍 EXCEL UPLOAD DEBUG: Skipped (header/empty): {skipped_header_empty}")
+        print(f"🔍 EXCEL UPLOAD DEBUG: Rejected (product not found): {rejected_product_not_found}")
+        print(f"🔍 EXCEL UPLOAD DEBUG: Rejected (no production data): {rejected_no_production_data}")
+        print(f"🔍 EXCEL UPLOAD DEBUG: Rejected (date format): {rejected_date_format}")
+        print(f"🔍 EXCEL UPLOAD DEBUG: Rejected (duplicate): {rejected_duplicate}")
+        print(f"🔍 EXCEL UPLOAD DEBUG: Rejected (no sites): {rejected_no_sites}")
+        print(f"🔍 EXCEL UPLOAD DEBUG: Rejected (percentage sum): {rejected_percentage_sum}")
+        print(f"🔍 EXCEL UPLOAD DEBUG: Records successfully processed: {records_processed}")
+        print(f"🔍 EXCEL UPLOAD DEBUG: ================================")
+        
+        warnings.append(f"DEBUG: PROCESSING SUMMARY:")
+        warnings.append(f"DEBUG: Total rows examined: {total_rows_examined}")
+        warnings.append(f"DEBUG: Skipped (header/empty): {skipped_header_empty}")
+        warnings.append(f"DEBUG: Rejected (product not found): {rejected_product_not_found}")
+        warnings.append(f"DEBUG: Rejected (no production data): {rejected_no_production_data}")
+        warnings.append(f"DEBUG: Rejected (date format): {rejected_date_format}")
+        warnings.append(f"DEBUG: Rejected (duplicate): {rejected_duplicate}")
+        warnings.append(f"DEBUG: Rejected (no sites): {rejected_no_sites}")
+        warnings.append(f"DEBUG: Rejected (percentage sum): {rejected_percentage_sum}")
+        warnings.append(f"DEBUG: Records successfully processed: {records_processed}")
+        
+        # Prepare invalid products list for user feedback
+        invalid_products_list = list(invalid_products) if invalid_products else []
+        
+        # Create processing summary for user
+        processing_summary = f"""
+UPLOAD RESULTS:
+✅ Successfully processed: {records_processed} allocation records
+⚠️  Invalid products skipped: {rejected_product_not_found} records
+⚠️  Date format errors: {rejected_date_format} records  
+⚠️  Percentage sum errors: {rejected_percentage_sum} records
+⚠️  Other issues: {rejected_no_sites + rejected_duplicate} records
+📊 Total rows examined: {total_rows_examined}
+        """
+        
+        if records_processed > 0:
+            # SUCCESS: Some records were processed
+            summary = f"Upload completed! Successfully processed {records_processed} allocation records"
+            
+            # Add warning about skipped records if any
+            total_skipped = rejected_product_not_found + rejected_date_format + rejected_percentage_sum + rejected_no_sites + rejected_duplicate
+            if total_skipped > 0:
+                summary += f". Skipped {total_skipped} invalid records - see details below."
+            
+            return JsonResponse({
+                'success': True,
+                'records_processed': records_processed,
+                'warnings': warnings,
+                'invalid_products': invalid_products_list,
+                'invalid_products_count': len(invalid_products_list),
+                'skipped_records': {
+                    'invalid_products': rejected_product_not_found,
+                    'date_format_errors': rejected_date_format,
+                    'percentage_errors': rejected_percentage_sum,
+                    'site_errors': rejected_no_sites,
+                    'duplicates': rejected_duplicate,
+                    'total': total_skipped
+                },
+                'summary': summary,
+                'processing_summary': processing_summary
+            })
+        else:
+            # NO SUCCESS: No valid records were processed  
+            debug_summary = "\n".join(warnings[:15])  # First 15 debug messages
+            
+            return JsonResponse({
+                'success': False,
+                'error': f'No valid records could be processed from {total_rows_examined} rows examined.',
+                'errors': errors[:10],  # First 10 errors
+                'warnings': warnings[:25],  # First 25 warnings
+                'invalid_products': invalid_products_list,
+                'invalid_products_count': len(invalid_products_list),
+                'processing_summary': processing_summary,
+                'suggestions': [
+                    "Check if products in your Excel exist in the system using /export-valid-products/",
+                    "Verify date format is '1 Aug 25' format",
+                    "Ensure percentage columns sum to 100% for each row",
+                    "Make sure site columns match exactly with system site names"
+                ],
+                'debug_info': {
+                    'total_rows_examined': total_rows_examined,
+                    'valid_products_count': len(valid_products),
+                    'valid_sites_count': len(valid_sites),
+                    'dataframe_shape': df.shape,
+                    'columns': list(df.columns),
+                    'first_few_debug_messages': debug_summary
+                }
+            })
+            
+    except Exception as e:
+        return JsonResponse({'success': False, 'error': f'File processing error: {str(e)}'})
+
+
+@login_required
+def apply_production_splits(request, version):
+    """Apply production splits based on allocation percentages"""
+    from django.shortcuts import get_object_or_404
+    from django.http import JsonResponse
+    from django.db import transaction
+    from .models import (
+        scenarios, ProductionAllocationModel, CalculatedProductionModel,
+        MasterDataProductModel, MasterDataPlantModel
+    )
+    from decimal import Decimal, ROUND_HALF_UP
+    import json
+    from collections import defaultdict
+    
+    if request.method != 'POST':
+        return JsonResponse({'success': False, 'error': 'POST method required'})
+    
+    try:
+        scenario = get_object_or_404(scenarios, version=version)
+        scenario_name = request.POST.get('scenario', version)
+        
+        # Import the apply_splits logic from management command
+        from django.core.management import call_command
+        from io import StringIO
+        import sys
+        
+        # Capture command output
+        old_stdout = sys.stdout
+        sys.stdout = mystdout = StringIO()
+        
+        try:
+            # Get products with both allocations AND production records in this scenario
+            allocated_products = ProductionAllocationModel.objects.filter(
+                version=scenario
+            ).values_list('product__Product', flat=True).distinct()
+            
+            # Filter to only products that have production records too
+            products_with_production = []
+            for product in allocated_products:
+                if CalculatedProductionModel.objects.filter(
+                    product__Product=product,
+                    version=scenario
+                ).exists():
+                    products_with_production.append(product)
+            
+            products_processed = 0
+            records_split = 0
+            new_records_created = 0
+            summary_messages = []
+            
+            with transaction.atomic():
+                for product_code in products_with_production:
+                    try:
+                        # Reset stdout capture for each product
+                        mystdout.seek(0)
+                        mystdout.truncate(0)
+                        
+                        # Run apply_splits for this specific product
+                        call_command(
+                            'apply_splits',
+                            product_code,
+                            scenario=scenario_name,
+                            apply=True,
+                            stdout=mystdout
+                        )
+                        
+                        # Get the output
+                        command_output = mystdout.getvalue()
+                        
+                        # Parse the output to extract statistics
+                        if 'Creating' in command_output:
+                            products_processed += 1
+                            # Count new records created
+                            new_records_created += command_output.count('Creating')
+                            records_split += command_output.count('original record')
+                            
+                        # Add to summary (first few products only)
+                        if products_processed <= 3:
+                            summary_messages.append(f"{product_code}: {command_output.strip()}")
+                            
+                    except Exception as product_error:
+                        summary_messages.append(f"{product_code}: Error - {str(product_error)}")
+                        continue
+            
+            sys.stdout = old_stdout
+            
+            # Generate summary
+            summary = f"Successfully processed {products_processed} products. "
+            summary += f"Split {records_split} production records into {new_records_created} new records."
+            
+            if summary_messages:
+                summary += "\\n\\nDetails:\\n" + "\\n".join(summary_messages[:5])
+                if len(summary_messages) > 5:
+                    summary += f"\\n... and {len(summary_messages) - 5} more"
+            
+            return JsonResponse({
+                'success': True,
+                'products_processed': products_processed,
+                'records_split': records_split,
+                'new_records_created': new_records_created,
+                'summary': summary,
+                'scenario': scenario_name
+            })
+            
+        except Exception as command_error:
+            sys.stdout = old_stdout
+            return JsonResponse({
+                'success': False,
+                'error': f'Error running splits: {str(command_error)}',
+                'debug_output': mystdout.getvalue() if mystdout else 'No output captured'
+            })
+            
+    except Exception as e:
+        return JsonResponse({'success': False, 'error': f'Processing error: {str(e)}'})
+
+
+@login_required
+def export_valid_products(request, version):
+    """Export valid products to Excel for allocation template"""
+    import pandas as pd
+    from django.http import HttpResponse
+    from io import BytesIO
+    
+    try:
+        scenario = get_object_or_404(scenarios, version=version)
+        
+        # Get all valid products and sites
+        products = MasterDataProductModel.objects.all().values(
+            'Product', 'ProductDescription', 'ParentProductGroup'
+        )
+        sites = MasterDataPlantModel.objects.all().values(
+            'SiteName', 'TradingName'
+        )
+        
+        # Create Excel file with multiple sheets
+        output = BytesIO()
+        
+        with pd.ExcelWriter(output, engine='openpyxl') as writer:
+            # Valid products sheet
+            products_df = pd.DataFrame(products)
+            products_df.to_excel(writer, sheet_name='Valid_Products', index=False)
+            
+            # Valid sites sheet  
+            sites_df = pd.DataFrame(sites)
+            sites_df.to_excel(writer, sheet_name='Valid_Sites', index=False)
+            
+            # Allocation template sheet with sample data
+            template_data = {
+                'Product': ['SAMPLE_PRODUCT'],
+                'Date': ['2025-08-01'],
+                'Site1_Name': ['EXAMPLE_SITE'],
+                'Site1_Percentage': [100.0],
+                'Site2_Name': [''],
+                'Site2_Percentage': [''],
+                'Site3_Name': [''],
+                'Site3_Percentage': ['']
+            }
+            template_df = pd.DataFrame(template_data)
+            template_df.to_excel(writer, sheet_name='Allocation_Template', index=False)
+        
+        output.seek(0)
+        
+        response = HttpResponse(
+            output.getvalue(),
+            content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        )
+        response['Content-Disposition'] = f'attachment; filename="valid_products_and_template_{version}.xlsx"'
+        return response
+        
+    except Exception as e:
+        return JsonResponse({'success': False, 'error': f'Export error: {str(e)}'})
+
+
 @login_required
 def production_allocation_view(request, version):
     """Production Allocation View - displays production allocation data and allows editing"""
@@ -9217,3 +10036,300 @@ def manual_site_assignment(request, version, product_code):
     }
     
     return render(request, 'website/manual_site_assignment.html', context)
+
+
+@login_required
+def check_product_exists(request, product_code):
+    """Quick check if a product exists in master data"""
+    from django.http import JsonResponse
+    from .models import MasterDataProductModel
+    
+    try:
+        # Check if the exact product exists
+        exists = MasterDataProductModel.objects.filter(Product=product_code).exists()
+        
+        result = {
+            'product_code': product_code,
+            'exists': exists,
+            'message': f'Product "{product_code}" {"EXISTS" if exists else "NOT FOUND"} in master data'
+        }
+        
+        if exists:
+            # Get product details
+            product = MasterDataProductModel.objects.get(Product=product_code)
+            result['details'] = {
+                'description': product.ProductDescription,
+                'parent_group': product.ParentProductGroup,
+                'dress_mass': product.DressMass
+            }
+        else:
+            # Look for similar products
+            similar_products = list(
+                MasterDataProductModel.objects.filter(
+                    Product__icontains=product_code[:4] if len(product_code) >= 4 else product_code
+                ).values_list('Product', flat=True)[:10]
+            )
+            result['similar_products'] = similar_products
+            
+            # Get total count of products in system
+            total_count = MasterDataProductModel.objects.count()
+            result['total_products_in_system'] = total_count
+        
+        return JsonResponse(result)
+        
+    except Exception as e:
+        return JsonResponse({
+            'error': f'Error checking product: {str(e)}',
+            'product_code': product_code
+        })
+
+
+@login_required
+def debug_excel_upload(request, version):
+    """Comprehensive debug function to analyze Excel upload issues row by row"""
+    import pandas as pd
+    import json
+    from django.http import JsonResponse
+    
+    if request.method != 'POST':
+        return JsonResponse({'error': 'POST method required'}, status=400)
+    
+    if 'excel_file' not in request.FILES:
+        return JsonResponse({'error': 'No Excel file provided'}, status=400)
+    
+    try:
+        scenario = get_object_or_404(scenarios, version=version)
+        excel_file = request.FILES['excel_file']
+        
+        # Read Excel file
+        df = pd.read_excel(excel_file)
+        
+        # Get validation data
+        valid_products = set(MasterDataProductModel.objects.values_list('Product', flat=True))
+        valid_sites = set(MasterDataPlantModel.objects.values_list('SiteName', flat=True))
+        
+        # Required columns
+        required_columns = ['Product', 'Date', 'Site1_Name', 'Site1_Percentage']
+        
+        analysis = {
+            'excel_info': {
+                'filename': excel_file.name,
+                'total_rows': len(df),
+                'columns': list(df.columns),
+                'required_columns': required_columns,
+                'missing_columns': [col for col in required_columns if col not in df.columns]
+            },
+            'validation_info': {
+                'total_valid_products': len(valid_products),
+                'total_valid_sites': len(valid_sites),
+                'sample_products': list(valid_products)[:10],
+                'sample_sites': list(valid_sites)[:10]
+            },
+            'detailed_row_analysis': [],
+            'summary_statistics': {
+                'total_rows_analyzed': 0,
+                'header_rows_skipped': 0,
+                'empty_rows_skipped': 0,
+                'product_not_found': 0,
+                'date_format_errors': 0,
+                'no_valid_sites': 0,
+                'percentage_sum_errors': 0,
+                'valid_rows': 0,
+                'unique_invalid_products': set(),
+                'unique_invalid_sites': set()
+            }
+        }
+        
+        # Process each row (limit to first 100 for performance)
+        max_rows_to_analyze = min(100, len(df))
+        
+        for index, row in df.head(max_rows_to_analyze).iterrows():
+            analysis['summary_statistics']['total_rows_analyzed'] += 1
+            
+            row_analysis = {
+                'row_number': index + 1,
+                'raw_data': {},
+                'issues': [],
+                'status': 'VALID'
+            }
+            
+            # Capture raw data
+            for col in df.columns:
+                row_analysis['raw_data'][col] = str(row.get(col, 'MISSING'))
+            
+            # Check if header or empty row
+            if index < 1 or pd.isna(row.get('Product')) or str(row.get('Product', '')).strip() == '' or str(row.get('Product', '')).startswith('Product'):
+                row_analysis['status'] = 'SKIPPED'
+                row_analysis['issues'].append('Header row or empty Product field')
+                analysis['summary_statistics']['header_rows_skipped'] += 1
+                analysis['detailed_row_analysis'].append(row_analysis)
+                continue
+            
+            # Validate Product
+            product_code = str(row.get('Product', '')).strip()
+            row_analysis['cleaned_product'] = product_code
+            
+            if not product_code:
+                row_analysis['status'] = 'INVALID'
+                row_analysis['issues'].append('Product field is empty')
+                analysis['summary_statistics']['empty_rows_skipped'] += 1
+            elif product_code not in valid_products:
+                row_analysis['status'] = 'INVALID'
+                row_analysis['issues'].append(f'Product "{product_code}" not found in database')
+                analysis['summary_statistics']['product_not_found'] += 1
+                analysis['summary_statistics']['unique_invalid_products'].add(product_code)
+            else:
+                row_analysis['product_status'] = 'VALID'
+            
+            # Validate Date
+            date_value = row.get('Date')
+            row_analysis['raw_date'] = str(date_value)
+            
+            try:
+                if pd.isna(date_value):
+                    row_analysis['status'] = 'INVALID'
+                    row_analysis['issues'].append('Date field is empty')
+                    analysis['summary_statistics']['date_format_errors'] += 1
+                elif isinstance(date_value, pd.Timestamp):
+                    # Valid timestamp
+                    date_obj = date_value.to_pydatetime()
+                    month_names = ['', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 
+                                 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+                    month_str = month_names[date_obj.month]
+                    year_str = str(date_obj.year)[-2:]
+                    row_analysis['parsed_date'] = f"{date_obj.day} {month_str} {year_str}"
+                    row_analysis['date_status'] = 'VALID'
+                else:
+                    # Try to parse string format
+                    date_str = str(date_value).strip()
+                    date_parts = date_str.split()
+                    if len(date_parts) == 3:
+                        day, month_str, year_str = date_parts
+                        month_mapping = {
+                            'Jan': 1, 'Feb': 2, 'Mar': 3, 'Apr': 4, 'May': 5, 'Jun': 6,
+                            'Jul': 7, 'Aug': 8, 'Sep': 9, 'Oct': 10, 'Nov': 11, 'Dec': 12
+                        }
+                        if month_str in month_mapping:
+                            row_analysis['parsed_date'] = date_str
+                            row_analysis['date_status'] = 'VALID'
+                        else:
+                            row_analysis['status'] = 'INVALID'
+                            row_analysis['issues'].append(f'Invalid month "{month_str}". Use Jan, Feb, Mar, etc.')
+                            analysis['summary_statistics']['date_format_errors'] += 1
+                    else:
+                        row_analysis['status'] = 'INVALID'
+                        row_analysis['issues'].append(f'Invalid date format "{date_str}". Use "1 Aug 25" format')
+                        analysis['summary_statistics']['date_format_errors'] += 1
+                        
+            except Exception as e:
+                row_analysis['status'] = 'INVALID'
+                row_analysis['issues'].append(f'Date parsing error: {str(e)}')
+                analysis['summary_statistics']['date_format_errors'] += 1
+            
+            # Validate Sites and Percentages
+            sites_analysis = []
+            valid_sites_found = 0
+            total_percentage = 0
+            site_errors = []
+            
+            for site_num in [1, 2, 3]:
+                site_name = row.get(f'Site{site_num}_Name', '')
+                site_percentage = row.get(f'Site{site_num}_Percentage', 0)
+                
+                site_info = {
+                    'site_number': site_num,
+                    'raw_name': str(site_name),
+                    'raw_percentage': str(site_percentage),
+                    'issues': []
+                }
+                
+                if pd.notna(site_name) and str(site_name).strip():
+                    site_name_clean = str(site_name).strip()
+                    site_info['cleaned_name'] = site_name_clean
+                    
+                    # Check if site exists
+                    if site_name_clean not in valid_sites:
+                        site_info['issues'].append(f'Site "{site_name_clean}" not found in database')
+                        analysis['summary_statistics']['unique_invalid_sites'].add(site_name_clean)
+                    else:
+                        site_info['site_exists'] = True
+                    
+                    # Check percentage
+                    try:
+                        if pd.isna(site_percentage):
+                            site_info['issues'].append('Percentage is empty/NaN')
+                        else:
+                            percentage = float(site_percentage)
+                            site_info['cleaned_percentage'] = percentage
+                            
+                            if percentage <= 0:
+                                site_info['issues'].append(f'Percentage {percentage} must be > 0')
+                            else:
+                                total_percentage += percentage
+                                if site_name_clean in valid_sites:
+                                    valid_sites_found += 1
+                                    
+                    except (ValueError, TypeError):
+                        site_info['issues'].append(f'Invalid percentage format: {site_percentage}')
+                
+                if site_info['raw_name'] != 'nan' or site_info['raw_percentage'] != 'nan':
+                    sites_analysis.append(site_info)
+            
+            row_analysis['sites_analysis'] = sites_analysis
+            row_analysis['total_percentage'] = total_percentage
+            row_analysis['valid_sites_count'] = valid_sites_found
+            
+            # Check percentage sum
+            if valid_sites_found > 0:
+                if abs(total_percentage - 100.0) > 0.01:
+                    row_analysis['status'] = 'INVALID'
+                    row_analysis['issues'].append(f'Percentages sum to {total_percentage}% instead of 100%')
+                    analysis['summary_statistics']['percentage_sum_errors'] += 1
+                else:
+                    row_analysis['percentage_status'] = 'VALID'
+            else:
+                if any(sites_analysis):  # Has site data but no valid sites
+                    row_analysis['status'] = 'INVALID'
+                    row_analysis['issues'].append('No valid sites with percentages > 0')
+                    analysis['summary_statistics']['no_valid_sites'] += 1
+                else:
+                    row_analysis['status'] = 'INVALID'
+                    row_analysis['issues'].append('No site data provided')
+                    analysis['summary_statistics']['no_valid_sites'] += 1
+            
+            # Final status check
+            if row_analysis['status'] == 'VALID' and not row_analysis['issues']:
+                analysis['summary_statistics']['valid_rows'] += 1
+            
+            analysis['detailed_row_analysis'].append(row_analysis)
+        
+        # Convert sets to lists for JSON serialization
+        analysis['summary_statistics']['unique_invalid_products'] = list(analysis['summary_statistics']['unique_invalid_products'])
+        analysis['summary_statistics']['unique_invalid_sites'] = list(analysis['summary_statistics']['unique_invalid_sites'])
+        
+        # Add recommendations
+        analysis['recommendations'] = []
+        
+        if analysis['summary_statistics']['product_not_found'] > 0:
+            analysis['recommendations'].append(f"Fix {analysis['summary_statistics']['product_not_found']} invalid products. Use /export-valid-products/ to get valid product list.")
+        
+        if analysis['summary_statistics']['date_format_errors'] > 0:
+            analysis['recommendations'].append(f"Fix {analysis['summary_statistics']['date_format_errors']} date format errors. Use format: '1 Aug 25'")
+        
+        if analysis['summary_statistics']['no_valid_sites'] > 0:
+            analysis['recommendations'].append(f"Fix {analysis['summary_statistics']['no_valid_sites']} site issues. Check site names and percentages.")
+        
+        if analysis['summary_statistics']['percentage_sum_errors'] > 0:
+            analysis['recommendations'].append(f"Fix {analysis['summary_statistics']['percentage_sum_errors']} percentage sum errors. Each row must sum to exactly 100%.")
+        
+        return JsonResponse(analysis)
+        
+    except Exception as e:
+        return JsonResponse({'error': f'Debug analysis error: {str(e)}'}, status=500)
+
+
+@login_required  
+def debug_excel_page(request, version):
+    """Render the debug Excel upload page"""
+    scenario = get_object_or_404(scenarios, version=version)
+    return render(request, 'website/debug_excel_upload.html', {'version': version, 'scenario': scenario})

@@ -103,13 +103,9 @@
         
         <!-- Control Buttons -->
         <div class="text-center mb-4">
-            <button type="button" class="btn btn-info mr-2" id="workTransferBtn" data-toggle="modal" data-target="#workTransferModal">
-                <i class="fas fa-exchange-alt"></i> Work Transfer between Sites
+            <button type="button" class="btn btn-success mr-2" id="excelAllocationBtn" data-toggle="modal" data-target="#excelAllocationModal">
+                <i class="fas fa-file-excel"></i> Upload Site Allocation (Excel)
             </button>
-            
-            <a href="{% url 'production_allocation_view' version=version %}" class="btn btn-success mr-2">
-                <i class="fas fa-percentage"></i> Production Allocation
-            </a>
             
             <button type="button" class="btn btn-primary mr-2" id="autoOptimizeBtn" data-toggle="modal" data-target="#autoLevelModal">
                 Auto Level Optimization
@@ -132,32 +128,8 @@
         {% include 'website/simple_inventory.html' %}
     </div>
 
-    <!-- Work Transfer Modal -->
-    <div class="modal fade" id="workTransferModal" tabindex="-1" role="dialog" aria-labelledby="workTransferModalLabel" aria-hidden="true">
-        <div class="modal-dialog modal-xl-custom" role="document">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title" id="workTransferModalLabel">Work Transfer between Sites</h5>
-                    <button type="button" class="close" data-dismiss="modal" aria-label="Close">
-                        <span aria-hidden="true">&times;</span>
-                    </button>
-                </div>
-                <div class="modal-body">
-                    <div id="workTransferLoader" class="text-center">
-                        <i class="fas fa-spinner fa-spin"></i> Loading production data...
-                    </div>
-                    <div id="workTransferContent" style="display: none;">
-                        <!-- Filter Form (Server-side filtering) -->
-                        <form id="filterForm" method="get" class="mb-3">
-                            <div class="row">
-                                <div class="col-md-3">
-                                    <label for="filterProduct">Filter by Product:</label>
-                                    <input type="text" 
-                                           id="filterProduct" 
-                                           name="product" 
-                                           class="form-control form-control-sm" 
-                                           placeholder="Enter product name..."
-                                           value="{{ request.GET.product|default:'' }}">
+
+
                                 </div>
                                 <div class="col-md-3">
                                     <label for="filterSite">Filter by Current Site:</label>
@@ -194,9 +166,6 @@
                                     </button>
                                     <button type="button" class="btn btn-sm btn-secondary mr-2" id="clearFilters">
                                         <i class="fas fa-times"></i> Clear
-                                    </button>
-                                    <button type="button" class="btn btn-sm btn-success" id="productionAllocationBtn">
-                                        <i class="fas fa-cogs"></i> Production Allocation
                                     </button>
                                 </div>
                             </div>
@@ -767,7 +736,212 @@
 
         // Production Allocation Modal
         $('#productionAllocationBtn').click(function() {
+            console.log('Production Allocation button clicked');
             $('#productionAllocationModal').modal('show');
+        });
+
+        // Upload method toggle
+        $('input[name="uploadMethod"]').change(function() {
+            console.log('Upload method changed to:', $(this).val());
+            if ($(this).val() === 'excel') {
+                $('#manualEntryDiv').hide();
+                $('#excelUploadDiv').show();
+            } else {
+                $('#excelUploadDiv').hide();
+                $('#manualEntryDiv').show();
+            }
+        });
+
+        // Download Excel template
+        $('#downloadTemplateBtn').click(function() {
+            console.log('Template download clicked');
+            window.location.href = '{% url "download_allocation_template" version=version %}';
+        });
+
+        // Excel upload functionality
+        $('#uploadExcelBtn').click(function() {
+            console.log('Excel upload clicked');
+            var fileInput = $('#allocationExcelFile')[0];
+            if (!fileInput.files || !fileInput.files[0]) {
+                alert('Please select an Excel file first.');
+                return;
+            }
+
+            var formData = new FormData();
+            formData.append('excel_file', fileInput.files[0]);
+            formData.append('csrfmiddlewaretoken', $('[name=csrfmiddlewaretoken]').val());
+
+            // Show progress bar
+            $('#uploadProgress').show();
+            $('.progress-bar').css('width', '20%');
+            $('#uploadResults').html('');
+
+            $.ajax({
+                url: '{% url "upload_allocation_excel" version=version %}',
+                type: 'POST',
+                data: formData,
+                processData: false,
+                contentType: false,
+                xhr: function() {
+                    var xhr = new window.XMLHttpRequest();
+                    xhr.upload.addEventListener("progress", function(evt) {
+                        if (evt.lengthComputable) {
+                            var percentComplete = (evt.loaded / evt.total) * 100;
+                            $('.progress-bar').css('width', Math.min(percentComplete, 90) + '%');
+                        }
+                    }, false);
+                    return xhr;
+                },
+                success: function(response) {
+                    console.log('Upload success:', response);
+                    $('.progress-bar').css('width', '100%');
+                    setTimeout(function() {
+                        $('#uploadProgress').hide();
+                        $('.progress-bar').css('width', '0%');
+                    }, 1000);
+
+                    if (response.success) {
+                        var html = '<div class="alert alert-success">' +
+                                  '<h6><i class="fas fa-check-circle"></i> Upload Successful!</h6>' +
+                                  '<p><strong>Records processed:</strong> ' + response.records_processed + '</p>';
+                        
+                        // Show processing summary if available
+                        if (response.processing_summary) {
+                            html += '<div class="card mt-2"><div class="card-body">' +
+                                   '<h6 class="card-title">Processing Summary</h6>' +
+                                   '<pre class="small text-muted">' + response.processing_summary + '</pre>' +
+                                   '</div></div>';
+                        }
+                        
+                        // Show skipped records summary if available
+                        if (response.skipped_records && response.skipped_records.total > 0) {
+                            html += '<div class="alert alert-info mt-2">' +
+                                   '<h6><i class="fas fa-info-circle"></i> Skipped Records Summary</h6>' +
+                                   '<ul class="mb-0">';
+                            if (response.skipped_records.invalid_products > 0) {
+                                html += '<li>Invalid products: ' + response.skipped_records.invalid_products + ' records</li>';
+                            }
+                            if (response.skipped_records.date_format_errors > 0) {
+                                html += '<li>Date format errors: ' + response.skipped_records.date_format_errors + ' records</li>';
+                            }
+                            if (response.skipped_records.percentage_errors > 0) {
+                                html += '<li>Percentage sum errors: ' + response.skipped_records.percentage_errors + ' records</li>';
+                            }
+                            if (response.skipped_records.site_errors > 0) {
+                                html += '<li>Site errors: ' + response.skipped_records.site_errors + ' records</li>';
+                            }
+                            if (response.skipped_records.duplicates > 0) {
+                                html += '<li>Duplicate records: ' + response.skipped_records.duplicates + ' records</li>';
+                            }
+                            html += '</ul></div>';
+                        }
+                        
+                        // Show invalid products warning if any
+                        if (response.invalid_products && response.invalid_products.length > 0) {
+                            html += '<div class="alert alert-warning mt-2">' +
+                                   '<h6><i class="fas fa-exclamation-triangle"></i> Invalid Products Skipped (' + response.invalid_products_count + ')</h6>' +
+                                   '<p><strong>These products were not found in the system and were skipped:</strong></p>' +
+                                   '<div class="text-monospace small bg-light p-2 rounded" style="max-height: 150px; overflow-y: auto;">';
+                            
+                            // Display up to 50 invalid products, then show "and X more"
+                            var productsToShow = response.invalid_products.slice(0, 50);
+                            productsToShow.forEach(function(product) {
+                                html += product + '<br>';
+                            });
+                            
+                            if (response.invalid_products.length > 50) {
+                                html += '<em>... and ' + (response.invalid_products.length - 50) + ' more products</em>';
+                            }
+                            
+                            html += '</div>';
+                            html += '<p class="mt-2 mb-0"><small class="text-muted">' +
+                                   '<i class="fas fa-lightbulb"></i> Tip: Use <a href="/export-valid-products/' + encodeURIComponent('{{ version }}') + '/" target="_blank">Export Valid Products</a> ' +
+                                   'to download a template with correct product codes.</small></p>';
+                            html += '</div>';
+                        }
+                        
+                        if (response.warnings && response.warnings.length > 0) {
+                            html += '<p><strong>Warnings:</strong></p><ul>';
+                            response.warnings.forEach(function(warning) {
+                                html += '<li>' + warning + '</li>';
+                            });
+                            html += '</ul>';
+                        }
+                        
+                        html += '<p><strong>Summary:</strong> ' + response.summary + '</p></div>';
+                        $('#uploadResults').html(html);
+                        
+                        // Auto-close modal after success
+                        setTimeout(function() {
+                            $('#productionAllocationModal').modal('hide');
+                            location.reload(); // Reload to see changes
+                        }, 3000);
+                    } else {
+                        var html = '<div class="alert alert-danger">' +
+                                  '<h6><i class="fas fa-exclamation-circle"></i> Upload Failed</h6>' +
+                                  '<p><strong>Error:</strong> ' + response.error + '</p>';
+                        
+                        // Show processing summary if available  
+                        if (response.processing_summary) {
+                            html += '<div class="card mt-2"><div class="card-body">' +
+                                   '<h6 class="card-title">Processing Summary</h6>' +
+                                   '<pre class="small text-muted">' + response.processing_summary + '</pre>' +
+                                   '</div></div>';
+                        }
+                        
+                        // Show suggestions if available
+                        if (response.suggestions && response.suggestions.length > 0) {
+                            html += '<div class="alert alert-info mt-2">' +
+                                   '<h6><i class="fas fa-lightbulb"></i> Suggestions</h6><ul class="mb-0">';
+                            response.suggestions.forEach(function(suggestion) {
+                                html += '<li>' + suggestion + '</li>';
+                            });
+                            html += '</ul></div>';
+                        }
+                        
+                        // Show invalid products warning if any
+                        if (response.invalid_products && response.invalid_products.length > 0) {
+                            html += '<div class="alert alert-warning mt-2">' +
+                                   '<h6><i class="fas fa-exclamation-triangle"></i> Invalid Products Found (' + response.invalid_products_count + ')</h6>' +
+                                   '<p><strong>The following products were not found in the system:</strong></p>' +
+                                   '<div class="text-monospace small bg-light p-2 rounded" style="max-height: 150px; overflow-y: auto;">';
+                            
+                            // Display up to 50 invalid products, then show "and X more"
+                            var productsToShow = response.invalid_products.slice(0, 50);
+                            productsToShow.forEach(function(product) {
+                                html += product + '<br>';
+                            });
+                            
+                            if (response.invalid_products.length > 50) {
+                                html += '<em>... and ' + (response.invalid_products.length - 50) + ' more products</em>';
+                            }
+                            
+                            html += '</div>';
+                            html += '<p class="mt-2 mb-0"><small class="text-muted">' +
+                                   '<i class="fas fa-download"></i> <a href="/export-valid-products/' + encodeURIComponent('{{ version }}') + '/" target="_blank">Download Valid Products Template</a> ' +
+                                   'to get correct product codes.</small></p>';
+                            html += '</div>';
+                        }
+                        
+                        if (response.errors && response.errors.length > 0) {
+                            html += '<p><strong>Detailed Errors:</strong></p><ul>';
+                            response.errors.forEach(function(error) {
+                                html += '<li>' + error + '</li>';
+                            });
+                            html += '</ul>';
+                        }
+                        html += '</div>';
+                        $('#uploadResults').html(html);
+                    }
+                },
+                error: function() {
+                    $('.progress-bar').css('width', '0%');
+                    $('#uploadProgress').hide();
+                    $('#uploadResults').html('<div class="alert alert-danger">' +
+                                           '<i class="fas fa-exclamation-circle"></i> Error uploading file. Please try again.' +
+                                           '</div>');
+                }
+            });
         });
 
         // Product search functionality
@@ -938,18 +1112,69 @@
                     </button>
                 </div>
                 <div class="modal-body">
-                    <!-- Product Search -->
-                    <div id="productSearchDiv">
-                        <div class="row">
-                            <div class="col-md-8">
-                                <label for="productSearch">Search Product:</label>
-                                <input type="text" id="productSearch" class="form-control" placeholder="Enter product name or code...">
+                    <!-- Upload Method Selection -->
+                    <div class="mb-3">
+                        <div class="btn-group btn-group-toggle" data-toggle="buttons" id="uploadMethodToggle">
+                            <label class="btn btn-outline-primary active">
+                                <input type="radio" name="uploadMethod" id="manualEntry" value="manual" checked> Manual Entry
+                            </label>
+                            <label class="btn btn-outline-success">
+                                <input type="radio" name="uploadMethod" id="excelUpload" value="excel"> Excel Upload
+                            </label>
+                        </div>
+                        <small class="form-text text-muted">Choose how you want to set production allocations</small>
+                    </div>
+
+                    <!-- Excel Upload Section -->
+                    <div id="excelUploadDiv" style="display: none;">
+                        <div class="card border-success">
+                            <div class="card-header bg-success text-white">
+                                <h6 class="mb-0"><i class="fas fa-file-excel"></i> Excel Upload</h6>
                             </div>
-                            <div class="col-md-4">
-                                <label>&nbsp;</label><br>
-                                <button type="button" id="searchProductBtn" class="btn btn-primary">
-                                    <i class="fas fa-search"></i> Search
-                                </button>
+                            <div class="card-body">
+                                <form id="excelUploadForm" enctype="multipart/form-data">
+                                    <div class="row">
+                                        <div class="col-md-8">
+                                            <label for="allocationExcelFile">Select Excel File:</label>
+                                            <input type="file" id="allocationExcelFile" class="form-control-file" accept=".xlsx,.xls" required>
+                                            <small class="form-text text-muted">Upload an Excel file with production allocation data</small>
+                                        </div>
+                                        <div class="col-md-4">
+                                            <label>&nbsp;</label><br>
+                                            <button type="button" id="uploadExcelBtn" class="btn btn-success">
+                                                <i class="fas fa-upload"></i> Upload & Process
+                                            </button>
+                                            <button type="button" id="downloadTemplateBtn" class="btn btn-outline-info ml-2">
+                                                <i class="fas fa-download"></i> Template
+                                            </button>
+                                        </div>
+                                    </div>
+                                </form>
+                                <div id="uploadProgress" style="display: none;">
+                                    <div class="progress mt-3">
+                                        <div class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" style="width: 0%"></div>
+                                    </div>
+                                </div>
+                                <div id="uploadResults" class="mt-3"></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Manual Entry Section -->
+                    <div id="manualEntryDiv">
+                        <!-- Product Search -->
+                        <div id="productSearchDiv">
+                            <div class="row">
+                                <div class="col-md-8">
+                                    <label for="productSearch">Search Product:</label>
+                                    <input type="text" id="productSearch" class="form-control" placeholder="Enter product name or code...">
+                                </div>
+                                <div class="col-md-4">
+                                    <label>&nbsp;</label><br>
+                                    <button type="button" id="searchProductBtn" class="btn btn-primary">
+                                        <i class="fas fa-search"></i> Search
+                                    </button>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -1276,6 +1501,402 @@
         }
     });
     </script>
+    </script>
+
+    <!-- Simple Excel Upload Modal -->
+    <div class="modal fade" id="excelAllocationModal" tabindex="-1" role="dialog" aria-labelledby="excelAllocationModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-lg" role="document">
+            <div class="modal-content">
+                <div class="modal-header bg-success text-white">
+                    <h5 class="modal-title" id="excelAllocationModalLabel">
+                        <i class="fas fa-file-excel"></i> Upload Site Allocation (Excel)
+                    </h5>
+                    <button type="button" class="close text-white" data-dismiss="modal" aria-label="Close">
+                        <span aria-hidden="true">&times;</span>
+                    </button>
+                </div>
+                <div class="modal-body">
+                    <!-- Instructions Section -->
+                    <div class="alert alert-info">
+                        <h6><i class="fas fa-info-circle"></i> Excel File Requirements:</h6>
+                        <p><strong>Your Excel file must contain the following columns:</strong></p>
+                        <div class="table-responsive">
+                            <table class="table table-sm table-bordered">
+                                <thead class="thead-light">
+                                    <tr>
+                                        <th>Column</th>
+                                        <th>A</th>
+                                        <th>B</th>
+                                        <th>C</th>
+                                        <th>D</th>
+                                        <th>E</th>
+                                        <th>F</th>
+                                        <th>G</th>
+                                        <th>H</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr>
+                                        <td><strong>Name</strong></td>
+                                        <td><strong>Product</strong></td>
+                                        <td><strong>Date</strong></td>
+                                        <td><strong>Site1_Name</strong></td>
+                                        <td><strong>Site1_Percentage</strong></td>
+                                        <td><strong>Site2_Name</strong></td>
+                                        <td><strong>Site2_Percentage</strong></td>
+                                        <td><strong>Site3_Name</strong></td>
+                                        <td><strong>Site3_Percentage</strong></td>
+                                    </tr>
+                                    <tr>
+                                        <td><strong>Description</strong></td>
+                                        <td>Product code (must exist)</td>
+                                        <td>Format: "1 Aug 25"</td>
+                                        <td>First site name</td>
+                                        <td>Percentage (0-100)</td>
+                                        <td>Second site (optional)</td>
+                                        <td>Percentage (0-100)</td>
+                                        <td>Third site (optional)</td>
+                                        <td>Percentage (0-100)</td>
+                                    </tr>
+                                    <tr>
+                                        <td><strong>Example</strong></td>
+                                        <td>2037-203-01B</td>
+                                        <td>1 Aug 25</td>
+                                        <td>Brisbane Foundry</td>
+                                        <td>60</td>
+                                        <td>Sydney Foundry</td>
+                                        <td>40</td>
+                                        <td><em>(leave blank)</em></td>
+                                        <td>0</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                        <div class="mt-2">
+                            <strong>Important Rules:</strong>
+                            <ul class="mb-0">
+                                <li>Percentages for each product/date must sum to exactly 100%</li>
+                                <li>Product and site names must exactly match system data</li>
+                                <li>Date format must be: "1 Aug 25", "1 Nov 26", etc.</li>
+                                <li>Total quantity will be auto-calculated from existing production data</li>
+                                <li>Site2 and Site3 can be left blank if not needed</li>
+                                <li>Existing allocations will be overwritten</li>
+                            </ul>
+                        </div>
+                    </div>
+
+                    <!-- Upload Section -->
+                    <div class="card">
+                        <div class="card-header">
+                            <h6 class="mb-0"><i class="fas fa-upload"></i> Upload Your File</h6>
+                        </div>
+                        <div class="card-body">
+                            <form id="simpleExcelUploadForm" enctype="multipart/form-data">
+                                <div class="row">
+                                    <div class="col-md-8">
+                                        <div class="form-group">
+                                            <label for="excelFileInput">Select Excel File:</label>
+                                            <input type="file" id="excelFileInput" class="form-control-file" accept=".xlsx,.xls" required>
+                                            <small class="form-text text-muted">Accepted formats: .xlsx, .xls</small>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-4 d-flex align-items-end">
+                                        <div class="form-group w-100">
+                                            <button type="button" id="downloadTemplateBtn2" class="btn btn-outline-info btn-block mb-2">
+                                                <i class="fas fa-download"></i> Download Template
+                                            </button>
+                                            <button type="button" id="uploadFileBtn" class="btn btn-success btn-block">
+                                                <i class="fas fa-upload"></i> Upload & Process
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </form>
+
+                            <!-- Progress Bar -->
+                            <div id="uploadProgressDiv" style="display: none;" class="mt-3">
+                                <div class="progress">
+                                    <div id="uploadProgressBar" class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" style="width: 0%"></div>
+                                </div>
+                                <div class="text-center mt-2">
+                                    <small id="uploadStatus">Processing...</small>
+                                </div>
+                            </div>
+
+                            <!-- Results -->
+                            <div id="uploadResultsDiv" class="mt-3"></div>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-dismiss="modal">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Simple Excel Upload Modal JavaScript
+        $(document).ready(function() {
+            // Download template button
+            $('#downloadTemplateBtn2').click(function() {
+                window.location.href = '{% url "download_allocation_template" version=version %}';
+            });
+
+            // Upload file button
+            $('#uploadFileBtn').click(function() {
+                var fileInput = $('#excelFileInput')[0];
+                if (!fileInput.files || !fileInput.files[0]) {
+                    alert('Please select an Excel file first.');
+                    return;
+                }
+
+                var formData = new FormData();
+                formData.append('excel_file', fileInput.files[0]);
+                formData.append('csrfmiddlewaretoken', $('[name=csrfmiddlewaretoken]').val());
+
+                // Show progress
+                $('#uploadProgressDiv').show();
+                $('#uploadProgressBar').css('width', '20%');
+                $('#uploadStatus').text('Uploading file...');
+                $('#uploadResultsDiv').html('');
+
+                $.ajax({
+                    url: '{% url "upload_allocation_excel" version=version %}',
+                    type: 'POST',
+                    data: formData,
+                    processData: false,
+                    contentType: false,
+                    xhr: function() {
+                        var xhr = new window.XMLHttpRequest();
+                        xhr.upload.addEventListener("progress", function(evt) {
+                            if (evt.lengthComputable) {
+                                var percentComplete = (evt.loaded / evt.total) * 100;
+                                $('#uploadProgressBar').css('width', Math.min(percentComplete, 90) + '%');
+                            }
+                        }, false);
+                        return xhr;
+                    },
+                    success: function(response) {
+                        $('#uploadProgressBar').css('width', '100%');
+                        $('#uploadStatus').text('Processing complete!');
+
+                        setTimeout(function() {
+                            $('#uploadProgressDiv').hide();
+                            $('#uploadProgressBar').css('width', '0%');
+                        }, 2000);
+
+                        if (response.success) {
+                            var html = '<div class="alert alert-success">' +
+                                      '<h6><i class="fas fa-check-circle"></i> Upload Successful!</h6>' +
+                                      '<p><strong>Records processed:</strong> ' + response.records_processed + '</p>';
+                            
+                            // Show skipped records summary if available
+                            if (response.skipped_records && response.skipped_records.total > 0) {
+                                html += '<div class="alert alert-info mt-2">' +
+                                       '<h6><i class="fas fa-info-circle"></i> Records Skipped: ' + response.skipped_records.total + '</h6>' +
+                                       '<ul class="mb-0">';
+                                if (response.skipped_records.invalid_products > 0) {
+                                    html += '<li>Invalid products: ' + response.skipped_records.invalid_products + '</li>';
+                                }
+                                if (response.skipped_records.date_format_errors > 0) {
+                                    html += '<li>Date format errors: ' + response.skipped_records.date_format_errors + '</li>';
+                                }
+                                if (response.skipped_records.percentage_errors > 0) {
+                                    html += '<li>Percentage errors: ' + response.skipped_records.percentage_errors + '</li>';
+                                }
+                                html += '</ul></div>';
+                            }
+                            
+                            // Show invalid products if any
+                            if (response.invalid_products && response.invalid_products.length > 0) {
+                                html += '<div class="alert alert-warning mt-2">' +
+                                       '<h6><i class="fas fa-exclamation-triangle"></i> Invalid Products (' + response.invalid_products_count + ')</h6>' +
+                                       '<p class="mb-1"><strong>Skipped products not found in system:</strong></p>' +
+                                       '<div class="text-monospace small bg-light p-2 rounded" style="max-height: 100px; overflow-y: auto;">';
+                                
+                                var productsToShow = response.invalid_products.slice(0, 30);
+                                productsToShow.forEach(function(product) {
+                                    html += product + '<br>';
+                                });
+                                
+                                if (response.invalid_products.length > 30) {
+                                    html += '<em>... and ' + (response.invalid_products.length - 30) + ' more</em>';
+                                }
+                                
+                                html += '</div></div>';
+                            }
+                            
+                            if (response.warnings && response.warnings.length > 0) {
+                                html += '<p><strong>Warnings:</strong></p><ul>';
+                                response.warnings.slice(0, 10).forEach(function(warning) {
+                                    html += '<li class="text-warning">' + warning + '</li>';
+                                });
+                                if (response.warnings.length > 10) {
+                                    html += '<li class="text-muted"><em>... and ' + (response.warnings.length - 10) + ' more warnings</em></li>';
+                                }
+                                html += '</ul>';
+                            }
+                            
+                            html += '<p><strong>Summary:</strong> ' + response.summary + '</p>';
+                            
+                            // Add production splits button if records were processed
+                            if (response.records_processed > 0) {
+                                html += '<div class="mt-3 text-center">' +
+                                       '<button type="button" id="generateSplitsBtn" class="btn btn-primary btn-lg">' +
+                                       '<i class="fas fa-magic"></i> Generate Production Splits' +
+                                       '</button>' +
+                                       '<p class="text-muted small mt-2">Click to automatically split production records based on your allocations</p>' +
+                                       '</div>';
+                            }
+                            
+                            html += '</div>';
+                            $('#uploadResultsDiv').html(html);
+                            
+                            // Don't auto-close, let user click the split button
+                            // setTimeout(function() {
+                            //     $('#excelAllocationModal').modal('hide');
+                            //     location.reload();
+                            // }, 4000);
+                        } else {
+                            var html = '<div class="alert alert-danger">' +
+                                      '<h6><i class="fas fa-exclamation-circle"></i> Upload Failed</h6>' +
+                                      '<p><strong>Error:</strong> ' + response.error + '</p>';
+                            
+                            // Show processing summary if available  
+                            if (response.processing_summary) {
+                                html += '<div class="card mt-2"><div class="card-body">' +
+                                       '<h6 class="card-title">Processing Details</h6>' +
+                                       '<pre class="small">' + response.processing_summary + '</pre>' +
+                                       '</div></div>';
+                            }
+                            
+                            // Show invalid products if any
+                            if (response.invalid_products && response.invalid_products.length > 0) {
+                                html += '<div class="alert alert-warning mt-2">' +
+                                       '<h6><i class="fas fa-exclamation-triangle"></i> Invalid Products (' + response.invalid_products_count + ')</h6>' +
+                                       '<div class="text-monospace small bg-light p-2 rounded" style="max-height: 120px; overflow-y: auto;">';
+                                
+                                var productsToShow = response.invalid_products.slice(0, 40);
+                                productsToShow.forEach(function(product) {
+                                    html += product + '<br>';
+                                });
+                                
+                                if (response.invalid_products.length > 40) {
+                                    html += '<em>... and ' + (response.invalid_products.length - 40) + ' more</em>';
+                                }
+                                
+                                html += '</div></div>';
+                            }
+                            
+                            if (response.errors && response.errors.length > 0) {
+                                html += '<p><strong>Detailed Errors:</strong></p><ul>';
+                                response.errors.forEach(function(error) {
+                                    html += '<li class="text-danger">' + error + '</li>';
+                                });
+                                html += '</ul>';
+                            }
+                            html += '</div>';
+                            $('#uploadResultsDiv').html(html);
+                        }
+                    },
+                    error: function() {
+                        $('#uploadProgressBar').css('width', '0%');
+                        $('#uploadProgressDiv').hide();
+                        $('#uploadResultsDiv').html('<div class="alert alert-danger">' +
+                                                   '<i class="fas fa-exclamation-circle"></i> Error uploading file. Please try again.' +
+                                                   '</div>');
+                    }
+                });
+            });
+
+            // Handle production splits button (using event delegation since it's dynamically created)
+            $(document).on('click', '#generateSplitsBtn', function() {
+                var $btn = $(this);
+                var originalText = $btn.html();
+                
+                // Show loading state
+                $btn.prop('disabled', true);
+                $btn.html('<i class="fas fa-spinner fa-spin"></i> Processing Splits...');
+                
+                // Add progress indicator
+                var $progressDiv = $('<div id="splitsProgressDiv" class="mt-3">' +
+                                   '<div class="progress">' +
+                                   '<div class="progress-bar progress-bar-striped progress-bar-animated bg-info" role="progressbar" style="width: 0%"></div>' +
+                                   '</div>' +
+                                   '<div class="text-center mt-2">' +
+                                   '<small>Analyzing allocations and splitting production records...</small>' +
+                                   '</div>' +
+                                   '</div>');
+                $btn.after($progressDiv);
+                
+                // Animate progress
+                var progress = 0;
+                var progressInterval = setInterval(function() {
+                    progress += Math.random() * 30;
+                    if (progress > 90) progress = 90;
+                    $('#splitsProgressDiv .progress-bar').css('width', progress + '%');
+                }, 200);
+                
+                $.ajax({
+                    url: '{% url "apply_production_splits" version=version %}',
+                    type: 'POST',
+                    data: {
+                        'csrfmiddlewaretoken': $('[name=csrfmiddlewaretoken]').val(),
+                        'scenario': '{{ version }}'
+                    },
+                    success: function(response) {
+                        clearInterval(progressInterval);
+                        $('#splitsProgressDiv .progress-bar').css('width', '100%');
+                        
+                        setTimeout(function() {
+                            $('#splitsProgressDiv').hide();
+                            
+                            if (response.success) {
+                                var html = '<div class="alert alert-success mt-3">' +
+                                          '<h6><i class="fas fa-check-circle"></i> Production Splits Generated Successfully!</h6>' +
+                                          '<p><strong>Products processed:</strong> ' + response.products_processed + '</p>' +
+                                          '<p><strong>Production records split:</strong> ' + response.records_split + '</p>' +
+                                          '<p><strong>New records created:</strong> ' + response.new_records_created + '</p>';
+                                
+                                if (response.summary) {
+                                    html += '<div class="bg-light p-2 rounded mt-2"><small>' + response.summary + '</small></div>';
+                                }
+                                
+                                html += '<div class="text-center mt-3">' +
+                                       '<button type="button" class="btn btn-secondary" onclick="$(\'#excelAllocationModal\').modal(\'hide\'); location.reload();">' +
+                                       '<i class="fas fa-check"></i> Done - Reload Page' +
+                                       '</button>' +
+                                       '</div></div>';
+                                
+                                $btn.replaceWith(html);
+                            } else {
+                                var html = '<div class="alert alert-danger mt-3">' +
+                                          '<h6><i class="fas fa-exclamation-circle"></i> Error Processing Splits</h6>' +
+                                          '<p>' + (response.error || 'An unknown error occurred') + '</p>' +
+                                          '</div>';
+                                
+                                $btn.after(html);
+                                $btn.prop('disabled', false);
+                                $btn.html(originalText);
+                            }
+                        }, 500);
+                    },
+                    error: function() {
+                        clearInterval(progressInterval);
+                        $('#splitsProgressDiv').hide();
+                        
+                        var html = '<div class="alert alert-danger mt-3">' +
+                                  '<i class="fas fa-exclamation-circle"></i> Network error. Please try again.' +
+                                  '</div>';
+                        
+                        $btn.after(html);
+                        $btn.prop('disabled', false);
+                        $btn.html(originalText);
+                    }
+                });
+            });
+        });
     </script>
 </body>
 {% endblock %}

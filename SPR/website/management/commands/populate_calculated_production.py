@@ -37,20 +37,37 @@ class Command(BaseCommand):
         )
 
     def handle(self, *args, **kwargs):
+        # MASTER TIMING - Start overall execution timer
+        overall_start_time = time.time()
+        self.stdout.write("=" * 100)
+        self.stdout.write("🚀 STARTING CALCULATED PRODUCTION MODEL POPULATION")
+        self.stdout.write(f"📅 Started at: {time.strftime('%Y-%m-%d %H:%M:%S')}")
+        self.stdout.write("=" * 100)
+        
         version = kwargs['scenario_version']
         single_product = kwargs.get('product')
+
+        if single_product:
+            self.stdout.write(f"🎯 SINGLE PRODUCT MODE: {single_product}")
+        else:
+            self.stdout.write("🌐 ALL PRODUCTS MODE")
 
         if not version:
             self.stdout.write(self.style.ERROR("No version argument provided."))
             return
 
+        # Step 1: Scenario validation
+        step_start = time.time()
         try:
             scenario = scenarios.objects.get(version=version)
         except scenarios.DoesNotExist:
             self.stdout.write(self.style.ERROR(f"Scenario version '{version}' not found."))
             return
+        step_duration = time.time() - step_start
+        self.stdout.write(f"✅ Step 1: Scenario validation ({step_duration:.3f}s)")
 
-        # Clear existing calculated production data (for single product if specified)
+        # Step 2: Clear existing data
+        step_start = time.time()
         if single_product:
             deleted_count = CalculatedProductionModel.objects.filter(
                 version=scenario,
@@ -58,12 +75,14 @@ class Command(BaseCommand):
             ).delete()[0]
             self.stdout.write(f"Deleted existing calculated production data for product {single_product}: {deleted_count} records")
         else:
-            CalculatedProductionModel.objects.filter(version=scenario).delete()
-            self.stdout.write("Deleted existing calculated production data")
+            deleted_count = CalculatedProductionModel.objects.filter(version=scenario).delete()[0]
+            self.stdout.write(f"Deleted existing calculated production data: {deleted_count} records")
+        step_duration = time.time() - step_start
+        self.stdout.write(f"✅ Step 2: Clear existing data ({step_duration:.3f}s)")
 
-        # Fetch customer mapping for this scenario (NOW FROM LOCAL DATABASE - MUCH FASTER)
-        self.stdout.write("🔗 Loading customer data from MasterDataProductModel (local, fast)...")
-        customer_start = time.time()
+        # Step 3: Load customer data (CRITICAL PATH)
+        step_start = time.time()
+        self.stdout.write("🔗 Step 3: Loading customer data from MasterDataProductModel (local, fast)...")
         
         if single_product:
             customer_products = MasterDataProductModel.objects.filter(
@@ -83,50 +102,88 @@ class Command(BaseCommand):
                 'invoice_date': product_data['latest_invoice_date']
             }
         
-        customer_load_time = time.time() - customer_start
+        step_duration = time.time() - step_start
         
         if single_product:
-            self.stdout.write(f"✅ Loaded customer data for {len(customer_mapping)} product(s) in {customer_load_time:.3f}s (filtered for {single_product})")
+            self.stdout.write(f"✅ Step 3: Customer data loaded - {len(customer_mapping)} product(s) ({step_duration:.3f}s)")
         else:
-            self.stdout.write(f"✅ Loaded customer data for {len(customer_mapping)} products in {customer_load_time:.3f}s")
+            self.stdout.write(f"✅ Step 3: Customer data loaded - {len(customer_mapping)} products ({step_duration:.3f}s)")
         
-        self.stdout.write(self.style.SUCCESS(f"🚀 PERFORMANCE IMPROVEMENT: Customer data loaded from local database instead of slow PowerBI queries"))
+        self.stdout.write(f"   � PERFORMANCE: Customer data loaded from local database (fast path)")
 
-        # Get the first inventory snapshot date and calculate the threshold date
+        # Step 4: Calculate inventory threshold dates
+        step_start = time.time()
         first_inventory = MasterDataInventory.objects.filter(version=scenario).order_by('date_of_snapshot').first()
         if first_inventory:
             # Add one day to the first snapshot date
             inventory_threshold_date = first_inventory.date_of_snapshot + timedelta(days=1)
             # Set to first day of that month
             inventory_start_date = inventory_threshold_date.replace(day=1)
-            self.stdout.write(f"Inventory threshold date: {inventory_threshold_date}")
-            self.stdout.write(f"Minimum pouring date for Fixed Plant/Revenue: {inventory_start_date}")
+            self.stdout.write(f"   📊 Inventory threshold date: {inventory_threshold_date}")
+            self.stdout.write(f"   📊 Minimum pouring date for Fixed Plant/Revenue: {inventory_start_date}")
         else:
             inventory_threshold_date = None
             inventory_start_date = None
-            self.stdout.write("No inventory data found - will process all dates")
+            self.stdout.write("   ⚠️  No inventory data found - will process all dates")
+        step_duration = time.time() - step_start
+        self.stdout.write(f"✅ Step 4: Inventory threshold calculation ({step_duration:.3f}s)")
 
         calculated_productions = []
 
-        # 1. Process Regular Replenishment Data (SMART forecast excluding Fixed Plant and Revenue Forecast)
-        self.stdout.write("\n=== Processing Regular Replenishment Data ===")
+        # Step 5: Process Regular Replenishment Data (CRITICAL PATH - OFTEN SLOWEST)
+        step_start = time.time()
+        self.stdout.write("\n" + "="*50)
+        self.stdout.write("📦 STEP 5: Processing Regular Replenishment Data")
+        self.stdout.write("="*50)
         self.process_replenishment_data(scenario, inventory_threshold_date, inventory_start_date, calculated_productions, customer_mapping, single_product)
+        step_duration = time.time() - step_start
+        self.stdout.write(f"✅ Step 5: Regular replenishment processing ({step_duration:.3f}s)")
+        self.stdout.write(f"   📊 Records in memory: {len(calculated_productions)}")
 
-        # 2. Process Fixed Plant Data
-        self.stdout.write("\n=== Processing Fixed Plant Data ===")
+        # Step 6: Process Fixed Plant Data
+        step_start = time.time()
+        self.stdout.write("\n" + "="*50)
+        self.stdout.write("🏭 STEP 6: Processing Fixed Plant Data")
+        self.stdout.write("="*50)
         self.process_fixed_plant_data(scenario, inventory_start_date, calculated_productions, customer_mapping, single_product)
+        step_duration = time.time() - step_start
+        self.stdout.write(f"✅ Step 6: Fixed plant processing ({step_duration:.3f}s)")
+        self.stdout.write(f"   📊 Records in memory: {len(calculated_productions)}")
 
-        # 3. Process Revenue Forecast Data
-        self.stdout.write("\n=== Processing Revenue Forecast Data ===")
+        # Step 7: Process Revenue Forecast Data
+        step_start = time.time()
+        self.stdout.write("\n" + "="*50)
+        self.stdout.write("💰 STEP 7: Processing Revenue Forecast Data")
+        self.stdout.write("="*50)
         self.process_revenue_forecast_data(scenario, inventory_start_date, calculated_productions, customer_mapping, single_product)
+        step_duration = time.time() - step_start
+        self.stdout.write(f"✅ Step 7: Revenue forecast processing ({step_duration:.3f}s)")
+        self.stdout.write(f"   📊 Records in memory: {len(calculated_productions)}")
 
-        # Bulk create all records
+        # Step 8: Bulk create all records (FINAL DATABASE WRITE)
+        step_start = time.time()
+        self.stdout.write("\n" + "="*50)
+        self.stdout.write("💾 STEP 8: Bulk Creating Database Records")
+        self.stdout.write("="*50)
         if calculated_productions:
             CalculatedProductionModel.objects.bulk_create(calculated_productions, batch_size=1000)
-            self.stdout.write(self.style.SUCCESS(f"Created {len(calculated_productions)} CalculatedProductionModel records"))
+            self.stdout.write(f"   📝 Created {len(calculated_productions)} CalculatedProductionModel records")
         else:
-            self.stdout.write(self.style.WARNING("No records created"))
+            self.stdout.write("   ⚠️  No records to create")
+        step_duration = time.time() - step_start
+        self.stdout.write(f"✅ Step 8: Database bulk create ({step_duration:.3f}s)")
 
+        # Final Summary
+        overall_duration = time.time() - overall_start_time
+        self.stdout.write("\n" + "=" * 100)
+        self.stdout.write("🎉 CALCULATED PRODUCTION MODEL POPULATION COMPLETED")
+        self.stdout.write(f"⏱️  Total execution time: {overall_duration:.2f} seconds ({overall_duration/60:.2f} minutes)")
+        self.stdout.write(f"📅 Finished at: {time.strftime('%Y-%m-%d %H:%M:%S')}")
+        if single_product:
+            self.stdout.write(f"🎯 Single product mode: {single_product}")
+        self.stdout.write(f"📊 Final record count: {len(calculated_productions)}")
+        self.stdout.write("=" * 100)
+        
         self.stdout.write(self.style.SUCCESS(f"CalculatedProductionModel populated for version {version}"))
 
     def process_replenishment_data(self, scenario, inventory_threshold_date, inventory_start_date, calculated_productions, customer_mapping, single_product=None):

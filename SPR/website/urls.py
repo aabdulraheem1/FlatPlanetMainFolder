@@ -220,7 +220,14 @@ urlpatterns = [
     path('product-allocation-search/<str:version>/', views.product_allocation_search, name='product_allocation_search'),
     path('product-allocation-load/<str:version>/', views.product_allocation_load, name='product_allocation_load'),
     path('product-allocation-save/<str:version>/', views.product_allocation_save, name='product_allocation_save'),
+    path('download-allocation-template/<str:version>/', views.download_allocation_template, name='download_allocation_template'),
+    path('upload-allocation-excel/<str:version>/', views.upload_allocation_excel, name='upload_allocation_excel'),
+    path('apply-production-splits/<str:version>/', views.apply_production_splits, name='apply_production_splits'),
+    path('export-valid-products/<str:version>/', views.export_valid_products, name='export_valid_products'),
     path('production_allocation/<str:version>/', views.production_allocation_view, name='production_allocation_view'),
+    path('check-product-exists/<str:product_code>/', views.check_product_exists, name='check_product_exists'),
+    path('debug-excel-upload/<str:version>/', views.debug_excel_upload, name='debug_excel_upload'),
+    path('debug-excel-page/<str:version>/', views.debug_excel_page, name='debug_excel_page'),
 
     # Redirect common URL mistakes
     path('list-scenario/<str:version>/', lambda request, version: redirect('scenario_warning_list', version=version), name='list_scenario_redirect'),
