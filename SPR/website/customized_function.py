@@ -3645,8 +3645,14 @@ def populate_inventory_projection_model(scenario_version):
         step_time = time.time()
         existing_count = InventoryProjectionModel.objects.filter(version=scenario).count()
         if existing_count > 0:
-            InventoryProjectionModel.objects.filter(version=scenario).delete()
-            print(f"⏱️  NO FALLBACK Step 2 - Deleted {existing_count} existing records: {time.time() - step_time:.2f}s")
+            # Force deletion with transaction isolation to prevent constraint conflicts
+            from django.db import connection
+            with connection.cursor() as cursor:
+                cursor.execute("DELETE FROM website_inventoryprojectionmodel WHERE version_id = %s", [scenario.version])
+                deleted_count = cursor.rowcount
+            print(f"⏱️  NO FALLBACK Step 2 - Force deleted {deleted_count} existing records: {time.time() - step_time:.2f}s")
+        else:
+            print(f"⏱️  NO FALLBACK Step 2 - No existing records to delete: {time.time() - step_time:.2f}s")
         
         # Get opening inventory data - FAIL FAST if not found
         step_time = time.time()
@@ -3739,6 +3745,23 @@ def populate_inventory_projection_model(scenario_version):
                            f"System configured to FAIL FAST.")
         print(f"🎯 NO FALLBACK: Processing {len(parent_groups)} parent groups (forecast: {len(forecast_parent_groups)}, production: {len(production_parent_groups)})")
         
+        # DEBUG: Show all parent groups to check for case issues
+        print(f"DEBUG: Parent groups = {sorted(parent_groups)}")
+        
+        # CRITICAL FIX: Normalize parent group names to prevent case-based duplicates
+        # Create mapping from various cases to a canonical form
+        parent_group_mapping = {}
+        canonical_groups = set()
+        
+        for group in parent_groups:
+            # Use title case as canonical form
+            canonical = group.title() if group else group
+            parent_group_mapping[group] = canonical
+            canonical_groups.add(canonical)
+        
+        print(f"DEBUG: Canonical groups = {sorted(canonical_groups)} (was {len(parent_groups)}, now {len(canonical_groups)})")
+        parent_groups = canonical_groups  # Use deduplicated canonical groups
+        
         # Get all unique months from BOTH forecast and production data - CRITICAL FIX
         forecast_months = set(month for month, _ in forecast_dict.keys())
         production_months = set(month for month, _ in production_dict.keys())
@@ -3764,20 +3787,33 @@ def populate_inventory_projection_model(scenario_version):
             if not parent_group:
                 continue
             
-            # Get opening inventory for this parent group
-            current_inventory = opening_inventory_data.get(parent_group, 0)
+            # Get opening inventory for this canonical parent group (try all case variations)
+            current_inventory = 0
+            for original_group, canonical_group in parent_group_mapping.items():
+                if canonical_group == parent_group:
+                    current_inventory = opening_inventory_data.get(original_group, 0)
+                    if current_inventory > 0:
+                        break  # Found inventory data
             
             # Process each month sequentially
             for month in all_months_final:
-                forecast_key = (month, parent_group)
+                # Aggregate data from ALL case variations of this parent group
+                cogs_aud = 0
+                revenue_aud = 0
+                production_aud = 0
                 
-                # Get forecast data
-                forecast_data = forecast_dict.get(forecast_key, {'cogs': 0, 'revenue': 0})
-                cogs_aud = forecast_data['cogs']
-                revenue_aud = forecast_data['revenue']
-                
-                # Get production data
-                production_aud = production_dict.get(forecast_key, 0)
+                for original_group, canonical_group in parent_group_mapping.items():
+                    if canonical_group == parent_group:
+                        forecast_key = (month, original_group)
+                        production_key = (month, original_group)
+                        
+                        # Get forecast data
+                        forecast_data = forecast_dict.get(forecast_key, {'cogs': 0, 'revenue': 0})
+                        cogs_aud += forecast_data['cogs']
+                        revenue_aud += forecast_data['revenue']
+                        
+                        # Get production data
+                        production_aud += production_dict.get(production_key, 0)
                 
                 # Calculate closing inventory: Opening + Production - COGS
                 closing_inventory = current_inventory + production_aud - cogs_aud
@@ -3799,15 +3835,34 @@ def populate_inventory_projection_model(scenario_version):
         
         print(f"⏱️  NO FALLBACK Step 6 - Projection calculation: {time.time() - step_time:.2f}s")
         
+        # Deduplicate records before bulk create to prevent constraint violations
+        step_time = time.time()
+        unique_records = {}
+        duplicate_count = 0
+        for record in projection_records:
+            key = (record.version.version, record.month, record.parent_product_group)
+            if key not in unique_records:
+                unique_records[key] = record
+            else:
+                duplicate_count += 1
+                if duplicate_count <= 5:  # Only show first 5 duplicates
+                    print(f"⚠️  Duplicate detected and removed: {key}")
+                elif duplicate_count == 6:
+                    print(f"⚠️  ... and more duplicates found")
+        
+        final_records = list(unique_records.values())
+        print(f"📊 NO FALLBACK: Deduplicated {len(projection_records)} → {len(final_records)} records ({duplicate_count} duplicates removed)")
+        print(f"⏱️  NO FALLBACK Step 6b - Deduplication: {time.time() - step_time:.2f}s")
+        
         # Bulk create records - FAIL FAST if no records to create
-        if not projection_records:
+        if not final_records:
             raise ValueError(f"❌ NO FALLBACK: No projection records generated for scenario '{scenario_version}'. "
                            f"System configured to FAIL FAST.")
         
         step_time = time.time()
-        batch_size = min(2000, len(projection_records))
-        InventoryProjectionModel.objects.bulk_create(projection_records, batch_size=batch_size)
-        print(f"✅ NO FALLBACK: Created {len(projection_records)} inventory projection records")
+        batch_size = min(2000, len(final_records))
+        InventoryProjectionModel.objects.bulk_create(final_records, batch_size=batch_size)
+        print(f"✅ NO FALLBACK: Created {len(final_records)} inventory projection records")
         print(f"⏱️  NO FALLBACK Step 7 - Bulk create: {time.time() - step_time:.2f}s")
         
         total_time = time.time() - total_start_time

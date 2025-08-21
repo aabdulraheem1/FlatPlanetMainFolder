@@ -356,6 +356,7 @@ class MasterDataProductModel(models.Model):
     latest_customer_name = models.CharField(max_length=500, null=True, blank=True, help_text="Latest customer name from PowerBI invoices")
     latest_invoice_date = models.DateField(null=True, blank=True, help_text="Date of latest invoice from PowerBI")
     customer_data_last_updated = models.DateTimeField(null=True, blank=True, help_text="When customer data was last fetched from PowerBI")
+    product_type = models.CharField(max_length=10, choices=[('new', 'New'), ('repeat', 'Repeat')], null=True, blank=True, help_text="New product (never invoiced) or Repeat (previously invoiced)")
     
     # Data source tracking fields
     is_user_created = models.BooleanField(default=False, help_text="True if this record was created manually by user")

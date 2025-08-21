@@ -250,20 +250,3 @@ from datetime import date, timedelta
 class ManuallyAssignProductionRequirementForm(forms.Form):
     Product = forms.CharField(label='Product', widget=forms.TextInput())
     Site = forms.CharField(label='Site', widget=forms.TextInput())
-    # Only allow first day of each month for the next 24 months
-    def _first_days():
-        today = date.today().replace(day=1)
-        return [
-            ( (today + timedelta(days=32*i)).replace(day=1), (today + timedelta(days=32*i)).replace(day=1).strftime('%Y-%m-%d') )
-            for i in range(0, 24)
-        ]
-    ShippingDate = forms.ChoiceField(
-        label='Shipping Date',
-        choices=[('', '---------')] + [(d.strftime('%Y-%m-%d'), d.strftime('%B %Y')) for d, _ in _first_days()],
-    )
-    Percentage = forms.FloatField(label='Percentage')
-
-    def clean_ShippingDate(self):
-        value = self.cleaned_data['ShippingDate']
-        # Convert string to date
-        return date.fromisoformat(value)

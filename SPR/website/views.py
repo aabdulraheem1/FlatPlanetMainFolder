@@ -175,6 +175,7 @@ def fetch_data_from_mssql(request):
     import pandas as pd
     import time
     from django.contrib import messages
+    from django.db import models
     from .data_protection_utils import safe_update_from_epicor
     from sqlalchemy import create_engine, text
     
@@ -382,22 +383,22 @@ def fetch_data_from_mssql(request):
         
         bulk_time = time.time() - bulk_start
         
-        # STEP 6: FETCH AND UPDATE CUSTOMER DATA FROM POWERBI
-        print("🔗 Fetching customer data from PowerBI...")
+        # STEP 6: FETCH AND UPDATE CUSTOMER DATA FROM REAL POWERBI ONLY
+        print("🔗 Fetching customer data from REAL PowerBI only...")
         customer_start = time.time()
+        customer_update_count = 0  # Initialize counter before try block
         
         try:
             from .powerbi_invoice_integration import get_latest_customer_invoices
             from django.utils import timezone
             
-            # Get customer invoice data using the existing function
+            # Get REAL customer invoice data from PowerBI database
             customer_df = get_latest_customer_invoices()
             
             if len(customer_df) > 0:
-                print(f"📋 Retrieved {len(customer_df)} customer invoice records")
+                print(f"📋 Retrieved {len(customer_df)} REAL customer invoice records from PowerBI")
                 
-                # Update products with customer data in batches
-                customer_update_count = 0
+                # Update products with REAL customer data in batches
                 batch_size = 1000
                 
                 for i in range(0, len(customer_df), batch_size):
@@ -415,61 +416,142 @@ def fetch_data_from_mssql(request):
                                 product.latest_customer_name = customer_name
                                 product.latest_invoice_date = invoice_date
                                 product.customer_data_last_updated = timezone.now()
+                                product.product_type = 'repeat'  # Has REAL invoice history from PowerBI
                                 products_to_update.append(product)
                         except Exception as e:
                             print(f"❌ Error updating customer data for {product_key}: {e}")
                             continue
                     
-                    # Bulk update customer data
+                    # Bulk update customer data with REAL PowerBI data
                     if products_to_update:
                         MasterDataProductModel.objects.bulk_update(
                             products_to_update, 
-                            ['latest_customer_name', 'latest_invoice_date', 'customer_data_last_updated'],
+                            ['latest_customer_name', 'latest_invoice_date', 'customer_data_last_updated', 'product_type'],
                             batch_size=batch_size
                         )
                         customer_update_count += len(products_to_update)
                 
                 customer_time = time.time() - customer_start
-                print(f"✅ Customer data updated for {customer_update_count} products in {customer_time:.3f}s")
+                print(f"✅ REAL PowerBI customer data updated for {customer_update_count} products in {customer_time:.3f}s")
                 
             else:
                 customer_time = time.time() - customer_start
-                print(f"⚠️  No customer data retrieved from PowerBI in {customer_time:.3f}s")
+                print(f"ℹ️  No REAL customer data found in PowerBI - products will remain with blank customer fields (as requested)")
                 
         except Exception as e:
             customer_time = time.time() - customer_start
-            print(f"❌ Error fetching customer data: {e} (took {customer_time:.3f}s)")
+            print(f"❌ Error fetching REAL PowerBI customer data: {e} (took {customer_time:.3f}s)")
             # Don't fail the entire process if customer data fails
-            customer_update_count = 0
+            # customer_update_count already initialized to 0 before try block
         
+        # STEP 7: MARK PRODUCTS WITHOUT REAL POWERBI DATA AS 'NEW' (NO FALLBACK DATA ASSIGNMENT)
+        print("🔄 Marking products without REAL PowerBI invoice data as 'new'...")
+        new_product_start = time.time()
+        
+        try:
+            # Find products that have NO real invoice data and should be marked as 'new'
+            products_without_invoices = MasterDataProductModel.objects.filter(
+                models.Q(latest_customer_name__isnull=True) | models.Q(latest_customer_name__exact='')
+            ).filter(
+                latest_invoice_date__isnull=True  # No real invoice date from PowerBI
+            )
+            
+            new_product_count = products_without_invoices.count()
+            
+            if new_product_count > 0:
+                print(f"� Found {new_product_count} products with NO real PowerBI invoice data")
+                
+                # Mark these products as 'new' but LEAVE CUSTOMER FIELDS BLANK (as requested)
+                products_without_invoices.update(
+                    product_type='new',  # Never been invoiced (no real PowerBI data found)
+                    customer_data_last_updated=timezone.now()
+                    # NOTE: latest_customer_name and latest_invoice_date remain blank/null as requested
+                )
+                
+                print(f"✅ Marked {new_product_count} products as 'new' (customer fields left blank as requested)")
+                
+            else:
+                print("ℹ️  All products have real PowerBI invoice data - no products to mark as 'new'")
+                
+        except Exception as e:
+            print(f"❌ Error marking new products: {e}")
+            # Don't fail the entire process if this step fails
+            
+        new_product_time = time.time() - new_product_start
+        
+        # STEP 8: FINAL CLEANUP - Remove any remaining fake/inconsistent data
+        print("🧹 Final cleanup: Removing any fake or inconsistent invoice data...")
+        cleanup_start = time.time()
+        
+        try:
+            # Find and fix products with inconsistent data (product marked as repeat but no invoice date)
+            inconsistent_products = MasterDataProductModel.objects.filter(
+                product_type='repeat'  # Products marked as repeat
+            ).filter(
+                latest_invoice_date__isnull=True  # But have no actual invoice date
+            )
+            
+            inconsistent_count = inconsistent_products.count()
+            
+            if inconsistent_count > 0:
+                print(f"📋 Found {inconsistent_count} products with inconsistent data (marked 'repeat' but no invoice date)")
+                
+                # Fix inconsistent products - clear the fake repeat status
+                inconsistent_products.update(
+                    product_type='new',        # Mark as new (no real invoice found)
+                    customer_data_last_updated=timezone.now()
+                    # NOTE: Leave latest_customer_name and latest_invoice_date as is (they might be blank or have valid data)
+                )
+                print(f"✅ Fixed {inconsistent_count} inconsistent products: changed product_type from 'repeat' to 'new'")
+                
+            else:
+                print("ℹ️  No inconsistent data found - all 'repeat' products have valid invoice dates")
+                
+        except Exception as e:
+            print(f"❌ Error in cleanup process: {e}")
+            # Don't fail the entire process if cleanup fails
+            
+        cleanup_time = time.time() - cleanup_start
         total_time = time.time() - start_time
         
-        # STEP 7: Performance summary
-        print(f"✅ PANDAS + CUSTOMER DATA OPTIMIZATION COMPLETE:")
+        # STEP 9: Performance summary
+        print(f"✅ REAL POWERBI DATA ONLY OPTIMIZATION COMPLETE:")
         print(f"   📊 Data Read: {pandas_read_time:.3f}s")
         print(f"   🔄 Transform: {transform_time:.3f}s") 
         print(f"   💾 Database: {bulk_time:.3f}s")
-        print(f"   🔗 Customer: {customer_time:.3f}s")
+        print(f"   🔗 Real PowerBI Customer Data: {customer_time:.3f}s")
+        print(f"   🏷️  New Product Marking: {new_product_time:.3f}s")
+        print(f"   🧹 Cleanup: {cleanup_time:.3f}s")
         print(f"   🎯 Total: {total_time:.3f}s")
-        print(f"   📈 Records: {len(df)} processed")
-        print(f"   ✨ Created: {created_count}")
-        print(f"   🔄 Updated: {updated_count}")
-        print(f"   🛡️  Protected: {protected_count}")
-        print(f"   👥 Customer Updates: {customer_update_count if 'customer_update_count' in locals() else 0}")
+        print(f"")
+        print(f"📋 SUMMARY - REAL DATA ONLY APPROACH:")
+        print(f"   ✅ Created: {created_count} new products from PowerBI.Products")
+        print(f"   🔄 Updated: {updated_count} existing products from PowerBI.Products") 
+        print(f"   🛡️  Protected: {protected_count} user-modified products")
+        print(f"   🔗 Real Invoice Data: {customer_update_count} products updated with REAL PowerBI invoices")
+        print(f"   🏷️  Marked as New: Products without real invoice data marked as 'new' (customer fields left blank)")
+        print(f"   🚫 NO FAKE DATA: No fallback or fake invoice data assigned (as requested)")
         
-        # Success message with performance metrics
-        messages.success(
-            request, 
-            f"✅ Product + Customer data refresh completed in {total_time:.2f}s! "
-            f"Products - Created: {created_count}, Updated: {updated_count}, Protected: {protected_count}. "
-            f"Customer data updated: {customer_update_count if 'customer_update_count' in locals() else 0} products. "
-            f"Performance: {len(df)/total_time:.0f} records/second."
-        )
+        # Messages for the user interface
+        messages.success(request, f"✅ Data fetch completed successfully!")
+        messages.info(request, f"📊 Processed {len(df)} products from PowerBI.Products in {total_time:.1f} seconds")
+        messages.info(request, f"🔗 Updated {customer_update_count} products with REAL PowerBI invoice data")
+        messages.info(request, f"🚫 NO fake invoice data was assigned (only real PowerBI data used)")
         
     except Exception as e:
-        error_time = time.time() - start_time
-        print(f"❌ Error in optimized data fetch after {error_time:.3f}s: {e}")
-        messages.error(request, f"Error fetching data: {str(e)}")
+        total_time = time.time() - start_time
+        error_message = f"❌ Error during REAL PowerBI data fetch: {str(e)}"
+        print(error_message)
+        messages.error(request, error_message)
+        messages.error(request, f"Process failed after {total_time:.1f} seconds")
+        
+    finally:
+        # Always close database connections
+        if 'engine' in locals():
+            try:
+                engine.dispose()
+            except:
+                pass
     
     return redirect('ProductsList')
 
@@ -2473,7 +2555,7 @@ def ScenarioWarningList(request, version):
         grouped_products[product['Product__ParentProductGroup']].append(product)
 
     # NEW SECTION: Products where select_site() returns None - OPTIMIZED WITH POLARS
-    from website.management.commands.populate_calculated_replenishment_v2 import extract_site_code
+    from website.management.commands.populate_calculated_replenishment_v3_optimized import extract_site_code
     from website.models import (
         MasterDataOrderBook, MasterDataHistoryOfProductionModel, 
         MasterDataEpicorSupplierMasterDataModel, MasterDataManuallyAssignProductionRequirement,
@@ -5092,8 +5174,8 @@ from django.http import JsonResponse
 
 # Import your optimized command classes directly
 from website.management.commands.populate_aggregated_forecast import Command as AggForecastCommand
-from website.management.commands.populate_calculated_replenishment_v2 import Command as ReplenishmentCommand
-from website.management.commands.populate_calculated_production import Command as ProductionCommand
+from website.management.commands.populate_calculated_replenishment_v3_optimized import Command as ReplenishmentCommand
+from website.management.commands.populate_calculated_production_v2_optimized import Command as ProductionCommand
 
 def get_enhanced_inventory_chart_data(scenario):
     """Get enhanced inventory data for the 5-line chart in simple_inventory.html"""
@@ -5341,21 +5423,21 @@ def calculate_model(request, version):
         print(f"✅ [{datetime.now().strftime('%H:%M:%S')}] STEP 1 COMPLETED: populate_aggregated_forecast ({step1_duration:.2f}s)")
         messages.success(request, f"Aggregated forecast completed in {step1_duration:.2f}s for version '{version}'.")
 
-        # Step 2: Run the second command: populate_calculated_replenishment_v2
+        # Step 2: Run the second command: populate_calculated_replenishment_v3_optimized
         step2_start = time.time()
-        print(f"⏱️  [{datetime.now().strftime('%H:%M:%S')}] STEP 2: Running populate_calculated_replenishment_v2")
+        print(f"⏱️  [{datetime.now().strftime('%H:%M:%S')}] STEP 2: Running populate_calculated_replenishment_v3_optimized")
         ReplenishmentCommand().handle(version=version)
         step2_duration = time.time() - step2_start
-        print(f"✅ [{datetime.now().strftime('%H:%M:%S')}] STEP 2 COMPLETED: populate_calculated_replenishment_v2 ({step2_duration:.2f}s)")
-        messages.success(request, f"Calculated replenishment (V2) completed in {step2_duration:.2f}s for version '{version}'.")
+        print(f"✅ [{datetime.now().strftime('%H:%M:%S')}] STEP 2 COMPLETED: populate_calculated_replenishment_v3_optimized ({step2_duration:.2f}s)")
+        messages.success(request, f"Calculated replenishment (V3 Optimized) completed in {step2_duration:.2f}s for version '{version}'.")
 
-        # Step 3: Run the third command: populate_calculated_production
+        # Step 3: Run the third command: populate_calculated_production_v2_optimized
         step3_start = time.time()
-        print(f"⏱️  [{datetime.now().strftime('%H:%M:%S')}] STEP 3: Running populate_calculated_production")
+        print(f"⏱️  [{datetime.now().strftime('%H:%M:%S')}] STEP 3: Running populate_calculated_production_v2_optimized")
         ProductionCommand().handle(scenario_version=version)
         step3_duration = time.time() - step3_start
-        print(f"✅ [{datetime.now().strftime('%H:%M:%S')}] STEP 3 COMPLETED: populate_calculated_production ({step3_duration:.2f}s)")
-        messages.success(request, f"Calculated production completed in {step3_duration:.2f}s for version '{version}'.")
+        print(f"✅ [{datetime.now().strftime('%H:%M:%S')}] STEP 3 COMPLETED: populate_calculated_production_v2_optimized ({step3_duration:.2f}s)")
+        messages.success(request, f"Calculated production (V2 Optimized) completed in {step3_duration:.2f}s for version '{version}'.")
 
         # Step 4: SKIPPED - Aggregated data calculation (replaced with real-time polars queries)
         step4_start = time.time()
@@ -5417,8 +5499,8 @@ def calculate_model(request, version):
         print(f"🎉 CALCULATE_MODEL COMPLETED SUCCESSFULLY")
         print(f"📊 DETAILED TIMING BREAKDOWN:")
         print(f"   Step 1 - Aggregated Forecast: {step1_duration:.2f}s ({step1_duration/total_duration*100:.1f}%)")
-        print(f"   Step 2 - Replenishment V2: {step2_duration:.2f}s ({step2_duration/total_duration*100:.1f}%)")
-        print(f"   Step 3 - Production Calculation: {step3_duration:.2f}s ({step3_duration/total_duration*100:.1f}%)")
+        print(f"   Step 2 - Replenishment V3 Optimized: {step2_duration:.2f}s ({step2_duration/total_duration*100:.1f}%)")
+        print(f"   Step 3 - Production V2 Optimized: {step3_duration:.2f}s ({step3_duration/total_duration*100:.1f}%)")
         print(f"   Step 6 - Inventory Projections: {step6_duration:.2f}s ({step6_duration/total_duration*100:.1f}%)")
         print(f"   Other Steps: {(scenario_duration + step4_duration + step5_duration + step7_duration + completion_duration):.2f}s")
         print(f"⏱️  TOTAL EXECUTION TIME: {total_duration:.2f} seconds ({total_duration/60:.1f} minutes)")
@@ -5504,14 +5586,14 @@ def test_product_calculation(request, version):
             
             # Step 2: Run replenishment calculation for the specific product
             step_start = time.time()
-            print(f"⏱️  [{datetime.now().strftime('%H:%M:%S')}] Step 2: Starting populate_calculated_replenishment_v2...")
+            print(f"⏱️  [{datetime.now().strftime('%H:%M:%S')}] Step 2: Starting populate_calculated_replenishment_v3_optimized...")
             ReplenishmentCommand().handle(version=version, product=product_name)
             step2_duration = time.time() - step_start
             print(f"✅ [{datetime.now().strftime('%H:%M:%S')}] Step 2: Replenishment calculation completed ({step2_duration:.2f}s)")
             
             # Step 3: Run production calculation for the specific product
             step_start = time.time()
-            print(f"⏱️  [{datetime.now().strftime('%H:%M:%S')}] Step 3: Starting populate_calculated_production...")
+            print(f"⏱️  [{datetime.now().strftime('%H:%M:%S')}] Step 3: Starting populate_calculated_production_v2_optimized...")
             ProductionCommand().handle(scenario_version=version, product=product_name)
             step3_duration = time.time() - step_start
             print(f"✅ [{datetime.now().strftime('%H:%M:%S')}] Step 3: Production calculation completed ({step3_duration:.2f}s)")
@@ -5611,14 +5693,14 @@ def test_product_calculation(request, version):
             
             # Step 2: Run replenishment calculation for the specific product
             step_start = time.time()
-            print(f"⏱️  [{datetime.now().strftime('%H:%M:%S')}] Step 2: Starting populate_calculated_replenishment_v2...")
+            print(f"⏱️  [{datetime.now().strftime('%H:%M:%S')}] Step 2: Starting populate_calculated_replenishment_v3_optimized...")
             ReplenishmentCommand().handle(version=version, product=selected_product)
             step2_duration = time.time() - step_start
             print(f"✅ [{datetime.now().strftime('%H:%M:%S')}] Step 2: Replenishment calculation completed ({step2_duration:.2f}s)")
             
             # Step 3: Run production calculation for the specific product
             step_start = time.time()
-            print(f"⏱️  [{datetime.now().strftime('%H:%M:%S')}] Step 3: Starting populate_calculated_production...")
+            print(f"⏱️  [{datetime.now().strftime('%H:%M:%S')}] Step 3: Starting populate_calculated_production_v2_optimized...")
             ProductionCommand().handle(scenario_version=version, product=selected_product)
             step3_duration = time.time() - step_start
             print(f"✅ [{datetime.now().strftime('%H:%M:%S')}] Step 3: Production calculation completed ({step3_duration:.2f}s)")
@@ -5978,8 +6060,6 @@ def update_manually_assign_production_requirement(request, version):
     # Filters from GET
     product_filter = request.GET.get('product', '').strip()
     site_filter = request.GET.get('site', '').strip()
-    shipping_date_filter = request.GET.get('shipping_date', '').strip()
-    percentage_filter = request.GET.get('percentage', '').strip()
 
     # Filter queryset
     records = MasterDataManuallyAssignProductionRequirement.objects.filter(version=scenario)
@@ -5987,16 +6067,9 @@ def update_manually_assign_production_requirement(request, version):
         records = records.filter(Product__Product__icontains=product_filter)
     if site_filter:
         records = records.filter(Site__SiteName__icontains=site_filter)
-    if shipping_date_filter:
-        records = records.filter(ShippingDate=shipping_date_filter)
-    if percentage_filter:
-        try:
-            records = records.filter(Percentage=float(percentage_filter))
-        except ValueError:
-            pass
 
-    # Always sort by ShippingDate ascending
-    records = records.order_by('ShippingDate')
+    # Sort by Product name then Site name for consistent ordering
+    records = records.order_by('Product__Product', 'Site__SiteName')
 
     # Add pagination - 20 records per page
     paginator = Paginator(records, 20)
@@ -6008,8 +6081,6 @@ def update_manually_assign_production_requirement(request, version):
         {
             'Product': rec.Product.Product if rec.Product else '',
             'Site': rec.Site.SiteName if rec.Site else '',
-            'ShippingDate': rec.ShippingDate,
-            'Percentage': rec.Percentage,
             'id': rec.id,
         }
         for rec in page_obj.object_list  # Use paginated records instead of all records
@@ -6021,23 +6092,13 @@ def update_manually_assign_production_requirement(request, version):
     if request.method == 'POST':
         formset = ManualAssignFormSet(request.POST)
         if formset.is_valid():
-            # Validate sum of percentages for each (Product, ShippingDate)
-            percent_sum = defaultdict(float)
+            # Simple validation - just check products and sites exist
             entries = []
             for form in formset:
                 if form.cleaned_data and not form.cleaned_data.get('DELETE', False):
                     product_code = form.cleaned_data['Product']
-                    shipping_date = form.cleaned_data['ShippingDate']
-                    percentage = form.cleaned_data['Percentage']
-                    key = (product_code, shipping_date)
-                    percent_sum[key] += percentage
-                    entries.append(form)
-
-            for key, total in percent_sum.items():
-                if abs(total - 1.0) > 0.0001:
-                    errors.append(
-                        f"Total percentage for Product '{key[0]}' and Shipping Date '{key[1]}' must be 1.0 (currently {total})."
-                    )
+                    site_code = form.cleaned_data['Site']
+                    entries.append((product_code, site_code))
 
             if not errors:
                 # Delete current records for this scenario page and re-create from formset
@@ -6048,8 +6109,6 @@ def update_manually_assign_production_requirement(request, version):
                     if form.cleaned_data and not form.cleaned_data.get('DELETE', False):
                         product_code = form.cleaned_data['Product']
                         site_code = form.cleaned_data['Site']
-                        shipping_date = form.cleaned_data['ShippingDate']
-                        percentage = form.cleaned_data['Percentage']
 
                         product_obj = MasterDataProductModel.objects.filter(Product=product_code).first()
                         site_obj = MasterDataPlantModel.objects.filter(SiteName=site_code).first()
@@ -6063,9 +6122,7 @@ def update_manually_assign_production_requirement(request, version):
                         MasterDataManuallyAssignProductionRequirement.objects.create(
                             version=scenario,
                             Product=product_obj,
-                            Site=site_obj,
-                            ShippingDate=shipping_date,
-                            Percentage=percentage
+                            Site=site_obj
                         )
                 if not errors:
                     return redirect('edit_scenario', version=version)
@@ -6082,8 +6139,6 @@ def update_manually_assign_production_requirement(request, version):
             'version': version,
             'product_filter': product_filter,
             'site_filter': site_filter,
-            'shipping_date_filter': shipping_date_filter,
-            'percentage_filter': percentage_filter,
             'errors': errors,
             'page_obj': page_obj,  # Add pagination object
         }
@@ -6150,19 +6205,8 @@ def upload_manually_assign_production_requirement(request, version):
 
             for idx, row in df.iterrows():
                 try:
-                    # Parse the shipping date
-                    shipping_date = row.get('ShippingDate')
-                    if pd.notna(shipping_date):
-                        try:
-                            shipping_date = pd.to_datetime(shipping_date).date()
-                        except ValueError:
-                            shipping_date = None
-                    else:
-                        shipping_date = None
-
                     product_code = row.get('Product') if pd.notna(row.get('Product')) else None
                     site_code = row.get('Site') if pd.notna(row.get('Site')) else None
-                    percentage = row.get('Percentage') if pd.notna(row.get('Percentage')) else 0
 
                     # Get Product and Site objects
                     product_obj = None
@@ -6186,9 +6230,7 @@ def upload_manually_assign_production_requirement(request, version):
                     MasterDataManuallyAssignProductionRequirement.objects.create(
                         version=scenario,
                         Product=product_obj,
-                        Site=site_obj,
-                        ShippingDate=shipping_date,
-                        Percentage=percentage
+                        Site=site_obj
                     )
                     success_count += 1
 
@@ -6249,8 +6291,6 @@ def add_manually_assign_production_requirement(request, version):
                 if form.cleaned_data:
                     product_code = form.cleaned_data['Product']
                     site_code = form.cleaned_data['Site']
-                    shipping_date = form.cleaned_data['ShippingDate']
-                    percentage = form.cleaned_data['Percentage']
 
                     # Validate Product and Site exist
                     product_obj = MasterDataProductModel.objects.filter(Product=product_code).first()
@@ -6265,9 +6305,7 @@ def add_manually_assign_production_requirement(request, version):
                     MasterDataManuallyAssignProductionRequirement.objects.create(
                         version=scenario,
                         Product=product_obj,
-                        Site=site_obj,
-                        ShippingDate=shipping_date,
-                        Percentage=percentage
+                        Site=site_obj
                     )
             if not errors:
                 return redirect('edit_scenario', version=version)
@@ -6385,7 +6423,7 @@ def manual_optimize_product(request, version):
 
         # Recalculate production for this scenario version
         try:
-            call_command('populate_calculated_production', version)
+            call_command('populate_calculated_production_v2_optimized', version)
             messages.success(request, "Production recalculated successfully!")
         except Exception as e:
             messages.error(request, f"Error recalculating production: {e}")
@@ -6679,6 +6717,7 @@ def auto_level_optimization(request, version):
                                     # Partial move - create new record for moved portion
                                     move_ratio = tonnes_to_move / production_tonnes
                                     
+                                    # CRITICAL: Only move production_aud, preserve revenue_aud and cost_aud at original dates
                                     moved_production = CalculatedProductionModel.objects.create(
                                         version=production.version,
                                         product=production.product,
@@ -6691,25 +6730,46 @@ def auto_level_optimization(request, version):
                                         price_aud=production.price_aud,
                                         cost_aud=production.cost_aud,
                                         production_aud=(production.production_aud or 0) * move_ratio,
-                                        revenue_aud=(production.revenue_aud or 0) * move_ratio
+                                        revenue_aud=0  # Revenue stays tied to original demand date - set to 0 for moved production
                                     )
                                     
-                                    # Reduce original production
+                                    # Reduce original production - preserve all revenue_aud at original date
                                     production.production_quantity *= (1 - move_ratio)
                                     production.tonnes -= tonnes_to_move
                                     production.production_aud = (production.production_aud or 0) * (1 - move_ratio)
-                                    production.revenue_aud = (production.revenue_aud or 0) * (1 - move_ratio)
+                                    # Keep revenue_aud unchanged at original date - no reduction needed
                                     production.save()
                                     
                                     print(f"DEBUG: Created new record {moved_production.id}, reduced original from {production_tonnes:.2f}t to {production.tonnes:.2f}t")
                                     
                                 else:
-                                    # Move entire record
+                                    # Move entire record - but preserve revenue_aud at original date
                                     original_date = production.pouring_date
+                                    original_revenue_aud = production.revenue_aud or 0
+                                    
+                                    # Create a stub record at original date with only revenue_aud (0 production)
+                                    if original_revenue_aud > 0:
+                                        CalculatedProductionModel.objects.create(
+                                            version=production.version,
+                                            product=production.product,
+                                            site=production.site,
+                                            pouring_date=original_date,
+                                            production_quantity=0,  # No physical production at original date
+                                            tonnes=0,  # No physical production at original date
+                                            product_group=production.product_group,
+                                            parent_product_group=production.parent_product_group,
+                                            price_aud=production.price_aud,
+                                            cost_aud=0,  # No cost at original date since no production
+                                            production_aud=0,  # No production at original date
+                                            revenue_aud=original_revenue_aud  # Revenue stays at original demand date
+                                        )
+                                    
+                                    # Move production to new date - zero out revenue_aud (now tracked at original date)
                                     production.pouring_date = gap_target_date
+                                    production.revenue_aud = 0  # Revenue stays tied to original demand date
                                     production.save()
                                     
-                                    print(f"DEBUG: Moved entire record {production.id} from {original_date} to {gap_target_date}")
+                                    print(f"DEBUG: Moved entire record {production.id} from {original_date} to {gap_target_date}, created revenue stub at original date")
                                 
                                 # Update counters
                                 tonnes_taken_so_far += tonnes_to_move
@@ -6937,7 +6997,7 @@ def auto_level_optimization(request, version):
 
 @login_required
 def reset_production_plan(request, version):
-    """Simple reset: just run populate_calculated_production for the scenario with detailed performance timing"""
+    """Simple reset: just run populate_calculated_production_v2_optimized for the scenario with detailed performance timing"""
     import time
     import traceback
     from datetime import datetime
@@ -6993,13 +7053,13 @@ def reset_production_plan(request, version):
             current_time = datetime.now().strftime('%H:%M:%S.%f')[:-3]
             print(f"📊 [{current_time}] RESET TIMING: Step 3 - Prepare command execution: {step3_time:.3f}s")
             
-            # Step 4: Run populate_calculated_production command (MAIN OPERATION)
+            # Step 4: Run populate_calculated_production_v2_optimized command (MAIN OPERATION)
             step4_start = time.time()
             current_time = datetime.now().strftime('%H:%M:%S.%f')[:-3]
-            print(f"🚀 [{current_time}] RESET TIMING: Step 4 - Starting populate_calculated_production command...")
+            print(f"🚀 [{current_time}] RESET TIMING: Step 4 - Starting populate_calculated_production_v2_optimized command...")
             
             try:
-                call_command('populate_calculated_production', version, stdout=stdout, stderr=stderr)
+                call_command('populate_calculated_production_v2_optimized', version, stdout=stdout, stderr=stderr)
                 
                 output = stdout.getvalue()
                 error_output = stderr.getvalue()
@@ -7009,7 +7069,7 @@ def reset_production_plan(request, version):
                 
                 step4_time = time.time() - step4_start
                 current_time = datetime.now().strftime('%H:%M:%S.%f')[:-3]
-                print(f"📊 [{current_time}] RESET TIMING: Step 4 - populate_calculated_production: {step4_time:.3f}s ⭐ MAIN OPERATION")
+                print(f"📊 [{current_time}] RESET TIMING: Step 4 - populate_calculated_production_v2_optimized: {step4_time:.3f}s ⭐ MAIN OPERATION")
                 print(f"OUTPUT: {output}")
                 
                 # Step 5: Regenerate inventory projections with detailed debugging
@@ -7060,7 +7120,7 @@ def reset_production_plan(request, version):
                 print(f"   📋 Step 1 - Get scenario object: {step1_time:.3f}s ({(step1_time/total_time)*100:.1f}%)")
                 print(f"   🔧 Step 2 - Reset optimization state: {step2_time:.3f}s ({(step2_time/total_time)*100:.1f}%)")
                 print(f"   ⚙️  Step 3 - Prepare command execution: {step3_time:.3f}s ({(step3_time/total_time)*100:.1f}%)")
-                print(f"   🚀 Step 4 - populate_calculated_production: {step4_time:.3f}s ({(step4_time/total_time)*100:.1f}%) ⭐ MAIN")
+                print(f"   🚀 Step 4 - populate_calculated_production_v2_optimized: {step4_time:.3f}s ({(step4_time/total_time)*100:.1f}%) ⭐ MAIN")
                 print(f"   📊 Step 5 - Regenerate inventory projections: {step5_time:.3f}s ({(step5_time/total_time)*100:.1f}%)")
                 print(f"   ⏱️  TOTAL RESET TIME: {total_time:.3f}s")
                 
@@ -7069,24 +7129,24 @@ def reset_production_plan(request, version):
                     ("Get scenario object", step1_time),
                     ("Reset optimization state", step2_time),
                     ("Prepare command execution", step3_time),
-                    ("populate_calculated_production", step4_time),
+                    ("populate_calculated_production_v2_optimized", step4_time),
                     ("Regenerate inventory projections", step5_time)
                 ]
                 slowest_step = max(step_times, key=lambda x: x[1])
                 print(f"   🐌 SLOWEST OPERATION: {slowest_step[0]} ({slowest_step[1]:.3f}s)")
                 
-                messages.success(request, f"Production plan reset successfully for version {version}. Total time: {total_time:.2f}s (populate_calculated_production: {step4_time:.2f}s, inventory projections: {step5_time:.2f}s)")
+                messages.success(request, f"Production plan reset successfully for version {version}. Total time: {total_time:.2f}s (populate_calculated_production_v2_optimized: {step4_time:.2f}s, inventory projections: {step5_time:.2f}s)")
                 
             except Exception as cmd_error:
                 step4_time = time.time() - step4_start
                 current_time = datetime.now().strftime('%H:%M:%S.%f')[:-3]
-                print(f"❌ [{current_time}] RESET TIMING: Step 4 - populate_calculated_production FAILED: {step4_time:.3f}s")
+                print(f"❌ [{current_time}] RESET TIMING: Step 4 - populate_calculated_production_v2_optimized FAILED: {step4_time:.3f}s")
                 
                 error_output = stderr.getvalue()
-                print(f"ERROR: populate_calculated_production failed: {str(cmd_error)}")
+                print(f"ERROR: populate_calculated_production_v2_optimized failed: {str(cmd_error)}")
                 if error_output:
                     print(f"STDERR: {error_output}")
-                messages.error(request, f"Error running populate_calculated_production: {str(cmd_error)}")
+                messages.error(request, f"Error running populate_calculated_production_v2_optimized: {str(cmd_error)}")
                 
         except Exception as e:
             total_time = time.time() - overall_start_time
@@ -7896,13 +7956,61 @@ def upload_site_allocation(request, version):
         excel_file = request.FILES['file']
         try:
             df = pd.read_excel(excel_file)
-            required_columns = ['Product', 'Site', 'AllocationPercentage']
-            if not all(column in df.columns for column in required_columns):
-                messages.error(request, f"Invalid file format. Required columns: {', '.join(required_columns)}.")
+            
+            # Check if this is the complex 8-column format that needs conversion
+            complex_columns = ['Product', 'Date', 'Site1_Name', 'Site1_Percentage', 'Site2_Name', 'Site2_Percentage', 'Site3_Name', 'Site3_Percentage']
+            simple_columns = ['Product', 'Site', 'AllocationPercentage']
+            
+            if all(col in df.columns for col in complex_columns):
+                # Convert complex format to simple format
+                messages.info(request, "Detected complex Excel format. Converting to standard format...")
+                
+                converted_data = []
+                allowed_sites = ['XUZ1', 'MER1', 'WOD1', 'COI2']
+                
+                for _, row in df.iterrows():
+                    product = str(row['Product']).strip()
+                    
+                    if pd.isna(product) or product == '':
+                        continue
+                    
+                    # Process each of the 3 site columns
+                    for i in range(1, 4):
+                        site_col = f'Site{i}_Name'
+                        percent_col = f'Site{i}_Percentage'
+                        
+                        if site_col in row and percent_col in row:
+                            site = str(row[site_col]).strip() if pd.notna(row[site_col]) else ''
+                            percentage = row[percent_col] if pd.notna(row[percent_col]) else 0
+                            
+                            # Only include if site is valid and percentage > 0
+                            if site in allowed_sites and percentage > 0:
+                                converted_data.append({
+                                    'Product': product,
+                                    'Site': site,
+                                    'AllocationPercentage': percentage
+                                })
+                
+                # Replace the original dataframe with converted data
+                df = pd.DataFrame(converted_data)
+                messages.success(request, f"Converted {len(df)} allocation records from complex format.")
+                
+            elif not all(col in df.columns for col in simple_columns):
+                # Neither format matches - show error
+                messages.error(request, 
+                    f"Invalid file format. Please use either:\n" +
+                    f"• Simple format with columns: {', '.join(simple_columns)}\n" +
+                    f"• Complex format with columns: {', '.join(complex_columns)}")
+                return redirect('edit_scenario', version=version)
+            
+            # Continue with standard processing using the simple format
+            if df.empty:
+                messages.warning(request, "No valid data found to process.")
                 return redirect('edit_scenario', version=version)
             
             # Validate that site is one of the allowed revenue sites
             allowed_sites = ['XUZ1', 'MER1', 'WOD1', 'COI2']
+            processed_count = 0
             
             for _, row in df.iterrows():
                 try:
@@ -7921,11 +8029,12 @@ def upload_site_allocation(request, version):
                             'AllocationPercentage': row.get('AllocationPercentage', 0.0),
                         }
                     )
+                    processed_count += 1
                 except (MasterDataProductModel.DoesNotExist, MasterDataPlantModel.DoesNotExist) as e:
                     messages.warning(request, f"Skipped row: {e}")
                     continue
             
-            messages.success(request, "Site Allocation uploaded successfully!")
+            messages.success(request, f"Site Allocation uploaded successfully! Processed {processed_count} records.")
         except Exception as e:
             messages.error(request, f"Error uploading file: {e}")
         

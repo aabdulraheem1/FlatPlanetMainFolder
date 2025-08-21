@@ -10,7 +10,7 @@
     
     <div class="alert alert-warning" role="alert">
         <strong>Note:</strong> This will upload allocation percentages for Revenue Forecast products across revenue sites (XUZ1, MER1, WOD1, COI2).
-        Make sure your Excel file has the correct column headers.
+        The system supports both simple and complex Excel formats - it will automatically detect and convert your file format.
     </div>
     
     <form method="post" enctype="multipart/form-data">
@@ -19,7 +19,10 @@
             <label for="file">Choose Excel File:</label>
             <input type="file" name="file" id="file" class="form-control" accept=".xlsx,.xls" required>
             <small class="form-text text-muted">
-                <strong>Required columns:</strong> Product, Site, AllocationPercentage
+                <strong>Supported formats:</strong> 
+                <br>• Simple: Product, Site, AllocationPercentage
+                <br>• Complex: Product, Date, Site1_Name, Site1_Percentage, Site2_Name, Site2_Percentage, Site3_Name, Site3_Percentage
+                <br>The system will automatically detect and convert your format.
             </small>
         </div>
         <button type="submit" class="btn btn-primary">Upload</button>
@@ -27,33 +30,73 @@
     </form>
     
     <div class="mt-4">
-        <h5>Excel File Format Example:</h5>
-        <table class="table table-bordered table-sm">
-            <thead>
-                <tr>
-                    <th>Product</th>
-                    <th>Site</th>
-                    <th>AllocationPercentage</th>
-                </tr>
-            </thead>
-            <tbody>
-                <tr>
-                    <td>PROD001</td>
-                    <td>XUZ1</td>
-                    <td>40.0</td>
-                </tr>
-                <tr>
-                    <td>PROD001</td>
-                    <td>MER1</td>
-                    <td>35.0</td>
-                </tr>
-                <tr>
-                    <td>PROD001</td>
-                    <td>WOD1</td>
-                    <td>25.0</td>
-                </tr>
-            </tbody>
-        </table>
+        <h5>Supported Excel File Formats:</h5>
+        
+        <div class="row">
+            <div class="col-md-6">
+                <h6>Simple Format:</h6>
+                <table class="table table-bordered table-sm">
+                    <thead>
+                        <tr>
+                            <th>Product</th>
+                            <th>Site</th>
+                            <th>AllocationPercentage</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td>PROD001</td>
+                            <td>XUZ1</td>
+                            <td>40.0</td>
+                        </tr>
+                        <tr>
+                            <td>PROD001</td>
+                            <td>MER1</td>
+                            <td>35.0</td>
+                        </tr>
+                        <tr>
+                            <td>PROD001</td>
+                            <td>WOD1</td>
+                            <td>25.0</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+            
+            <div class="col-md-6">
+                <h6>Complex Format (Auto-Converted):</h6>
+                <table class="table table-bordered table-sm">
+                    <thead>
+                        <tr>
+                            <th>Product</th>
+                            <th>Date</th>
+                            <th>Site1_Name</th>
+                            <th>Site1_Percentage</th>
+                            <th>Site2_Name</th>
+                            <th>Site2_Percentage</th>
+                            <th>Site3_Name</th>
+                            <th>Site3_Percentage</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td>PROD001</td>
+                            <td>2025-01-01</td>
+                            <td>XUZ1</td>
+                            <td>40.0</td>
+                            <td>MER1</td>
+                            <td>35.0</td>
+                            <td>WOD1</td>
+                            <td>25.0</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        
+        <div class="alert alert-info mt-3">
+            <strong>Automatic Detection:</strong> The system will detect which format your Excel file uses and automatically convert complex format to the standard format for processing.
+        </div>
         <small class="text-muted">Note: Allocation percentages for each product should sum to 100%</small>
     </div>
 </div>
